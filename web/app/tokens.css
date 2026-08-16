@@ -7,8 +7,16 @@
  * future palette swap only touches this file.
  *
  * Light (9a) lives on :root. Dark (9b) lives inside
- * `prefers-color-scheme: dark`. There is no user-facing theme switcher yet
- * (a cookie-driven preference is Phase 4) — the OS/browser setting decides.
+ * `prefers-color-scheme: dark`, guarded so it steps aside when the visitor
+ * has explicitly chosen light (`:root[data-theme='light']`) — see below.
+ *
+ * The explicit `light`/`dark`/`system` preference (design §14, plan phase
+ * 4) is a `data-theme` attribute on <html>, set server-side in
+ * app/layout.tsx from a cookie so there is no flash of the wrong theme.
+ * `system` (no cookie) sets no attribute, so the plain `prefers-color-
+ * scheme` media query below keeps deciding, same as before this feature
+ * existed. `dark` is forced via the unconditional `:root[data-theme='dark']`
+ * block at the end of this file, so it applies regardless of OS preference.
  */
 
 :root {
@@ -125,7 +133,14 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  /*
+   * :not([data-theme='light']) is the guard that lets an explicit "light"
+   * choice win over a dark OS preference (design §14, plan phase 4): with
+   * no guard, this block and the plain :root above have equal specificity
+   * and this one (later in source order) would always win, making "light"
+   * unreachable whenever the OS is dark.
+   */
+  :root:not([data-theme='light']) {
     --color-page: oklch(0.215 0.006 245);
     --color-surface-raised: oklch(0.26 0.008 245);
     --color-border-hairline: oklch(0.32 0.008 245);
@@ -167,4 +182,50 @@
     --color-track-maroon: oklch(0.78 0.095 20);
     --color-track-slate: oklch(0.78 0.02 250);
   }
+}
+
+/*
+ * Explicit "dark" preference (design §14, plan phase 4): forces the same
+ * values as the guarded prefers-color-scheme block above, but unconditional
+ * on OS preference — this is what makes choosing "dark" on a light-OS
+ * device work. Values are a deliberate duplicate of the block above (a
+ * plain CSS custom-property file has no mixin to share them from); keep
+ * the two in sync if the dark palette ever changes.
+ */
+:root[data-theme='dark'] {
+  --color-page: oklch(0.215 0.006 245);
+  --color-surface-raised: oklch(0.26 0.008 245);
+  --color-border-hairline: oklch(0.32 0.008 245);
+
+  --color-text: oklch(0.93 0.004 90);
+  --color-text-secondary: oklch(0.775 0.005 245);
+
+  --color-banner-bg: oklch(0.36 0.05 208);
+  --color-banner-text: oklch(0.96 0.01 205);
+  --color-banner-divider: oklch(0.43 0.055 208);
+
+  --color-footer-bg: oklch(0.16 0.006 250);
+  --color-footer-text: oklch(0.82 0.004 90);
+
+  --color-link: oklch(0.8 0.075 205);
+  --color-tag-bg: oklch(0.3 0.03 205);
+  --color-tag-text: oklch(0.83 0.06 205);
+
+  --color-accent-yellow: oklch(0.82 0.15 88);
+
+  --color-logo-tile: #fff;
+
+  --color-heat-0: oklch(0.28 0.006 245);
+  --color-heat-1: oklch(0.36 0.04 205);
+  --color-heat-2: oklch(0.47 0.055 205);
+  --color-heat-3: oklch(0.58 0.07 205);
+  --color-heat-4: oklch(0.7 0.08 205);
+  --color-heat-5: oklch(0.84 0.085 205);
+  --color-heat-cell-edge: oklch(0.35 0.008 245);
+
+  --color-track-blue: oklch(0.78 0.095 255);
+  --color-track-teal: oklch(0.78 0.095 175);
+  --color-track-ochre: oklch(0.78 0.095 65);
+  --color-track-maroon: oklch(0.78 0.095 20);
+  --color-track-slate: oklch(0.78 0.02 250);
 }

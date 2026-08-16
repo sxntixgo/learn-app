@@ -1,0 +1,59 @@
+/*
+ * Three tiny forms styled to read as one segmented control. Lives inside
+ * the top banner, so it borrows the banner's own tokens rather than the
+ * page surface ones — it needs to read against --color-banner-bg, not
+ * --color-page.
+ */
+
+.group {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.form {
+  margin: 0;
+  display: contents;
+}
+
+.button {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--color-banner-divider);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-banner-text);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: background-color 120ms ease-out;
+}
+
+.button:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--color-banner-text) 12%, transparent);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--color-banner-text);
+  outline-offset: 2px;
+}
+
+/* The current choice: weight change, not colour alone (design §14.2). */
+.button[aria-pressed='true'] {
+  font-weight: 700;
+  border-color: var(--color-banner-text);
+  cursor: default;
+}
+
+.button:disabled {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
+}

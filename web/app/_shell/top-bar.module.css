@@ -1,0 +1,30 @@
+/*
+ * The banner tokens (design/CHOSEN-PALETTE.md, tokens.css) were transcribed
+ * in phase 1/3 but unused until this shell — this is their first consumer.
+ */
+
+.banner {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 1rem;
+  background: var(--color-banner-bg);
+  border-bottom: 1px solid var(--color-banner-divider);
+}
+
+.brand {
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-size: 1.05rem;
+  color: var(--color-banner-text);
+  text-decoration: none;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}

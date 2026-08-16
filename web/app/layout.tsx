@@ -1,6 +1,9 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { ReactNode } from 'react';
+import { cookies } from 'next/headers';
 import { IBM_Plex_Mono, Libre_Franklin, Source_Serif_4 } from 'next/font/google';
+import { resolveThemePreference, THEME_COOKIE_NAME, themeDataAttribute } from '../src/lib/theme';
+import Shell from './_shell/Shell';
 import './globals.css';
 
 // next/font self-hosts these at build time (downloaded once during `next
@@ -32,17 +35,39 @@ export const metadata: Metadata = {
   description: 'A self-hosted learning platform',
 };
 
-export default function RootLayout({
+// viewport-fit=cover is required for env(safe-area-inset-bottom) (used by
+// the bottom tab bar, design §14.2) to resolve to anything but 0 on iOS —
+// without it the tab bar sits under the home-indicator gesture strip.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+};
+
+export default async function RootLayout({
   children,
 }: {
   children: ReactNode;
 }) {
+  // Colour-scheme preference (design §14, plan phase 4): read the cookie
+  // here, in the Server Component, and apply it to the very first byte of
+  // HTML — this is what makes "no flash of the wrong theme" true rather
+  // than aspirational. `system` (no cookie, or an invalid one) sets no
+  // data-theme attribute at all, so tokens.css's `prefers-color-scheme`
+  // media query keeps deciding, exactly as it did before this feature
+  // existed — the server never guesses at an OS preference it cannot see.
+  const cookieStore = await cookies();
+  const theme = resolveThemePreference(cookieStore.get(THEME_COOKIE_NAME)?.value);
+
   return (
     <html
       lang="en"
+      data-theme={themeDataAttribute(theme)}
       className={`${libreFranklin.variable} ${sourceSerif4.variable} ${ibmPlexMono.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        <Shell theme={theme}>{children}</Shell>
+      </body>
     </html>
   );
 }

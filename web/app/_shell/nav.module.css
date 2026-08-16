@@ -1,0 +1,174 @@
+/*
+ * One <nav>, two shapes (design §14.2). Below 768px: a fixed bottom tab
+ * bar, padded for the iOS home-indicator safe area so it never sits under
+ * the system gesture bar. At/above 768px: an in-flow, collapsible sidebar.
+ *
+ * The active-item marker is never colour alone (design §14.2, CHOSEN-
+ * PALETTE.md rule 1: yellow is structural only, never a fill): a 2px yellow
+ * rule under the label, paired with a font-weight change.
+ */
+
+.nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  background: var(--color-surface-raised);
+  border-top: 1px solid var(--color-border-hairline);
+  /* iOS home-indicator safe area — without this the bar sits under the
+     system gesture strip on an iPhone/iPad. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.collapseToggle {
+  display: none;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  width: 100%;
+}
+
+.list li {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  min-height: 44px;
+  padding: 0.4rem 0.25rem;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 0.72rem;
+}
+
+.link:hover {
+  color: var(--color-text);
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: -2px;
+}
+
+.icon {
+  display: flex;
+}
+
+.label {
+  border-bottom: 2px solid transparent;
+  padding-bottom: 0.1rem;
+}
+
+/* Current destination: weight + the one yellow, structural only — never a
+   fill, per CHOSEN-PALETTE.md rule 1. */
+.link[data-active='true'] {
+  color: var(--color-text);
+}
+
+.link[data-active='true'] .label {
+  font-weight: 700;
+  border-bottom-color: var(--color-accent-yellow);
+}
+
+@media (min-width: 768px) {
+  .nav {
+    position: sticky;
+    top: 0;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    align-self: stretch;
+    width: 180px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    border-top: none;
+    border-right: 1px solid var(--color-border-hairline);
+    padding-bottom: 0;
+    transition: width 150ms ease-out;
+  }
+
+  .nav[data-collapsed='true'] {
+    width: 64px;
+  }
+
+  .collapseToggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    min-width: 44px;
+    margin: 0.6rem;
+    border: 1px solid var(--color-border-hairline);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 1rem;
+    cursor: pointer;
+  }
+
+  .collapseToggle:hover {
+    color: var(--color-text);
+  }
+
+  .collapseToggle:focus-visible {
+    outline: 2px solid var(--color-link);
+    outline-offset: 2px;
+  }
+
+  .list {
+    flex-direction: column;
+    padding: 0.25rem 0.6rem 0.6rem;
+    gap: 0.15rem;
+  }
+
+  .list li {
+    flex: 0 0 auto;
+  }
+
+  .link {
+    flex-direction: row;
+    justify-content: flex-start;
+    font-size: 0.85rem;
+    padding: 0.55rem 0.65rem;
+    border-radius: 8px;
+  }
+
+  .nav[data-collapsed='true'] .link {
+    justify-content: center;
+  }
+
+  .nav[data-collapsed='true'] .label {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav {
+    transition: none;
+  }
+}

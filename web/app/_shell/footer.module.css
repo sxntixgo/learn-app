@@ -1,0 +1,14 @@
+.footer {
+  background: var(--color-footer-bg);
+  color: var(--color-footer-text);
+  padding: 1.25rem 1rem;
+  margin-top: auto;
+}
+
+.text {
+  margin: 0;
+  max-width: var(--measure-full, 76ch);
+  margin-inline: auto;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.78rem;
+}

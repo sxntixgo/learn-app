@@ -1,0 +1,27 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  /* Clearance for the fixed bottom tab bar so it never covers the tail of
+     the page content or the footer beneath it. Matches nav.module.css's
+     ~44px link height plus its own vertical padding, with slack. */
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.body {
+  display: flex;
+  flex: 1;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (min-width: 768px) {
+  .root {
+    /* Nav is an in-flow sidebar here, not a fixed overlay — no clearance
+       needed. */
+    padding-bottom: 0;
+  }
+}

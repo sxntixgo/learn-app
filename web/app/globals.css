@@ -14,7 +14,22 @@
 
 html {
   background: var(--color-page);
+  /* Default: let the browser's own light/dark UI (scrollbars, form
+     controls) follow the OS, same as our colours do for `system`. */
   color-scheme: light dark;
+}
+
+/*
+ * When the visitor has explicitly chosen light or dark (design §14, plan
+ * phase 4), pin native UI to match rather than leaving it to follow the OS
+ * independently of the page's own colours.
+ */
+html[data-theme='light'] {
+  color-scheme: light;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 body {
@@ -60,7 +75,12 @@ svg {
 /*
  * Shiki dual-theme output (themes: {light, dark}, defaultColor: false).
  * Shiki emits both palettes as CSS custom properties per span; which one
- * paints is decided here, by prefers-color-scheme, with no JS toggle.
+ * paints is decided here. Default follows prefers-color-scheme, same as
+ * the rest of the page for `system`; the `html:not([data-theme='light'])`
+ * guard and the unconditional `html[data-theme='dark']` block below make
+ * code blocks respect an explicit light/dark choice (design §14, plan
+ * phase 4) the same way tokens.css does, rather than only the surrounding
+ * chrome changing and code staying stuck on the OS preference.
  * See https://shiki.style/guide/dual-themes
  */
 .shiki,
@@ -70,11 +90,17 @@ svg {
 }
 
 @media (prefers-color-scheme: dark) {
-  .shiki,
-  .shiki span {
+  html:not([data-theme='light']) .shiki,
+  html:not([data-theme='light']) .shiki span {
     color: var(--shiki-dark);
     background-color: var(--shiki-dark-bg);
   }
+}
+
+html[data-theme='dark'] .shiki,
+html[data-theme='dark'] .shiki span {
+  color: var(--shiki-dark);
+  background-color: var(--shiki-dark-bg);
 }
 
 .shiki {
