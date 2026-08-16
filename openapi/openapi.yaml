@@ -160,6 +160,115 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/v1/me:
+    get:
+      summary: Get the current actor's profile
+      description: >-
+        Returns the actor's id, display name, and effective timezone.
+        `timezoneSource` is "default" when `users.timezone` is null and the
+        UTC fallback (design §15) is being used, "set" otherwise — so the UI
+        can prompt for confirmation only when a real value hasn't been
+        chosen yet.
+      operationId: getMe
+      tags:
+        - me
+      responses:
+        '200':
+          description: The actor's profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+    patch:
+      summary: Update the current actor's timezone
+      description: >-
+        Sets `users.timezone`. The value must be a real IANA time zone name
+        (validated via Intl) — storing anything else would silently break
+        every heatmap/streak bucket query, which key off this column.
+        Changing timezone shifts historical day buckets and may
+        retroactively alter a streak (design §15); badges already earned
+        are never revoked.
+      operationId: updateMe
+      tags:
+        - me
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeUpdateRequest'
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+        '400':
+          description: timezone is missing or not a real IANA zone name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/me/activity:
+    get:
+      summary: The actor's recent activity feed
+      description: >-
+        Recent activity_events for the actor, newest first, with enough
+        joined course/lesson context to render (design §10). course/lesson
+        are null for event types not tied to either.
+      operationId: getMyActivity
+      tags:
+        - activity
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Max events to return. Defaults to 20, clamped to [1, 100].
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: The activity feed, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActivityEvent'
+
+  /api/v1/me/heatmap:
+    get:
+      summary: The actor's activity heatmap
+      description: >-
+        A contiguous run of local calendar days (design §15: bucketed in the
+        actor's IANA timezone, falling back to UTC when unset) with an
+        activity count each — days with zero activity are present with
+        count 0, never omitted, so the UI never has to infer a gap. Also
+        returns current/longest streak (design §10), computed fresh from
+        activity_events, not a stored counter.
+      operationId: getMyHeatmap
+      tags:
+        - activity
+      parameters:
+        - name: weeks
+          in: query
+          required: false
+          description: >-
+            Trailing window size in weeks (7 days each), ending today.
+            Defaults to 53, clamped to [1, 53]; narrower clients request
+            fewer (design §10: ~13 on phone, ~26 on tablet).
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: The heatmap
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Heatmap'
+
   /api/v1/courses/{courseSlug}/lessons/{lessonSlug}:
     get:
       summary: Get a lesson within a course
@@ -664,3 +773,163 @@ components:
           description: A human-readable error message
       required:
         - message
+
+    TimezoneSource:
+      type: string
+      enum:
+        - set
+        - default
+      description: >-
+        "set" when users.timezone holds a real value the actor chose;
+        "default" when it is null and the UTC fallback (design §15) is in
+        effect.
+
+    Me:
+      type: object
+      description: The current actor's profile.
+      properties:
+        id:
+          type: string
+          description: The actor's user id
+        displayName:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: The actor's display name, or null if unset
+        timezone:
+          type: string
+          description: >-
+            The actor's effective IANA timezone — their stored value, or
+            "UTC" when unset (design §15).
+        timezoneSource:
+          $ref: '#/components/schemas/TimezoneSource'
+      required:
+        - id
+        - displayName
+        - timezone
+        - timezoneSource
+
+    MeUpdateRequest:
+      type: object
+      description: A request to set the actor's timezone.
+      properties:
+        timezone:
+          type: string
+          description: A real IANA time zone name (e.g. "America/Denver").
+      required:
+        - timezone
+
+    ActivityEventType:
+      type: string
+      enum:
+        - lesson_completed
+        - exercise_submitted
+        - exercise_returned
+        - quiz_passed
+        - course_enrolled
+        - course_completed
+        - degree_earned
+        - badge_awarded
+      description: The kind of activity_events row (design §10).
+
+    ActivityCourseRef:
+      type: object
+      description: Minimal course context for rendering a feed entry.
+      properties:
+        slug:
+          type: string
+          description: The course's slug
+        title:
+          type: string
+          description: The course's title
+      required:
+        - slug
+        - title
+
+    ActivityLessonRef:
+      type: object
+      description: Minimal lesson context for rendering a feed entry.
+      properties:
+        slug:
+          type: string
+          description: The lesson's slug, unique within its course
+        title:
+          type: string
+          description: The lesson's title
+      required:
+        - slug
+        - title
+
+    ActivityEvent:
+      type: object
+      description: One activity_events row, joined with enough context to render.
+      properties:
+        type:
+          $ref: '#/components/schemas/ActivityEventType'
+        occurredAt:
+          type: string
+          format: date-time
+          description: When the event occurred, in UTC.
+        course:
+          description: The related course, or null if this event type has none.
+          oneOf:
+            - $ref: '#/components/schemas/ActivityCourseRef'
+            - type: "null"
+        lesson:
+          description: The related lesson, or null if this event type has none.
+          oneOf:
+            - $ref: '#/components/schemas/ActivityLessonRef'
+            - type: "null"
+      required:
+        - type
+        - occurredAt
+        - course
+        - lesson
+
+    HeatmapDay:
+      type: object
+      description: One local calendar day's activity count.
+      properties:
+        date:
+          type: string
+          description: The local calendar date, YYYY-MM-DD.
+        count:
+          type: integer
+          description: Number of activity_events on this local day.
+      required:
+        - date
+        - count
+
+    Heatmap:
+      type: object
+      description: >-
+        The actor's activity heatmap: a contiguous run of local days plus
+        derived streaks (design §10, §15).
+      properties:
+        timezone:
+          type: string
+          description: The timezone the days were bucketed in.
+        timezoneSource:
+          $ref: '#/components/schemas/TimezoneSource'
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/HeatmapDay'
+          description: Contiguous local days, oldest first, ending today.
+        maxCount:
+          type: integer
+          description: The highest single-day count in `days`, for scaling the intensity ramp.
+        currentStreak:
+          type: integer
+          description: Current streak in local calendar days, computed fresh from activity_events.
+        longestStreak:
+          type: integer
+          description: Longest streak ever, in local calendar days, computed fresh from activity_events.
+      required:
+        - timezone
+        - timezoneSource
+        - days
+        - maxCount
+        - currentStreak
+        - longestStreak

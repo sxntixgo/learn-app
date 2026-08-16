@@ -6,12 +6,14 @@ import type { CourseRouteDeps } from './routes/courses.ts';
 import { registerCourseRoutes } from './routes/courses.ts';
 import type { ProgressRouteDeps } from './routes/progress.ts';
 import { registerProgressRoutes } from './routes/progress.ts';
+import type { MeRouteDeps } from './routes/me.ts';
+import { registerMeRoutes } from './routes/me.ts';
 
-// CourseRouteDeps and ProgressRouteDeps are structurally identical ({can?,
-// actor?}) but declared separately in each route module (CLAUDE.md style:
-// small modules, no speculative shared abstraction). One options bag
-// satisfies both.
-export type BuildServerOptions = CourseRouteDeps & ProgressRouteDeps;
+// CourseRouteDeps, ProgressRouteDeps, and MeRouteDeps are structurally
+// identical ({can?, actor?}) but declared separately in each route module
+// (CLAUDE.md style: small modules, no speculative shared abstraction). One
+// options bag satisfies all three.
+export type BuildServerOptions = CourseRouteDeps & ProgressRouteDeps & MeRouteDeps;
 
 export async function buildServer(options: BuildServerOptions = {}) {
   const fastify = Fastify({
@@ -24,6 +26,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
 
   registerCourseRoutes(fastify, options);
   registerProgressRoutes(fastify, options);
+  registerMeRoutes(fastify, options);
 
   return fastify;
 }

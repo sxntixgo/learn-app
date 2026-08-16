@@ -104,6 +104,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the current actor's profile
+         * @description Returns the actor's id, display name, and effective timezone. `timezoneSource` is "default" when `users.timezone` is null and the UTC fallback (design §15) is being used, "set" otherwise — so the UI can prompt for confirmation only when a real value hasn't been chosen yet.
+         */
+        get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update the current actor's timezone
+         * @description Sets `users.timezone`. The value must be a real IANA time zone name (validated via Intl) — storing anything else would silently break every heatmap/streak bucket query, which key off this column. Changing timezone shifts historical day buckets and may retroactively alter a streak (design §15); badges already earned are never revoked.
+         */
+        patch: operations["updateMe"];
+        trace?: never;
+    };
+    "/api/v1/me/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The actor's recent activity feed
+         * @description Recent activity_events for the actor, newest first, with enough joined course/lesson context to render (design §10). course/lesson are null for event types not tied to either.
+         */
+        get: operations["getMyActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/heatmap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The actor's activity heatmap
+         * @description A contiguous run of local calendar days (design §15: bucketed in the actor's IANA timezone, falling back to UTC when unset) with an activity count each — days with zero activity are present with count 0, never omitted, so the UI never has to infer a gap. Also returns current/longest streak (design §10), computed fresh from activity_events, not a stored counter.
+         */
+        get: operations["getMyHeatmap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{courseSlug}/lessons/{lessonSlug}": {
         parameters: {
             query?: never;
@@ -334,6 +398,79 @@ export interface components {
             /** @description A human-readable error message */
             message: string;
         };
+        /**
+         * @description "set" when users.timezone holds a real value the actor chose; "default" when it is null and the UTC fallback (design §15) is in effect.
+         * @enum {string}
+         */
+        TimezoneSource: "set" | "default";
+        /** @description The current actor's profile. */
+        Me: {
+            /** @description The actor's user id */
+            id: string;
+            /** @description The actor's display name, or null if unset */
+            displayName: ((string | null) | null) | null;
+            /** @description The actor's effective IANA timezone — their stored value, or "UTC" when unset (design §15). */
+            timezone: string;
+            timezoneSource: components["schemas"]["TimezoneSource"];
+        };
+        /** @description A request to set the actor's timezone. */
+        MeUpdateRequest: {
+            /** @description A real IANA time zone name (e.g. "America/Denver"). */
+            timezone: string;
+        };
+        /**
+         * @description The kind of activity_events row (design §10).
+         * @enum {string}
+         */
+        ActivityEventType: "lesson_completed" | "exercise_submitted" | "exercise_returned" | "quiz_passed" | "course_enrolled" | "course_completed" | "degree_earned" | "badge_awarded";
+        /** @description Minimal course context for rendering a feed entry. */
+        ActivityCourseRef: {
+            /** @description The course's slug */
+            slug: string;
+            /** @description The course's title */
+            title: string;
+        };
+        /** @description Minimal lesson context for rendering a feed entry. */
+        ActivityLessonRef: {
+            /** @description The lesson's slug, unique within its course */
+            slug: string;
+            /** @description The lesson's title */
+            title: string;
+        };
+        /** @description One activity_events row, joined with enough context to render. */
+        ActivityEvent: {
+            type: components["schemas"]["ActivityEventType"];
+            /**
+             * Format: date-time
+             * @description When the event occurred, in UTC.
+             */
+            occurredAt: string;
+            /** @description The related course, or null if this event type has none. */
+            course: components["schemas"]["ActivityCourseRef"] | null;
+            /** @description The related lesson, or null if this event type has none. */
+            lesson: components["schemas"]["ActivityLessonRef"] | null;
+        };
+        /** @description One local calendar day's activity count. */
+        HeatmapDay: {
+            /** @description The local calendar date, YYYY-MM-DD. */
+            date: string;
+            /** @description Number of activity_events on this local day. */
+            count: number;
+        };
+        /** @description The actor's activity heatmap: a contiguous run of local days plus derived streaks (design §10, §15). */
+        Heatmap: {
+            /** @description The timezone the days were bucketed in. */
+            timezone: string;
+            timezoneSource: components["schemas"]["TimezoneSource"];
+            /** @description Contiguous local days, oldest first, ending today. */
+            days: components["schemas"]["HeatmapDay"][];
+            /** @description The highest single-day count in `days`, for scaling the intensity ramp. */
+            maxCount: number;
+            /** @description Current streak in local calendar days, computed fresh from activity_events. */
+            currentStreak: number;
+            /** @description Longest streak ever, in local calendar days, computed fresh from activity_events. */
+            longestStreak: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -490,6 +627,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The actor's profile */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+        };
+    };
+    updateMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Profile updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description timezone is missing or not a real IANA zone name */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMyActivity: {
+        parameters: {
+            query?: {
+                /** @description Max events to return. Defaults to 20, clamped to [1, 100]. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The activity feed, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityEvent"][];
+                };
+            };
+        };
+    };
+    getMyHeatmap: {
+        parameters: {
+            query?: {
+                /** @description Trailing window size in weeks (7 days each), ending today. Defaults to 53, clamped to [1, 53]; narrower clients request fewer (design §10: ~13 on phone, ~26 on tablet). */
+                weeks?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The heatmap */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Heatmap"];
                 };
             };
         };
