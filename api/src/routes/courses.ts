@@ -51,12 +51,18 @@ interface ModuleLessonRow {
 }
 
 interface CourseLessonRow {
+  id: string;
   slug: string;
   title: string;
   kind: string;
   estimate_minutes: number | null;
   track_key: string | null;
   blocks: unknown;
+}
+
+interface LessonProgressRow {
+  state: string;
+  last_position: string | null;
 }
 
 /** Registers the course + course-scoped-lesson routes on `fastify`. */
@@ -191,7 +197,7 @@ export function registerCourseRoutes(fastify: FastifyInstance, deps: CourseRoute
       // so an archived lesson is invisible here even when requested by its
       // exact slug.
       const lessonsResult = await getPool().query<CourseLessonRow>(
-        `select l.slug, l.title, l.kind, l.estimate_minutes, t.key as track_key, l.blocks
+        `select l.id, l.slug, l.title, l.kind, l.estimate_minutes, t.key as track_key, l.blocks
          from lessons l
          join modules m on m.id = l.module_id
          left join tracks t on t.id = l.track_id
@@ -210,6 +216,16 @@ export function registerCourseRoutes(fastify: FastifyInstance, deps: CourseRoute
       const prevRow = index > 0 ? lessons[index - 1]! : null;
       const nextRow = index < lessons.length - 1 ? lessons[index + 1]! : null;
 
+      // The actor's own progress on this lesson, so the reader can resume
+      // (design §9.1 / Phase 3 progress API). Null if the actor has never
+      // interacted with it — no lesson_progress row exists yet.
+      const progressResult = await getPool().query<LessonProgressRow>(
+        'select state, last_position from lesson_progress where user_id = $1 and lesson_id = $2',
+        [actor.id, row.id],
+      );
+      const progressRow = progressResult.rows[0];
+      const progress = progressRow ? { state: progressRow.state, lastPosition: progressRow.last_position } : null;
+
       const lesson = {
         slug: row.slug,
         title: row.title,
@@ -219,6 +235,7 @@ export function registerCourseRoutes(fastify: FastifyInstance, deps: CourseRoute
         blocks: row.blocks,
         prev: prevRow ? { slug: prevRow.slug, title: prevRow.title } : null,
         next: nextRow ? { slug: nextRow.slug, title: nextRow.title } : null,
+        progress,
       };
 
       if (!can(actor, 'lesson:read', lesson)) {

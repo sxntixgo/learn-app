@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { buildServer } from '../index.ts';
 import { setPool, closePool } from '../db.ts';
+import { DEV_ACTOR } from '../policy/can.ts';
 
 const { Pool } = pg;
 
@@ -314,6 +315,35 @@ describe('courses routes', () => {
       const b1Body = JSON.parse(b1.payload);
       expect(b1Body.prev).toEqual({ slug: 'mod-a-lesson-2', title: 'Lesson A2' });
       expect(b1Body.next).toBeNull();
+
+      await fastify.close();
+    });
+
+    it('includes the actor\'s progress (null when none exists, populated once a row does)', async () => {
+      const fastify = await buildServer();
+
+      const before = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${COURSE_SLUG}/lessons/mod-b-lesson-1` });
+      expect(before.statusCode).toBe(200);
+      expect(JSON.parse(before.payload).progress).toBeNull();
+
+      const lessonRow = await pool.query<{ id: string }>(
+        `select id from lessons where course_id = $1 and slug = 'mod-b-lesson-1'`,
+        [courseId],
+      );
+      await pool.query(
+        `insert into lesson_progress (user_id, lesson_id, state, last_position)
+         values ($1, $2, 'in_progress', 'block-2')`,
+        [DEV_ACTOR.id, lessonRow.rows[0]!.id],
+      );
+
+      const after = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${COURSE_SLUG}/lessons/mod-b-lesson-1` });
+      expect(after.statusCode).toBe(200);
+      expect(JSON.parse(after.payload).progress).toMatchObject({ state: 'in_progress', lastPosition: 'block-2' });
+
+      await pool.query('delete from lesson_progress where user_id = $1 and lesson_id = $2', [
+        DEV_ACTOR.id,
+        lessonRow.rows[0]!.id,
+      ]);
 
       await fastify.close();
     });

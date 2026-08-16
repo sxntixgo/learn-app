@@ -210,15 +210,16 @@ need moving or hand-adding. Reconciliation against the hand-written manifest was
 
 *Still single-user. `actor` remains hardcoded.*
 
-- [ ] **`lesson_progress`** with mark-complete and resume-position
+- [x] **`lesson_progress`** with mark-complete and resume-position
       **Acceptance:** completing a lesson updates course percentage; reopening restores position
       **Model:** `sonnet`
-- [ ] **Append-only `activity_events`**
+- [x] **Append-only `activity_events`**
       **Acceptance:** completing a lesson writes exactly one row; a test or DB trigger rejects updates and deletes
       **Model:** `sonnet`
 - [ ] **`users.timezone`** — guessed client-side, confirmable in settings
       **Acceptance:** changing timezone shifts heatmap buckets across a day boundary (test)
       **Model:** `sonnet`
+      *(Note: migration 0004 already created `users.timezone` as a nullable column, since `lesson_progress`/`activity_events` needed `users` to exist regardless. The client-side guessing and settings UI remain unbuilt.)*
 - [ ] **Heatmap component** — viewport-sized trailing window, scrollable, snapped to the current week
       **Acceptance:** ~13 weeks at 375px, ~53 at 1440px; every cell carries an aria-label with an exact count; empty visibly distinct from level one
       **Model:** `opus` — *(c) novel UX: viewport-adaptive window, timezone bucketing, and a colour-only scale that must stay accessible*
@@ -230,6 +231,42 @@ need moving or hand-adding. Reconciliation against the hand-written manifest was
       **Model:** `sonnet`
 
 > **Gate 3.** Heatmap legible at 375px in both colour schemes.
+
+### Phase 3 outcome so far (`lesson_progress` + `activity_events`, built 2026-08-16)
+
+**Status: the first two checklist items are complete.** 109 tests passing (96 carried over
+plus 13 new), lint and typecheck clean, `gen:api:check` exits 0 against a freshly
+regenerated `web/src/lib/api-types.ts`.
+
+Migration `0004_progress_and_activity.sql` adds `users` (minimal — id/timezone/display_name/
+created_at, seeded with the fixed UUID `DEV_ACTOR.id` now uses instead of the placeholder
+string `'dev-user'`), `lesson_progress` (unique on `(user_id, lesson_id)`, FK to
+`lessons(id)`), and `activity_events` (FK to `courses`/`lessons` deliberately left
+`NO ACTION` rather than `CASCADE`/`SET NULL`, since either would require Postgres to issue an
+UPDATE/DELETE against an append-only table). New tables use `create table if not exists` /
+`create or replace` rather than 0001-0003's bare `create table`, since — per design §7 — user
+tables are never safe to drop-and-recreate the way Phase 1's disposable `lessons` table was
+in 0002.
+
+Verified here:
+
+- `psql` proves the append-only trigger for real: both a direct `UPDATE` and a direct
+  `DELETE` against a real `activity_events` row raise `activity_events is append-only: ...
+  is not permitted`, and the row is unchanged afterward.
+- Against the dev DB's real `claude-code-docs` course (61 lessons): `POST .../overview/progress`
+  with `{"state":"complete"}` moved the course summary from 0% to 2% (1/61); a second,
+  identical `POST` left `completedAt` unchanged and the database showed exactly one
+  `lesson_progress` row and exactly one `lesson_completed` `activity_events` row.
+- Marking an `exercise`-kind lesson complete directly returns 409 (design §9.1: only `kind:
+  'lesson'` completes this way).
+- The lesson GET endpoint's new `progress` field is `null` until a `lesson_progress` row
+  exists, then reflects it.
+- Every new handler takes `actor`, calls `can()`, and has a spy test proving it
+  (`lesson:progress:write`, `course:progress:read`).
+
+**Out of scope here, left for the remaining Phase 3 checklist items:** timezone guessing,
+the heatmap, the activity feed UI, and streaks — all deliberately untouched per this task's
+brief, and owned by later work on this same phase.
 
 ---
 

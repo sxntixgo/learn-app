@@ -27,7 +27,12 @@ export function can(actor: Actor, action: string, resource?: unknown): boolean {
 
 // Phase-1-only hardcoded development actor. Stands in for a real
 // authenticated user until Phase 6 populates `actor` from a session.
+//
+// Phase 3: `id` is a real UUID, not the placeholder string 'dev-user', so
+// this actor is a valid `lesson_progress.user_id` / `activity_events.user_id`
+// FK target. db/migrations/0004_progress_and_activity.sql seeds a `users`
+// row with this exact id — the two must stay in sync.
 export const DEV_ACTOR: Actor = {
-  id: 'dev-user',
+  id: '00000000-0000-0000-0000-000000000001',
   roles: ['admin'],
 };

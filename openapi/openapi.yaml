@@ -73,6 +73,93 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/v1/courses/{courseSlug}/lessons/{lessonSlug}/progress:
+    post:
+      summary: Mark or update a lesson's progress for the current actor
+      description: >-
+        Upserts lesson_progress for the actor. Idempotent: marking a lesson
+        complete more than once leaves exactly one lesson_progress row and
+        emits exactly one lesson_completed activity event. Only lessons of
+        kind "lesson" may be marked complete through this endpoint —
+        exercises complete on submission and quizzes complete on passing, in
+        later phases; requesting state "complete" against either kind
+        returns 409.
+      operationId: upsertLessonProgress
+      tags:
+        - progress
+      parameters:
+        - name: courseSlug
+          in: path
+          required: true
+          description: The course slug
+          schema:
+            type: string
+        - name: lessonSlug
+          in: path
+          required: true
+          description: The lesson slug (unique within the course)
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProgressUpsertRequest'
+      responses:
+        '200':
+          description: Progress recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LessonProgressDetail'
+        '404':
+          description: Course or lesson not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: >-
+            The lesson's kind cannot be marked complete directly (only
+            kind "lesson" can — exercises and quizzes complete through
+            other mechanisms).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/courses/{courseSlug}/progress:
+    get:
+      summary: Get the actor's progress summary for a course
+      description: >-
+        Returns the course's total non-archived lesson count, how many the
+        actor has completed, the completion percent, and each lesson's
+        individual state. Archived lessons never count toward the totals.
+      operationId: getCourseProgress
+      tags:
+        - progress
+      parameters:
+        - name: courseSlug
+          in: path
+          required: true
+          description: The course slug
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Progress summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseProgressSummary'
+        '404':
+          description: Course not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/v1/courses/{courseSlug}/lessons/{lessonSlug}:
     get:
       summary: Get a lesson within a course
@@ -234,6 +321,13 @@ components:
           oneOf:
             - $ref: '#/components/schemas/LessonNavStub'
             - type: "null"
+        progress:
+          description: >-
+            The actor's progress on this lesson, or null if they have never
+            interacted with it.
+          oneOf:
+            - $ref: '#/components/schemas/LessonProgress'
+            - type: "null"
       required:
         - slug
         - title
@@ -243,6 +337,7 @@ components:
         - blocks
         - prev
         - next
+        - progress
 
     Track:
       type: object
@@ -426,6 +521,139 @@ components:
         - tags
         - tracks
         - modules
+
+    ProgressState:
+      type: string
+      enum:
+        - in_progress
+        - complete
+      description: The state a lesson_progress row can be written with.
+
+    LessonProgress:
+      type: object
+      description: >-
+        The actor's progress on a lesson, embedded in the lesson response so
+        a reader can resume.
+      properties:
+        state:
+          $ref: '#/components/schemas/ProgressState'
+        lastPosition:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: An opaque string the reader uses to resume, or null.
+      required:
+        - state
+        - lastPosition
+
+    LessonProgressDetail:
+      type: object
+      description: The full lesson_progress row for the actor, after an upsert.
+      properties:
+        state:
+          $ref: '#/components/schemas/ProgressState'
+        lastPosition:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: An opaque string the reader uses to resume, or null.
+        secondsSpent:
+          type: integer
+          description: Total seconds spent, as last recorded.
+        completedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+          nullable: true
+          description: When the lesson was first marked complete, or null.
+        updatedAt:
+          type: string
+          format: date-time
+          description: When this progress row was last written.
+      required:
+        - state
+        - lastPosition
+        - secondsSpent
+        - completedAt
+        - updatedAt
+
+    ProgressUpsertRequest:
+      type: object
+      description: A partial update to the actor's progress on a lesson.
+      properties:
+        state:
+          $ref: '#/components/schemas/ProgressState'
+        lastPosition:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: An opaque string the reader uses to resume.
+        secondsSpent:
+          type: integer
+          minimum: 0
+          description: Total seconds spent on the lesson, replacing the stored value.
+
+    CourseProgressLessonState:
+      type: string
+      enum:
+        - not_started
+        - in_progress
+        - complete
+      description: >-
+        A lesson's progress state as it appears in a course summary. Unlike
+        ProgressState, includes "not_started" for lessons with no
+        lesson_progress row yet.
+
+    CourseProgressLesson:
+      type: object
+      description: One lesson's state within a course progress summary.
+      properties:
+        slug:
+          type: string
+          description: The lesson's slug, unique within its course
+        kind:
+          type: string
+          enum:
+            - lesson
+            - exercise
+            - quiz
+          description: The lesson's kind
+        state:
+          $ref: '#/components/schemas/CourseProgressLessonState'
+      required:
+        - slug
+        - kind
+        - state
+
+    CourseProgressSummary:
+      type: object
+      description: >-
+        The actor's progress summary for a course. Archived lessons never
+        count toward totalLessons/completedLessons.
+      properties:
+        totalLessons:
+          type: integer
+          description: Count of the course's non-archived lessons.
+        completedLessons:
+          type: integer
+          description: Count of those lessons the actor has completed.
+        percent:
+          type: integer
+          description: completedLessons / totalLessons as a rounded percent (0 if totalLessons is 0).
+        lessons:
+          type: array
+          items:
+            $ref: '#/components/schemas/CourseProgressLesson'
+          description: Every non-archived lesson's individual state, in manifest order.
+      required:
+        - totalLessons
+        - completedLessons
+        - percent
+        - lessons
 
     Error:
       type: object

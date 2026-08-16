@@ -64,6 +64,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{courseSlug}/lessons/{lessonSlug}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark or update a lesson's progress for the current actor
+         * @description Upserts lesson_progress for the actor. Idempotent: marking a lesson complete more than once leaves exactly one lesson_progress row and emits exactly one lesson_completed activity event. Only lessons of kind "lesson" may be marked complete through this endpoint — exercises complete on submission and quizzes complete on passing, in later phases; requesting state "complete" against either kind returns 409.
+         */
+        post: operations["upsertLessonProgress"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{courseSlug}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the actor's progress summary for a course
+         * @description Returns the course's total non-archived lesson count, how many the actor has completed, the completion percent, and each lesson's individual state. Archived lessons never count toward the totals.
+         */
+        get: operations["getCourseProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{courseSlug}/lessons/{lessonSlug}": {
         parameters: {
             query?: never;
@@ -145,6 +185,8 @@ export interface components {
             prev: components["schemas"]["LessonNavStub"] | null;
             /** @description The next lesson in the whole course, in manifest order, or null if this is the last lesson. */
             next: components["schemas"]["LessonNavStub"] | null;
+            /** @description The actor's progress on this lesson, or null if they have never interacted with it. */
+            progress: components["schemas"]["LessonProgress"] | null;
         };
         /** @description A course track (lens) — a hue-owning grouping lessons can belong to. */
         Track: {
@@ -223,6 +265,70 @@ export interface components {
             /** @description The course's non-archived modules, in manifest order */
             modules: components["schemas"]["CourseModule"][];
         };
+        /**
+         * @description The state a lesson_progress row can be written with.
+         * @enum {string}
+         */
+        ProgressState: "in_progress" | "complete";
+        /** @description The actor's progress on a lesson, embedded in the lesson response so a reader can resume. */
+        LessonProgress: {
+            state: components["schemas"]["ProgressState"];
+            /** @description An opaque string the reader uses to resume, or null. */
+            lastPosition: ((string | null) | null) | null;
+        };
+        /** @description The full lesson_progress row for the actor, after an upsert. */
+        LessonProgressDetail: {
+            state: components["schemas"]["ProgressState"];
+            /** @description An opaque string the reader uses to resume, or null. */
+            lastPosition: ((string | null) | null) | null;
+            /** @description Total seconds spent, as last recorded. */
+            secondsSpent: number;
+            /**
+             * Format: date-time
+             * @description When the lesson was first marked complete, or null.
+             */
+            completedAt: ((string | null) | null) | null;
+            /**
+             * Format: date-time
+             * @description When this progress row was last written.
+             */
+            updatedAt: string;
+        };
+        /** @description A partial update to the actor's progress on a lesson. */
+        ProgressUpsertRequest: {
+            state?: components["schemas"]["ProgressState"];
+            /** @description An opaque string the reader uses to resume. */
+            lastPosition?: ((string | null) | null) | null;
+            /** @description Total seconds spent on the lesson, replacing the stored value. */
+            secondsSpent?: number;
+        };
+        /**
+         * @description A lesson's progress state as it appears in a course summary. Unlike ProgressState, includes "not_started" for lessons with no lesson_progress row yet.
+         * @enum {string}
+         */
+        CourseProgressLessonState: "not_started" | "in_progress" | "complete";
+        /** @description One lesson's state within a course progress summary. */
+        CourseProgressLesson: {
+            /** @description The lesson's slug, unique within its course */
+            slug: string;
+            /**
+             * @description The lesson's kind
+             * @enum {string}
+             */
+            kind: "lesson" | "exercise" | "quiz";
+            state: components["schemas"]["CourseProgressLessonState"];
+        };
+        /** @description The actor's progress summary for a course. Archived lessons never count toward totalLessons/completedLessons. */
+        CourseProgressSummary: {
+            /** @description Count of the course's non-archived lessons. */
+            totalLessons: number;
+            /** @description Count of those lessons the actor has completed. */
+            completedLessons: number;
+            /** @description completedLessons / totalLessons as a rounded percent (0 if totalLessons is 0). */
+            percent: number;
+            /** @description Every non-archived lesson's individual state, in manifest order. */
+            lessons: components["schemas"]["CourseProgressLesson"][];
+        };
         /** @description An error response */
         Error: {
             /** @description A human-readable error message */
@@ -296,6 +402,85 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CourseDetail"];
+                };
+            };
+            /** @description Course not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    upsertLessonProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The course slug */
+                courseSlug: string;
+                /** @description The lesson slug (unique within the course) */
+                lessonSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ProgressUpsertRequest"];
+            };
+        };
+        responses: {
+            /** @description Progress recorded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonProgressDetail"];
+                };
+            };
+            /** @description Course or lesson not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The lesson's kind cannot be marked complete directly (only kind "lesson" can — exercises and quizzes complete through other mechanisms). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getCourseProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The course slug */
+                courseSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Progress summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseProgressSummary"];
                 };
             };
             /** @description Course not found */
