@@ -430,6 +430,43 @@ Verified here:
       **Acceptance:** a failing import surfaces `file:line` in the UI, and the previous version stays intact
       **Model:** `sonnet`
 
+### Phase 5 outcome — COMPLETE (built 2026-08-16)
+
+**286 tests**, lint and typecheck clean, CI green.
+
+Verified independently here:
+
+- Path traversal, absolute paths, symlinked files AND symlinked intermediate directories
+  are each refused with their own specific message
+- Containment uses `path.relative`, not `startsWith` — `/tmp/clone-evil` is correctly not
+  inside `/tmp/clone`
+- `file://` and `ext::` refused from user input, over real HTTP, with an `import_runs` row
+  still written
+- XSS payloads stripped (`javascript:` href, `<script>`, `onerror`, `<iframe>`) while
+  legitimate prose survives
+- The real 61-lesson corpus is byte-identical after hardening; re-import still a no-op
+
+**A real vulnerability was found and closed in existing code:** a markdown link
+`[x](javascript:alert(1))` needs no raw HTML and was emitting a live `javascript:` href
+into pages rendered in an authenticated session. Present since Phase 1; no test touched it.
+
+**Partial, stated rather than hidden:**
+
+| Item | Status |
+|---|---|
+| Clone size cap | A poll-based brake, not a quota. Overshoot possible within one poll interval. A real bound belongs in the filesystem — mount the clone dir as a size-limited volume on WSL |
+| HTTP happy path for admin import | Untested: the route refuses `file://` and no real remote is reachable hermetically. Success path covered directly against the pipeline instead |
+| Sanitization timing | Import-time only, so the database is the trust boundary. A render-time pass would be genuine defence in depth; belongs with Phase 10's renderer |
+
+### Gate 5 — needs a human
+
+- [ ] **Raw HTML in markdown is dropped, not rendered.** The real corpus has **258 `<br>`
+      and 51 `<details>`** silently mangled today. Fix is `rehype-raw` *before* the
+      sanitizer — safe, since the sanitizer is already the boundary. Left as your decision
+      because it rewrites every prose block
+- [ ] Mount the clone directory as a size-limited volume when deploying on WSL
+- [ ] Review the hostile fixture tests in `tools/test-fixtures/hostile-course/`
+
 > **Gate 5.** Review every hardening test. This is the phase that decides whether the app
 > can safely face a network.
 
