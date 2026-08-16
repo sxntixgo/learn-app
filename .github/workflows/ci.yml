@@ -7,6 +7,13 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # One database in CI. Both vars point at it: `npm run migrate` reads
+    # DATABASE_URL, the test suite reads TEST_DATABASE_URL. Setting these at job
+    # level rather than per step is deliberate — the two drifted apart when they
+    # were duplicated, and migrate failed with "DATABASE_URL is not set".
+    env:
+      DATABASE_URL: postgres://learn:ci_password_for_testing_only@localhost:5432/learn_test
+      TEST_DATABASE_URL: postgres://learn:ci_password_for_testing_only@localhost:5432/learn_test
     services:
       postgres:
         image: postgres:17
@@ -35,8 +42,6 @@ jobs:
         run: npm ci
 
       - name: Run migrations
-        env:
-          TEST_DATABASE_URL: postgres://learn:ci_password_for_testing_only@localhost:5432/learn_test
         run: npm run migrate
 
       - name: Lint
@@ -46,8 +51,6 @@ jobs:
         run: npm run typecheck
 
       - name: Tests
-        env:
-          TEST_DATABASE_URL: postgres://learn:ci_password_for_testing_only@localhost:5432/learn_test
         run: npm test
 
       - name: Check generated API types are up-to-date
