@@ -232,6 +232,41 @@ need moving or hand-adding. Reconciliation against the hand-written manifest was
 
 > **Gate 3.** Heatmap legible at 375px in both colour schemes.
 
+### Phase 3 outcome (built 2026-08-16)
+
+**Status: complete.** 187 tests, lint and typecheck clean.
+
+Verified here:
+
+- `activity_events` is append-only **enforced by a database trigger** — `UPDATE` and
+  `DELETE` both raise; rows survive
+- Mark-complete is idempotent: two calls, one progress row, one event
+- Timezone bucketing proven live — the same events land on `2026-08-16` at UTC+14 and
+  `2026-08-15` at UTC−11; an invalid zone returns 400 and leaves the stored value untouched
+- Heat ramp is one hue in five steps with a **neutral** empty state, so it separates on
+  chroma as well as lightness; no yellow anywhere
+- The `exercise`/`quiz` 409 branch and its note-instead-of-button UI were exercised live by
+  temporarily promoting a lesson to `kind=exercise`
+
+**Deviations from plan, and why:**
+
+| Deviation | Reason |
+|---|---|
+| Feed UI built on `sonnet`, not `haiku` | Bundled with the progress UI, which is interactive (server action, optimistic refresh, 409 handling) rather than presentational |
+| Heatmap fetches 53 weeks and lets **CSS** choose visible columns | The server cannot know the viewport; measuring client-side causes a hydration jump at exactly 375px. Costs a TS/CSS duplication, closed by a contract test that parses the shipped CSS |
+| Heatmap cells are 22px, under the 44px target in §14.2 | Unavoidable for a 13×7 grid at 375px. The interaction is the readout, not the cell — **needs a human ruling at Gate 3** |
+
+**Needs a human eye at Gate 3** (no browser in the dev container):
+
+- [ ] Are the five ramp steps distinguishable at 22px, in light and dark?
+- [ ] Does the `direction: rtl` scroll trick land on the current week in Safari?
+- [ ] Does arrow-key navigation across the grid feel right?
+- [ ] Is the 22px cell acceptable, or does the phone layout need rethinking?
+
+**Noted for later:** re-import repairs drift from *content*, not from direct database
+edits — `content_hash` short-circuits before comparing columns. Correct for normal
+operation, but worth knowing when debugging.
+
 ### Phase 3 outcome so far (`lesson_progress` + `activity_events`, built 2026-08-16)
 
 **Status: the first two checklist items are complete.** 109 tests passing (96 carried over
