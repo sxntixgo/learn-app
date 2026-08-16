@@ -7,6 +7,8 @@ import type { components } from './api-types';
 export type CourseSummary = components['schemas']['CourseSummary'];
 export type CourseDetail = components['schemas']['CourseDetail'];
 export type Lesson = components['schemas']['Lesson'];
+export type Heatmap = components['schemas']['Heatmap'];
+export type HeatmapDay = components['schemas']['HeatmapDay'];
 
 function apiBase(): string {
   const base = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -35,6 +37,22 @@ export async function fetchCourse(courseSlug: string): Promise<CourseDetail | nu
     throw new Error(`Failed to fetch course "${courseSlug}": ${res.status}`);
   }
   return (await res.json()) as CourseDetail;
+}
+
+/**
+ * The actor's activity heatmap. `weeks` is a trailing window ending today;
+ * the API clamps it to [1, 53] and zero-fills every day in between, so the UI
+ * never infers a gap. We ask for the full year and let CSS decide how much of
+ * it is visible without scrolling — see src/lib/heatmap.ts for why.
+ */
+export async function fetchHeatmap(weeks: number): Promise<Heatmap> {
+  const res = await fetch(`${apiBase()}/api/v1/me/heatmap?weeks=${encodeURIComponent(String(weeks))}`, {
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch heatmap: ${res.status}`);
+  }
+  return (await res.json()) as Heatmap;
 }
 
 export async function fetchLesson(courseSlug: string, lessonSlug: string): Promise<Lesson | null> {

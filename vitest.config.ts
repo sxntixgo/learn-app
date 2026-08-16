@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['api/**/*.test.ts', 'tools/**/*.test.ts'],
+    include: ['api/**/*.test.ts', 'tools/**/*.test.ts', 'web/**/*.test.ts'],
     setupFiles: ['./vitest.setup.ts'],
     // DB-integration tests across api/ and tools/ all share one physical
     // TEST_DATABASE_URL and some (migrate/seed) DROP/CREATE the same tables.

@@ -1,0 +1,276 @@
+/*
+ * Contribution heatmap (design §10, §14).
+ *
+ * GEOMETRY IS A CONTRACT. The four custom properties below — and the two
+ * breakpoints they change at — must stay identical to HEATMAP_WINDOW_STEPS in
+ * `src/lib/heatmap.ts`. `src/lib/heatmap.test.ts` parses this file and fails if
+ * they drift, and also re-checks that each window still fits its viewport.
+ *
+ * The scroll viewport is exactly `--hm-window-weeks` columns wide, so a phone
+ * shows ~13 weeks at full size instead of 53 columns of sub-5px confetti. The
+ * remaining weeks are reached by scrolling; all of them are already in the
+ * DOM, so scrolling back is instant and needs no second request.
+ *
+ * Colours come from the --color-heat-* ramp in app/tokens.css (one hue, five
+ * steps, plus a neutral empty state). Nothing here hardcodes a colour.
+ */
+
+.figure {
+  margin: 0;
+}
+
+.caption {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.captionHint {
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+/*
+ * `direction: rtl` is load-bearing, not a typo: it makes the browser's initial
+ * scroll position the right-hand (most recent) edge, with no scroll-on-mount
+ * effect and therefore no jump after hydration. `.rail` restores `ltr` so the
+ * grid itself lays out normally.
+ */
+.scroller {
+  --hm-window-weeks: 13;
+  --hm-cell: 22px;
+  --hm-gap: 4px;
+  --hm-label: 0px;
+
+  direction: rtl;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  width: calc(var(--hm-label) + var(--hm-window-weeks) * (var(--hm-cell) + var(--hm-gap)));
+  max-width: 100%;
+  padding-bottom: 0.35rem;
+}
+
+.rail {
+  direction: ltr;
+  width: max-content;
+}
+
+.monthStrip {
+  display: flex;
+  align-items: flex-end;
+  height: 1.1rem;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--color-text-secondary);
+}
+
+.monthSpacer {
+  flex: 0 0 var(--hm-label);
+}
+
+.monthCell {
+  flex: 0 0 calc(var(--hm-cell) + var(--hm-gap));
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.grid {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: max-content;
+}
+
+.weekdayHead {
+  width: var(--hm-label);
+  padding: 0;
+  text-align: left;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  /* Stays put while the weeks scroll under it. */
+  position: sticky;
+  left: 0;
+  background: var(--color-page);
+}
+
+.weekdayText {
+  display: block;
+  padding-right: 0.4rem;
+}
+
+/* Announced, never drawn: the four weekdays whose label would be noise. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.cell,
+.pad {
+  width: calc(var(--hm-cell) + var(--hm-gap));
+  height: calc(var(--hm-cell) + var(--hm-gap));
+  padding: 0 var(--hm-gap) var(--hm-gap) 0;
+}
+
+.cell {
+  cursor: pointer;
+}
+
+.cell:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: -3px;
+}
+
+.swatch {
+  display: block;
+  width: var(--hm-cell);
+  height: var(--hm-cell);
+  border-radius: 3px;
+  /* The empty day: a neutral with a hairline, so a quiet week still reads as
+   * a grid of days rather than a hole in the page (design §10). */
+  background: var(--color-heat-0);
+  border: 1px solid var(--color-heat-cell-edge);
+  transition: box-shadow 120ms ease-out;
+}
+
+.cell[data-level='1'] .swatch {
+  background: var(--color-heat-1);
+  border-color: transparent;
+}
+
+.cell[data-level='2'] .swatch {
+  background: var(--color-heat-2);
+  border-color: transparent;
+}
+
+.cell[data-level='3'] .swatch {
+  background: var(--color-heat-3);
+  border-color: transparent;
+}
+
+.cell[data-level='4'] .swatch {
+  background: var(--color-heat-4);
+  border-color: transparent;
+}
+
+.cell[data-level='5'] .swatch {
+  background: var(--color-heat-5);
+  border-color: transparent;
+}
+
+/* Today is marked structurally (a ring), never by colour alone. */
+.cell[data-today='true'] .swatch {
+  outline: 1px dashed var(--color-text-secondary);
+  outline-offset: 1px;
+}
+
+.cell[aria-selected='true'] .swatch {
+  box-shadow:
+    0 0 0 2px var(--color-page),
+    0 0 0 3px var(--color-text);
+}
+
+/*
+ * The tap/focus readout. Hover is not an input method on a tablet (design
+ * §14.2), so this line — not the `title` tooltip — is how a sighted pointer or
+ * touch user reads an exact count. `role="status"` makes it announce.
+ */
+.readout {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  margin: 0.6rem 0 0;
+  min-height: 1.4em;
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.75rem;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-text-secondary);
+}
+
+.legendText {
+  margin: 0 0.15rem;
+}
+
+.legendSwatch {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--color-heat-0);
+  border: 1px solid var(--color-heat-cell-edge);
+}
+
+/* Visible break between "no activity" and step one of the ramp. */
+.legendSwatch[data-level='0'] {
+  margin-right: 0.4rem;
+}
+
+.legendSwatch[data-level='1'] {
+  background: var(--color-heat-1);
+  border-color: transparent;
+}
+
+.legendSwatch[data-level='2'] {
+  background: var(--color-heat-2);
+  border-color: transparent;
+}
+
+.legendSwatch[data-level='3'] {
+  background: var(--color-heat-3);
+  border-color: transparent;
+}
+
+.legendSwatch[data-level='4'] {
+  background: var(--color-heat-4);
+  border-color: transparent;
+}
+
+.legendSwatch[data-level='5'] {
+  background: var(--color-heat-5);
+  border-color: transparent;
+}
+
+.empty {
+  color: var(--color-text-secondary);
+}
+
+/* Tablet: half a year, and the weekday column earns its space. */
+@media (min-width: 768px) {
+  .scroller {
+    --hm-window-weeks: 26;
+    --hm-cell: 22px;
+    --hm-gap: 4px;
+    --hm-label: 36px;
+  }
+}
+
+/* Desktop: the whole year at once, on smaller cells — there is a pointer here. */
+@media (min-width: 1200px) {
+  .scroller {
+    --hm-window-weeks: 53;
+    --hm-cell: 16px;
+    --hm-gap: 4px;
+    --hm-label: 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swatch {
+    transition: none;
+  }
+}

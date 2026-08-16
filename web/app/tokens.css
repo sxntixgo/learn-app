@@ -41,6 +41,28 @@
   /* Logo tile is pure white in both modes (rule 2) */
   --color-logo-tile: #fff;
 
+  /*
+   * Activity heatmap intensity ramp — ONE hue in five steps (design §10,
+   * §14.1). The hue is the link teal's (210 in light, 205 in dark); only L
+   * and C vary along it, so the ramp reads as a family of the palette rather
+   * than a new colour. Deliberately NOT the yellow: rule 1 says the yellow is
+   * structural and never a fill, and a heatmap cell is nothing but fill.
+   *
+   * --color-heat-0 is the empty day. It is a neutral, not the palest teal:
+   * design §10 requires the empty state be *clearly* distinct from level one,
+   * or a quiet week reads as a dead grid. It separates from step 1 on both
+   * lightness and chroma, so it survives a greyscale print and colour-vision
+   * deficiency alike.
+   */
+  --color-heat-0: oklch(0.945 0.004 95);
+  --color-heat-1: oklch(0.88 0.05 210);
+  --color-heat-2: oklch(0.78 0.08 210);
+  --color-heat-3: oklch(0.66 0.1 210);
+  --color-heat-4: oklch(0.55 0.11 210);
+  --color-heat-5: oklch(0.4 0.115 210);
+  /* Hairline around every cell, so an empty day still reads as a day. */
+  --color-heat-cell-edge: oklch(0.88 0.004 95);
+
   /* Type measure */
   --measure-prose: 46ch;
 }
@@ -68,5 +90,14 @@
     --color-accent-yellow: oklch(0.82 0.15 88);
 
     --color-logo-tile: #fff;
+
+    /* Same ramp, inverted: dark page, so intensity climbs in lightness. */
+    --color-heat-0: oklch(0.28 0.006 245);
+    --color-heat-1: oklch(0.36 0.04 205);
+    --color-heat-2: oklch(0.47 0.055 205);
+    --color-heat-3: oklch(0.58 0.07 205);
+    --color-heat-4: oklch(0.7 0.08 205);
+    --color-heat-5: oklch(0.84 0.085 205);
+    --color-heat-cell-edge: oklch(0.35 0.008 245);
   }
 }
