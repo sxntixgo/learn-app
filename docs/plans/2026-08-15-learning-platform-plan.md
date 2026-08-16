@@ -330,7 +330,41 @@ brief, and owned by later work on this same phase.
       **Acceptance:** fires on a deliberately added `color: #fff`
       **Model:** `haiku`
 
-### Phase 4 outcome so far (track hues + breakout containers, built 2026-08-16)
+### Phase 4 outcome — COMPLETE (built 2026-08-16)
+
+**201 tests**, lint and typecheck clean, web build succeeds.
+
+All six tasks done: track hues, breakout containers, app shell, colour-scheme preference,
+spacing/radius/border scales, kitchen sink, and the token lint rule.
+
+Verified independently here:
+
+- Track hues are true OKLCH siblings (L 0.52/0.78, C 0.095; slate C 0.02). Track teal sits
+  **35° off the link teal**, so the two signals cannot collapse
+- SSR theming has no possible flash: `data-theme` is in the server-rendered HTML for
+  explicit choices, absent for `system` and for a tampered cookie
+- The three-state guard is correct — `:root:not([data-theme='light'])` on the media query
+  plus an unconditional `:root[data-theme='dark']`, so an explicit light choice survives a
+  dark OS setting and the toggle wins in both directions
+- `env(safe-area-inset-bottom)` ships, so the tab bar clears the iOS home indicator
+- The lint rule was proven by planting violations in **three separate** component
+  stylesheets; all three were caught
+- **Four phases of components were already token-clean** — the rule found nothing to fix,
+  which means the discipline was holding rather than merely being asserted
+
+**Reference artefact:** `/kitchen-sink` renders all 48 tokens with names and values.
+
+### Gate 4 — needs a human (accumulated)
+
+- [ ] Do the five track hues read as their names at chip and 3px-rule size?
+- [ ] Is 30–35° hue separation enough to the eye between adjacent tracks?
+- [ ] **`slate` (H250, C0.02) vs `blue` (H255, C0.095) differ almost entirely in chroma** —
+      distinguishable as a 3px left-edge rule, or too close?
+- [ ] Is the breakout escape visually obvious at 375px?
+- [ ] Does the shell match `9a-light.png` / `9b-dark.png` in banner and footer treatment?
+- [ ] **The Claude Design pass on the annotatable code block** — Phase 8 depends on it
+
+### Phase 4 notes (track hues + breakout containers, built 2026-08-16)
 
 **Status: the first two checklist items are complete.** 187 tests passing (unchanged —
 this slice is CSS/markup, no new test surface), lint and typecheck clean, `next build`
