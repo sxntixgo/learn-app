@@ -105,6 +105,41 @@ from.
 > the LAN. Judge it honestly: does the type feel right, is the code legible at that width,
 > is the prose measure comfortable? Everything later assumes yes.
 
+### Phase 1 outcome (built 2026-08-15)
+
+**Status: complete except the two checks that need Docker / the iPad.**
+
+Verified here: 18 tests passing, lint and typecheck clean, migration idempotent, API boots
+and serves a real 87-block lesson (43 prose / 44 code), reader page renders at 200 with 44
+Shiki-highlighted blocks, fonts self-hosted with no external requests, `web` has no
+database access, no credentials in any committable file.
+
+**Still to verify on the WSL host** — these could not run in the dev container (no Docker):
+
+- [ ] `docker compose -f docker/docker-compose.yml up` brings all four services healthy
+- [ ] `docker compose config` confirms `web` has no `DATABASE_URL` *(verified statically here)*
+- [ ] Read the lesson on the iPad over the LAN — **this is the actual Gate 1 judgement**
+
+**Deviations from plan, and why:**
+
+| Deviation | Reason |
+|---|---|
+| Dev container runs Node + Postgres natively, not in Docker | Docker unavailable in the container; compose files are authored but unverified |
+| Relative imports use `.ts`, not `.js` | `.js` imports pass tests (vitest resolves them) but the server cannot boot. See CLAUDE.md |
+| `gen:api:check` hardened to require the generated file be tracked | As written it was vacuous — `git diff` on an untracked file always passes |
+| `vitest fileParallelism: false` | DB-touching test files share one test database and raced |
+| Prose 46ch / code 70ch as two sibling max-widths | Interim. The real breakout-container system is Phase 4 |
+| Palette ranges collapsed to midpoints (`0.92`, `0.775`) | `CHOSEN-PALETTE.md` gives ranges; CSS custom properties need one value. **Confirm at Gate 1** |
+
+**New work discovered, for later phases:**
+
+- [ ] Existing content uses ```mermaid fences, currently rendered as plain code. A `diagram`
+      block type is worth considering in Phase 10 alongside `chart` and `figure`.
+      **Model:** `sonnet`
+- [ ] `web/tsconfig.json` is Next-generated and sits outside the root composite project, so
+      `npm run typecheck` does not cover it — `next build` does. Consider unifying in Phase 4.
+      **Model:** `haiku`
+
 ---
 
 ## Phase 2 — Real courses from a local directory

@@ -1,0 +1,19 @@
+# Caddyfile snippet for learn-app
+# Add this to your existing Caddyfile. Adjust the domain and ports as needed.
+#
+# IMPORTANT: This snippet is NOT ready for production / public exposure.
+# The application has no authentication yet (see docs/plans/2026-08-15-learning-platform-plan.md Phase 6).
+# Deploy this only in a private network or behind a trusted access control mechanism.
+
+# Example domain configuration (replace with your own):
+# example.local {
+  # API routes must be matched first — ordering matters!
+  handle /api/* {
+    reverse_proxy api:3001
+  }
+
+  # Fallback: all other routes go to the web frontend
+  handle {
+    reverse_proxy web:3000
+  }
+# }

@@ -1,0 +1,143 @@
+openapi: 3.1.0
+info:
+  title: Learn Platform API
+  version: 0.1.0
+  description: Self-hosted learning platform API
+servers:
+  - url: http://localhost:3001
+    description: Development server
+
+paths:
+  /api/v1/health:
+    get:
+      summary: Health check endpoint
+      description: Returns the current status of the API
+      operationId: getHealth
+      tags:
+        - system
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+  /api/v1/lessons/{slug}:
+    get:
+      summary: Get a lesson by slug
+      description: Retrieves a lesson with all its blocks
+      operationId: getLesson
+      tags:
+        - lessons
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: The lesson slug
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lesson found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lesson'
+        '404':
+          description: Lesson not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      description: API health check response
+      properties:
+        status:
+          type: string
+          description: The status of the API (typically "ok")
+      required:
+        - status
+
+    ProseBlock:
+      type: object
+      description: A prose (narrative) content block with rendered HTML
+      properties:
+        type:
+          type: string
+          enum:
+            - prose
+          description: The block type discriminator
+        html:
+          type: string
+          description: The HTML-rendered content of the prose block
+      required:
+        - type
+        - html
+
+    CodeBlock:
+      type: object
+      description: A code block with syntax highlighting metadata
+      properties:
+        type:
+          type: string
+          enum:
+            - code
+          description: The block type discriminator
+        lang:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: The programming language or syntax identifier (null if not specified)
+        source:
+          type: string
+          description: The raw source code
+      required:
+        - type
+        - source
+
+    Block:
+      oneOf:
+        - $ref: '#/components/schemas/ProseBlock'
+        - $ref: '#/components/schemas/CodeBlock'
+      discriminator:
+        propertyName: type
+        mapping:
+          prose: '#/components/schemas/ProseBlock'
+          code: '#/components/schemas/CodeBlock'
+      description: A content block, which may be prose or code
+
+    Lesson:
+      type: object
+      description: A lesson containing a title and structured blocks
+      properties:
+        slug:
+          type: string
+          description: The URL-friendly identifier for the lesson
+        title:
+          type: string
+          description: The human-readable title of the lesson
+        blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Block'
+          description: The ordered array of content blocks
+      required:
+        - slug
+        - title
+        - blocks
+
+    Error:
+      type: object
+      description: An error response
+      properties:
+        message:
+          type: string
+          description: A human-readable error message
+      required:
+        - message

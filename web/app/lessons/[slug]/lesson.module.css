@@ -1,0 +1,49 @@
+/*
+ * Layout only — colour and font come from the global tokens and base
+ * styles. Two independent measures, per docs/design/CHOSEN-PALETTE.md:
+ * prose reads at 46ch, code blocks get more room to stay legible. This is
+ * deliberately just two sibling max-widths, not a breakout-container
+ * system (that's Phase 4).
+ */
+
+.page {
+  max-width: 76ch;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+.title {
+  font-size: clamp(1.5rem, 4vw + 0.5rem, 2.5rem);
+  margin: 0 0 2rem;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.prose {
+  max-width: var(--measure-prose, 46ch);
+  margin-inline: auto;
+  font-size: 1.0625rem; /* ~17px */
+  line-height: 1.65;
+}
+
+.prose :global(p),
+.prose :global(ul),
+.prose :global(ol),
+.prose :global(blockquote) {
+  margin: 0 0 1em;
+}
+
+.prose :global(h2),
+.prose :global(h3) {
+  margin: 1.5em 0 0.6em;
+}
+
+.code {
+  max-width: 70ch;
+  width: 100%;
+  margin-inline: auto;
+}

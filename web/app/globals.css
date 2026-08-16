@@ -1,0 +1,93 @@
+@import './tokens.css';
+
+/*
+ * Base typography per docs/design/CHOSEN-PALETTE.md:
+ *   - Headings + UI/nav: Libre Franklin 700, tracking -0.03em (--font-sans)
+ *   - Body + prose: Source Serif 4 400, 16-17px, line-height 1.6-1.65 (--font-serif)
+ *   - Dates, tags, labels, code: IBM Plex Mono 400, mono only (--font-mono)
+ * The --font-* custom properties are supplied by next/font in app/layout.tsx.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--color-page);
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-serif), 'Source Serif 4', serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+a {
+  color: var(--color-link);
+}
+
+code,
+kbd,
+time,
+.mono {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+}
+
+img,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/*
+ * Shiki dual-theme output (themes: {light, dark}, defaultColor: false).
+ * Shiki emits both palettes as CSS custom properties per span; which one
+ * paints is decided here, by prefers-color-scheme, with no JS toggle.
+ * See https://shiki.style/guide/dual-themes
+ */
+.shiki,
+.shiki span {
+  color: var(--shiki-light);
+  background-color: var(--shiki-light-bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  .shiki,
+  .shiki span {
+    color: var(--shiki-dark);
+    background-color: var(--shiki-dark-bg);
+  }
+}
+
+.shiki {
+  margin: 0;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-hairline);
+  overflow-x: auto;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.shiki code {
+  font-family: inherit;
+}

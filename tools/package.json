@@ -1,0 +1,25 @@
+{
+  "name": "@learn/tools",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "migrate": "node ./src/migrate.ts",
+    "seed": "node ./src/seed.ts"
+  },
+  "dependencies": {
+    "@learn/api": "*",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.21.0",
+    "typescript": "^5.3.0",
+    "vitest": "^2.0.0"
+  }
+}

@@ -1,0 +1,72 @@
+/*
+ * Design tokens transcribed from docs/design/CHOSEN-PALETTE.md (options 9a
+ * light / 9b dark). Every value here is a direct OKLCH transcription from
+ * that file — do not tweak a number without updating the doc first.
+ *
+ * Names are semantic (role in the UI), never literal colour names, so a
+ * future palette swap only touches this file.
+ *
+ * Light (9a) lives on :root. Dark (9b) lives inside
+ * `prefers-color-scheme: dark`. There is no user-facing theme switcher yet
+ * (a cookie-driven preference is Phase 4) — the OS/browser setting decides.
+ */
+
+:root {
+  /* Surfaces */
+  --color-page: oklch(0.995 0.002 95);
+  --color-surface-raised: oklch(0.972 0.004 95);
+  --color-border-hairline: oklch(0.92 0.003 95);
+
+  /* Text */
+  --color-text: oklch(0.24 0.005 250);
+  --color-text-secondary: oklch(0.42 0.005 250);
+
+  /* Top banner */
+  --color-banner-bg: oklch(0.905 0.045 208);
+  --color-banner-text: oklch(0.28 0.03 215);
+  --color-banner-divider: oklch(0.855 0.05 208);
+
+  /* Bottom banner / footer (graphite) */
+  --color-footer-bg: oklch(0.3 0.008 250);
+  --color-footer-text: oklch(0.93 0.004 90);
+
+  /* Teal: links, dates, tags */
+  --color-link: oklch(0.45 0.075 210);
+  --color-tag-bg: oklch(0.94 0.035 205);
+  --color-tag-text: oklch(0.42 0.06 210);
+
+  /* The one yellow accent — never a fill, never body text (rule 1) */
+  --color-accent-yellow: oklch(0.72 0.15 88);
+
+  /* Logo tile is pure white in both modes (rule 2) */
+  --color-logo-tile: #fff;
+
+  /* Type measure */
+  --measure-prose: 46ch;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-page: oklch(0.215 0.006 245);
+    --color-surface-raised: oklch(0.26 0.008 245);
+    --color-border-hairline: oklch(0.32 0.008 245);
+
+    --color-text: oklch(0.93 0.004 90);
+    --color-text-secondary: oklch(0.775 0.005 245);
+
+    --color-banner-bg: oklch(0.36 0.05 208);
+    --color-banner-text: oklch(0.96 0.01 205);
+    --color-banner-divider: oklch(0.43 0.055 208);
+
+    --color-footer-bg: oklch(0.16 0.006 250);
+    --color-footer-text: oklch(0.82 0.004 90);
+
+    --color-link: oklch(0.8 0.075 205);
+    --color-tag-bg: oklch(0.3 0.03 205);
+    --color-tag-text: oklch(0.83 0.06 205);
+
+    --color-accent-yellow: oklch(0.82 0.15 88);
+
+    --color-logo-tile: #fff;
+  }
+}
