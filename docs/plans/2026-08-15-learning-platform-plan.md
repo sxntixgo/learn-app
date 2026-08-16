@@ -309,12 +309,14 @@ brief, and owned by later work on this same phase.
 
 *Deferred this far deliberately: Phases 1–3 proved which components actually exist.*
 
-- [ ] **Five track hues** as OKLCH siblings of the link teal — L and C fixed, H varied, excluding the link teal's hue
+- [x] **Five track hues** as OKLCH siblings of the link teal — L and C fixed, H varied, excluding the link teal's hue
       **Acceptance:** swatch page shows all five in both schemes, each distinguishable; chosen H values documented in `docs/design/`
       **Model:** `sonnet`
-- [ ] **Breakout containers** for code, chart, figure, heatmap
+      *(Note: H values, sRGB renders and contrast/gamut checks are documented in `docs/design/track-hues.md`. No standalone swatch page was built — the acceptance criterion's "swatch page" is folded into the `/kitchen-sink` task below, which hadn't been built yet either; applied instead directly where tracks already render, per the task brief.)*
+- [x] **Breakout containers** for code, chart, figure, heatmap
       **Acceptance:** at 375/834/1440 prose holds 46ch while a breakout block visibly exceeds it
       **Model:** `sonnet`
+      *(Note: only `code` exists as a renderable block today — `chart`/`figure`/heatmap aren't built yet (Phase 10 / already-built heatmap uses its own layout). The breakout token system is in place for all of them to adopt.)*
 - [ ] **Spacing, radii, border-weight scales** on a `/kitchen-sink` page
       **Acceptance:** every token rendered and named
       **Model:** `haiku`
@@ -327,6 +329,44 @@ brief, and owned by later work on this same phase.
 - [ ] **Lint rule** banning raw colour/font/size literals in components
       **Acceptance:** fires on a deliberately added `color: #fff`
       **Model:** `haiku`
+
+### Phase 4 outcome so far (track hues + breakout containers, built 2026-08-16)
+
+**Status: the first two checklist items are complete.** 187 tests passing (unchanged —
+this slice is CSS/markup, no new test surface), lint and typecheck clean, `next build`
+succeeds.
+
+Verified here:
+
+- Five OKLCH-sibling track hues added to `web/app/tokens.css` (`--color-track-*`), light
+  and dark, derivation and sRGB/contrast/gamut check in `docs/design/track-hues.md`.
+  Track teal (H175) sits 35° (light) / 30° (dark) off the link teal (H210/205) — the
+  number that proves "this is a track" and "this is a link" stay separate signals.
+  `slate` is the documented exception: same L, C dropped from 0.095 to 0.02.
+- Track hues render as structural accents only (chip border on the course overview's
+  track list, left-edge rule on table-of-contents rows whose lesson has a track) —
+  confirmed live against `claude-code-docs`' `setup`/`craft` tracks; never a text colour
+  or fill.
+- Three measure tokens (`--measure-prose`, `--measure-breakout`, `--measure-full`) added;
+  the lesson reader's hard-coded 76ch/70ch are gone, replaced by `var(--measure-full,
+  76ch)` / `var(--measure-breakout, 70ch)`, confirmed in the dev-served CSS. Breakout
+  widens at 834px/1440px; prose stays fixed at 46ch throughout, per §14.2.
+
+**Deviations from plan, and why:**
+
+| Deviation | Reason |
+|---|---|
+| No standalone swatch page for the five hues | Folded into the not-yet-built `/kitchen-sink` task below instead of building a one-off page ahead of it; `docs/design/track-hues.md` carries the swatch values and both-scheme renders instead |
+| Breakout applied only to `code` | `chart`/`figure` blocks and a standalone breakout-consuming heatmap don't exist yet in the reader (Phase 10); the token layer (`--measure-breakout`, `--measure-full`) is in place for them to adopt without another pass |
+
+**Needs a human eye (no browser in the dev container):**
+
+- [ ] Do the five track hues read as their names (blue/teal/ochre/maroon/slate) at
+      actual chip-border and left-edge-rule sizes, not just in the sRGB swatch table?
+- [ ] Is 30–35° enough separation between track teal and link teal to the eye, not just
+      by the numbers?
+- [ ] At 375px, does the breakout code block visually read as "escaping" the prose
+      column, or is the difference too subtle at phone width?
 
 > **Gate 4 — the riskiest unknown.** Run a Claude Design pass on the **annotatable code
 > block** at 375/834/1440 before Phase 8. Placing and reading line-anchored annotations at

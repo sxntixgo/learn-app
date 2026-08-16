@@ -63,8 +63,65 @@
   /* Hairline around every cell, so an empty day still reads as a day. */
   --color-heat-cell-edge: oklch(0.88 0.004 95);
 
-  /* Type measure */
+  /*
+   * Type measure (design §14.1, §14.2). Three tiers, narrowest to widest:
+   *   - prose: the 46ch reading column. Stays CONSTANT across breakpoints —
+   *     the chrome and breakout blocks around it adapt instead (§14.2).
+   *   - breakout: the wider column `code`, `chart`, `figure` and the
+   *     heatmap escape to, because 46ch cannot host an 80-column code line.
+   *     Widens at larger breakpoints below (this one MAY vary).
+   *   - full: the lesson shell's own outer bound — the largest of the
+   *     three, everything else nests inside it.
+   */
   --measure-prose: 46ch;
+  --measure-breakout: 70ch;
+  --measure-full: 76ch;
+
+  /*
+   * Five track hues — OKLCH siblings of the link teal, per design §14.1:
+   * blue/teal/ochre/maroon hold L and C fixed and vary only H, so they read
+   * as one family rather than a rainbow dropped into an austere palette.
+   * H values chosen to (a) be recognisably those names and (b) sit clear of
+   * the link teal's own hue (210 light / 205 dark) so "this is a track" and
+   * "this is a link" stay two different signals — track teal (H175) is 35°
+   * off the light link and 30° off the dark link. See
+   * docs/design/track-hues.md for the full derivation and swatch values.
+   *
+   * `slate` is the deliberate exception to the fixed-C rule: AUTHORING.md
+   * describes it as muted, for background tracks, so it holds the same L
+   * but a markedly lower C (0.02 vs 0.095) — a desaturated sibling, not a
+   * sixth hue.
+   *
+   * STRUCTURAL ONLY (design §14.1): a left-edge rule, a chip border, a
+   * small mono label. Never a text colour, never a fill — enforced by
+   * where these variables are consumed (border/border-left properties
+   * only), not by anything in this file.
+   */
+  --color-track-blue: oklch(0.52 0.095 255);
+  --color-track-teal: oklch(0.52 0.095 175);
+  --color-track-ochre: oklch(0.52 0.095 65);
+  --color-track-maroon: oklch(0.52 0.095 20);
+  --color-track-slate: oklch(0.52 0.02 250);
+}
+
+/*
+ * Breakout widens at larger viewports while --measure-prose above stays
+ * fixed (design §14.2: "prose measure stays constant across breakpoints;
+ * chrome and breakout blocks adapt"). Bounds match the three widths design
+ * work is checked at throughout (§14.3): 375 / 834 / 1440.
+ */
+@media (min-width: 834px) {
+  :root {
+    --measure-breakout: 84ch;
+    --measure-full: 90ch;
+  }
+}
+
+@media (min-width: 1440px) {
+  :root {
+    --measure-breakout: 100ch;
+    --measure-full: 100ch;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -99,5 +156,15 @@
     --color-heat-4: oklch(0.7 0.08 205);
     --color-heat-5: oklch(0.84 0.085 205);
     --color-heat-cell-edge: oklch(0.35 0.008 245);
+
+    /*
+     * Same five hues, same C, lightness inverted for a dark page — same
+     * pattern as --color-link above. slate keeps its markedly lower C.
+     */
+    --color-track-blue: oklch(0.78 0.095 255);
+    --color-track-teal: oklch(0.78 0.095 175);
+    --color-track-ochre: oklch(0.78 0.095 65);
+    --color-track-maroon: oklch(0.78 0.095 20);
+    --color-track-slate: oklch(0.78 0.02 250);
   }
 }

@@ -1,7 +1,16 @@
+import type { CSSProperties } from 'react';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { fetchCourse, fetchCourseProgress } from '../../../src/lib/api';
 import styles from './course.module.css';
+
+// Track hues are structural only (design §14.1) — a chip border here, a
+// left-edge rule in the table of contents below. Never a text colour,
+// never a fill. The hue name is exactly the `--color-track-*` suffix
+// (tokens.css), so this is a lookup, not a mapping table to maintain.
+function trackAccentStyle(hue: string): CSSProperties {
+  return { '--track-accent': `var(--color-track-${hue})` } as CSSProperties;
+}
 
 export default async function CoursePage({
   params,
@@ -18,6 +27,10 @@ export default async function CoursePage({
   // Keyed by slug, not by module: CourseProgressSummary.lessons is a flat
   // list across the whole course, same as the join it's read from.
   const lessonStates = new Map((progress?.lessons ?? []).map((l) => [l.slug, l.state]));
+
+  // Keyed by track key so table-of-contents rows can resolve their track's
+  // hue — a lesson only carries the key, not the hue itself.
+  const trackHues = new Map(course.tracks.map((t) => [t.key, t.hue]));
 
   return (
     <main className={styles.page}>
@@ -46,7 +59,12 @@ export default async function CoursePage({
       {course.tracks.length > 0 ? (
         <ul className={styles.tracks}>
           {course.tracks.map((track) => (
-            <li key={track.key} className={styles.track} title={track.blurb ?? undefined}>
+            <li
+              key={track.key}
+              className={styles.track}
+              style={trackAccentStyle(track.hue)}
+              title={track.blurb ?? undefined}
+            >
               {track.name}
             </li>
           ))}
@@ -66,12 +84,15 @@ export default async function CoursePage({
                 <ul className={styles.lessonList}>
                   {mod.lessons.map((lesson) => {
                     const complete = lessonStates.get(lesson.slug) === 'complete';
+                    const hue = lesson.track ? trackHues.get(lesson.track) : undefined;
                     return (
                       <li key={lesson.slug}>
                         <Link
                           href={`/courses/${encodeURIComponent(course.slug)}/lessons/${encodeURIComponent(lesson.slug)}`}
                           className={styles.lessonRow}
                           data-complete={complete ? 'true' : undefined}
+                          data-track={hue ? 'true' : undefined}
+                          style={hue ? trackAccentStyle(hue) : undefined}
                         >
                           <span className={styles.lessonTitle}>{lesson.title}</span>
                           <span className={styles.lessonMeta}>

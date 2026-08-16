@@ -1,13 +1,16 @@
 /*
  * Layout only — colour and font come from the global tokens and base
- * styles. Two independent measures, per docs/design/CHOSEN-PALETTE.md:
- * prose reads at 46ch, code blocks get more room to stay legible. This is
- * deliberately just two sibling max-widths, not a breakout-container
- * system (that's Phase 4).
+ * styles. Three measure tokens from tokens.css (design §14.1, §14.2):
+ * `.page` is the lesson shell's own outer bound (--measure-full), `.prose`
+ * is the fixed 46ch reading column (--measure-prose, constant across
+ * breakpoints), and `.code` is the breakout container
+ * (--measure-breakout) that escapes the prose measure because a 46ch
+ * column cannot host an 80-column code line. Breakout width may vary by
+ * breakpoint (tokens.css handles that); prose may not.
  */
 
 .page {
-  max-width: 76ch;
+  max-width: var(--measure-full, 76ch);
   margin: 0 auto;
   padding: 2rem 1.25rem 4rem;
 }
@@ -43,7 +46,7 @@
 }
 
 .code {
-  max-width: 70ch;
+  max-width: var(--measure-breakout, 70ch);
   width: 100%;
   margin-inline: auto;
 }

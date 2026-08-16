@@ -76,9 +76,16 @@
   gap: 0.5rem;
 }
 
+/*
+ * Track hue lands as the chip's border only (design §14.1's own example) —
+ * background and text stay the palette's teal tag colours. `--track-accent`
+ * is set inline per element in page.tsx, one indirection from the track's
+ * `hue` straight to its `--color-track-*` token.
+ */
 .track {
   background: var(--color-tag-bg);
   color: var(--color-tag-text);
+  border: 1px solid var(--track-accent, var(--color-border-hairline));
   border-radius: 999px;
   padding: 0.2rem 0.75rem;
   font-size: 0.85rem;
@@ -120,6 +127,18 @@
  * colour alone — a completed row still reads correctly in greyscale. */
 .lessonRow[data-complete='true'] {
   border-color: var(--color-link);
+}
+
+/*
+ * Track hue as a left-edge rule (design §14.1) — the row's other three
+ * sides keep whatever border-color the rules above chose; only the left
+ * edge carries the track's hue, via --track-accent set inline in page.tsx.
+ * Comes after data-complete so a completed, tracked row still shows its
+ * track's edge rather than being overwritten by the link-teal border.
+ */
+.lessonRow[data-track='true'] {
+  border-left-width: 3px;
+  border-left-color: var(--track-accent);
 }
 
 .lessonTitle {
