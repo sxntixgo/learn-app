@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -82,15 +82,34 @@ describe('scaffoldCourse', () => {
   });
 
   it('skips .git, node_modules, and docs/-style build-output directories', async () => {
-    const result = await scaffoldCourse(path.join(fixturesDir, 'scaffold-skip-dirs'));
+    // `.git/` and `node_modules/` cannot be committed as fixtures — git refuses to
+    // track a nested .git, and node_modules is gitignored. Relying on them being on
+    // disk passes locally and fails only in CI, which is exactly what happened. Build
+    // them at runtime so the test is hermetic.
+    const tmp = await mkdtemp(path.join(os.tmpdir(), 'scaffold-skip-'));
+    try {
+      await cp(path.join(fixturesDir, 'scaffold-skip-dirs'), tmp, { recursive: true });
+      for (const dir of ['.git', 'node_modules']) {
+        await mkdir(path.join(tmp, dir), { recursive: true });
+        await writeFile(path.join(tmp, dir, 'ignore-me.md'), '# Should never be a lesson\n');
+      }
 
-    expect(result.modules).toHaveLength(1);
-    expect(result.modules[0]!.id).toBe('mod-one');
+      const result = await scaffoldCourse(tmp);
 
-    const skippedPaths = result.skipped.map((s) => s.path);
-    expect(skippedPaths).toContain('.git/');
-    expect(skippedPaths).toContain('node_modules/');
-    expect(skippedPaths).toContain('docs/');
+      expect(result.modules).toHaveLength(1);
+      expect(result.modules[0]!.id).toBe('mod-one');
+
+      const skippedPaths = result.skipped.map((s) => s.path);
+      expect(skippedPaths).toContain('.git/');
+      expect(skippedPaths).toContain('node_modules/');
+      expect(skippedPaths).toContain('docs/');
+
+      // and nothing inside them leaked in as a lesson
+      const allLessons = result.modules.flatMap((m) => m.lessons.map((l) => l.relPath));
+      expect(allLessons.some((p) => p.includes('ignore-me'))).toBe(false);
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
   });
 
   it('does not emit a tracks key, and comments the five allowed hues instead', async () => {
