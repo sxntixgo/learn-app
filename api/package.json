@@ -8,7 +8,9 @@
     "./content/sanitize": "./src/content/sanitize.ts",
     "./content/validate": "./src/content/validate.ts",
     "./content/manifest": "./src/content/manifest.ts",
+    "./content/validate-dir": "./src/content/validate-dir.ts",
     "./content/import": "./src/content/import.ts",
+    "./content/run-import": "./src/content/run-import.ts",
     "./content/clone": "./src/content/clone.ts",
     "./content/repos": "./src/content/repos.ts"
   },

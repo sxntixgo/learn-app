@@ -3,9 +3,11 @@
  * "am I the active one" both live here, out of the Nav component, so the
  * matching rule is testable without a browser.
  *
- * Deliberately just the two destinations that exist today — Catalog and
- * Dashboard. Do not add more here ahead of the phase that builds their
- * pages (CLAUDE.md: build only the phase you were asked for).
+ * Three destinations: Catalog, Dashboard, and Admin (plan phase 5's import
+ * screen — design §14 item 6). Admin's label doubles as its own "clearly
+ * marked as admin" marker (design brief); do not add more admin
+ * destinations here ahead of the phase that builds their pages (CLAUDE.md:
+ * build only the phase you were asked for).
  */
 
 export interface NavDestination {
@@ -25,6 +27,7 @@ export interface NavDestination {
 export const NAV_DESTINATIONS: readonly NavDestination[] = [
   { href: '/', label: 'Catalog', activePrefixes: ['/courses'] },
   { href: '/me', label: 'Dashboard' },
+  { href: '/admin/imports', label: 'Admin' },
 ];
 
 /**

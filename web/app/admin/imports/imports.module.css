@@ -1,0 +1,365 @@
+/*
+ * Admin import screen (design plan phase 5). Layout mirrors /me
+ * (me.module.css): a max-width column of stacked, bordered "cards" — a
+ * pattern already established for a page that is a list of sections rather
+ * than a single flow of prose, so it needs no new container idiom.
+ *
+ * Every interactive control (inputs, submit button) keeps the 44px minimum
+ * touch target used everywhere else in this app (lesson.module.css's
+ * .completeButton, nav.module.css's .link) — this is a real admin action,
+ * not a place to shrink hit targets for density.
+ */
+
+.page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+}
+
+.heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: clamp(1.5rem, 4vw + 0.5rem, 2.25rem);
+  margin: 0;
+}
+
+/*
+ * "Clearly marked as admin" (design brief) — a small, always-visible label,
+ * never a hover-only affordance. Yellow used structurally as a border only
+ * (CHOSEN-PALETTE.md rule 1: never a fill, never body text), same idiom as
+ * nav.module.css's active-item underline.
+ */
+.adminBadge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--color-accent-yellow);
+  border-radius: var(--radius-pill, 999px);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-secondary);
+}
+
+.intro {
+  max-width: var(--measure-prose, 46ch);
+  margin: 0.75rem 0 2rem;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+}
+
+.sectionTitle {
+  font-size: 1.05rem;
+  margin: 0 0 0.75rem;
+}
+
+.section + .section {
+  margin-top: 2rem;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Form                                                                    */
+/* ---------------------------------------------------------------------- */
+
+.formSection {
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 10px;
+  background: var(--color-surface-raised);
+  padding: 1.25rem;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.label {
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.optional {
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.input {
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 8px;
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 0.95rem;
+  width: 100%;
+}
+
+.input:disabled {
+  opacity: 0.65;
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 1px;
+}
+
+.submitButton {
+  align-self: flex-start;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.6rem 1.5rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 8px;
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.submitButton:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+}
+
+.submitButton:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.submitButton:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+.requestError {
+  margin: 1rem 0 0;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--color-accent-yellow);
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Live progress                                                          */
+/* ---------------------------------------------------------------------- */
+
+.progress {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-border-hairline);
+}
+
+.steps {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.stepMarker {
+  display: inline-block;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  border: 2px solid var(--color-border-hairline);
+  background: transparent;
+}
+
+/* Marker state is never colour alone — paired with the label's own weight
+   change below, same rule as the nav's active-item marker. */
+.step[data-status='complete'] .stepMarker {
+  border-color: var(--color-link);
+  background: var(--color-link);
+}
+
+.step[data-status='complete'] .stepLabel {
+  color: var(--color-text);
+}
+
+.step[data-status='active'] .stepMarker {
+  border-color: var(--color-accent-yellow);
+}
+
+.step[data-status='active'] .stepLabel {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.step[data-status='failed'] .stepMarker {
+  border-color: var(--color-accent-yellow);
+  border-width: 3px;
+}
+
+.step[data-status='failed'] .stepLabel {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.resultDone {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.resultFailed {
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--color-accent-yellow);
+}
+
+.resultFailedTitle {
+  margin: 0 0 0.4rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.problemList {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+/* ---------------------------------------------------------------------- */
+/* History                                                                 */
+/* ---------------------------------------------------------------------- */
+
+.empty {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.historyList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.historyItem {
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 10px;
+  background: var(--color-surface-raised);
+  padding: 1rem 1.1rem;
+}
+
+.historyHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.statusPill {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid var(--color-border-hairline);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-secondary);
+}
+
+.statusPill[data-status='success'] {
+  border-color: var(--color-link);
+  color: var(--color-link);
+}
+
+.statusPill[data-status='failed'] {
+  border-color: var(--color-accent-yellow);
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.historySlug {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.historyTime {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+}
+
+.historyMeta {
+  margin: 0 0 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.historyMetaRow {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.historyMetaRow dt {
+  color: var(--color-text-secondary);
+  min-width: 4.5rem;
+}
+
+.historyMetaValue {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+}
+
+.historyCounts {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.historyProblems {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+@media (min-width: 768px) {
+  .historyHead {
+    flex-wrap: nowrap;
+  }
+}

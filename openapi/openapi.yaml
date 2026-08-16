@@ -307,6 +307,93 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/v1/admin/imports:
+    post:
+      summary: Import a content repo (streamed)
+      description: >-
+        UNAUTHENTICATED UNTIL PHASE 6 (see the route source for the full
+        note) — acceptable only because the app is LAN-only until Gate 6.
+        Clones `url` at `ref` (default the repo's default branch),
+        validates its manifest and lessons, then writes it in one
+        transaction (design §8). Runs synchronously — there is deliberately
+        no job queue (design §4) — and streams progress as it happens, one
+        JSON object per line (newline-delimited JSON, not a single JSON
+        body), `Content-Type: application/x-ndjson`. Every line matches
+        ImportProgressEvent. A `file://` URL is always refused: the clone
+        step never receives the internal opt-in that would allow one. On
+        failure the LAST line's `problems` array is the same file:line
+        problem list the CLI prints (design §8: "error quality is the
+        authoring experience"), and an `import_runs` row is written either
+        way — a failed import is not silently dropped from history.
+      operationId: createAdminImport
+      tags:
+        - admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminImportRequest'
+      responses:
+        '200':
+          description: >-
+            A stream of newline-delimited ImportProgressEvent objects, one
+            per line, ending with a 'done' or 'failed' event. Always 200:
+            the HTTP status is set before the outcome of the import is
+            known, since the import result arrives inside the stream body,
+            not the status line.
+          content:
+            application/x-ndjson:
+              schema:
+                $ref: '#/components/schemas/ImportProgressEvent'
+        '400':
+          description: url is missing/empty, or ref is present and not a string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The actor is not permitted to import content repos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/admin/import-runs:
+    get:
+      summary: Import run history
+      description: >-
+        UNAUTHENTICATED UNTIL PHASE 6, same note as POST
+        /api/v1/admin/imports. Every import_runs row, newest first, with
+        the repo URL it came from (if any — a local-directory import has
+        none) and, for a finished run, either its per-entity counts or its
+        error/problem list.
+      operationId: listAdminImportRuns
+      tags:
+        - admin
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Max runs to return. Defaults to 20, clamped to [1, 100].
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: The import run history, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ImportRunSummary'
+        '403':
+          description: The actor is not permitted to read import history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   schemas:
     HealthStatus:
@@ -933,3 +1020,178 @@ components:
         - maxCount
         - currentStreak
         - longestStreak
+
+    AdminImportRequest:
+      type: object
+      description: A request to clone, validate, and import a content repo.
+      properties:
+        url:
+          type: string
+          description: >-
+            The repo's git URL. Only https:// and ssh:// remotes are
+            accepted (git@host:path is accepted as ssh); file://, git://,
+            http:// and git's ext:: transport are always refused — see
+            clone.ts's assertAllowedRepoUrl. This refusal cannot be
+            disabled through this endpoint under any circumstances.
+        ref:
+          type: string
+          description: Branch or tag to check out. Defaults to the repo's default branch.
+      required:
+        - url
+
+    ImportStage:
+      type: string
+      enum:
+        - cloning
+        - validating
+        - parsing
+        - writing
+        - done
+        - failed
+      description: One stage of the synchronous import pipeline (design §8).
+
+    ImportEntityCounts:
+      type: object
+      description: Per-entity outcome of one import. `archived` is always 0 for courses and tracks.
+      properties:
+        created:
+          type: integer
+        updated:
+          type: integer
+        skipped:
+          type: integer
+        archived:
+          type: integer
+      required:
+        - created
+        - updated
+        - skipped
+        - archived
+
+    ImportCounts:
+      type: object
+      description: Every entity kind's outcome for one import.
+      properties:
+        courses:
+          $ref: '#/components/schemas/ImportEntityCounts'
+        tracks:
+          $ref: '#/components/schemas/ImportEntityCounts'
+        modules:
+          $ref: '#/components/schemas/ImportEntityCounts'
+        lessons:
+          $ref: '#/components/schemas/ImportEntityCounts'
+      required:
+        - courses
+        - tracks
+        - modules
+        - lessons
+
+    ImportProgressEvent:
+      type: object
+      description: >-
+        One line of the newline-delimited progress stream POST
+        /api/v1/admin/imports returns. Only the fields relevant to `stage`
+        are present on a given line — e.g. `problems` only appears on a
+        'failed' line, `counts` only on 'done'.
+      properties:
+        stage:
+          $ref: '#/components/schemas/ImportStage'
+        message:
+          type: string
+          description: A short human-readable description of what's happening at this stage.
+        problems:
+          type: array
+          items:
+            type: string
+          description: >-
+            Present when stage is 'failed'. Every problem found, file:line
+            formatted where applicable — the same list the CLI prints
+            (design §8).
+        importRunId:
+          type: string
+          description: The import_runs row this attempt was recorded under, once known.
+        slug:
+          type: string
+          description: Present when stage is 'done'. The imported course's slug.
+        commitSha:
+          type: string
+          description: Present when stage is 'done'. The commit the content was cloned at.
+        counts:
+          $ref: '#/components/schemas/ImportCounts'
+      required:
+        - stage
+
+    ImportRunStatus:
+      type: string
+      enum:
+        - running
+        - success
+        - failed
+      description: An import_runs row's status.
+
+    ImportRunSummary:
+      type: object
+      description: One import_runs row, for the admin history screen.
+      properties:
+        id:
+          type: string
+        status:
+          $ref: '#/components/schemas/ImportRunStatus'
+        repoUrl:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: The content_repos URL this run came from, or null for a local-directory import.
+        courseSlug:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: >-
+            The manifest's slug, when known — null only when the manifest
+            itself couldn't be read (design §7's course_slug rationale).
+        commitSha:
+          type:
+            - string
+            - "null"
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+          nullable: true
+          description: Null while status is 'running' (a process that died mid-import).
+        counts:
+          description: Present on a successful run, otherwise null.
+          oneOf:
+            - $ref: '#/components/schemas/ImportCounts'
+            - type: "null"
+        error:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: The failure's summary message, or null on success.
+        problems:
+          type: array
+          items:
+            type: string
+          description: >-
+            The full file:line problem list for a failed run (design §8),
+            or empty when there isn't one.
+      required:
+        - id
+        - status
+        - repoUrl
+        - courseSlug
+        - commitSha
+        - startedAt
+        - finishedAt
+        - counts
+        - error
+        - problems

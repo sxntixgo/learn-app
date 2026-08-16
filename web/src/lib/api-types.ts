@@ -188,6 +188,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a content repo (streamed)
+         * @description UNAUTHENTICATED UNTIL PHASE 6 (see the route source for the full note) — acceptable only because the app is LAN-only until Gate 6. Clones `url` at `ref` (default the repo's default branch), validates its manifest and lessons, then writes it in one transaction (design §8). Runs synchronously — there is deliberately no job queue (design §4) — and streams progress as it happens, one JSON object per line (newline-delimited JSON, not a single JSON body), `Content-Type: application/x-ndjson`. Every line matches ImportProgressEvent. A `file://` URL is always refused: the clone step never receives the internal opt-in that would allow one. On failure the LAST line's `problems` array is the same file:line problem list the CLI prints (design §8: "error quality is the authoring experience"), and an `import_runs` row is written either way — a failed import is not silently dropped from history.
+         */
+        post: operations["createAdminImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/import-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Import run history
+         * @description UNAUTHENTICATED UNTIL PHASE 6, same note as POST /api/v1/admin/imports. Every import_runs row, newest first, with the repo URL it came from (if any — a local-directory import has none) and, for a finished run, either its per-entity counts or its error/problem list.
+         */
+        get: operations["listAdminImportRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -470,6 +510,75 @@ export interface components {
             currentStreak: number;
             /** @description Longest streak ever, in local calendar days, computed fresh from activity_events. */
             longestStreak: number;
+        };
+        /** @description A request to clone, validate, and import a content repo. */
+        AdminImportRequest: {
+            /** @description The repo's git URL. Only https:// and ssh:// remotes are accepted (git@host:path is accepted as ssh); file://, git://, http:// and git's ext:: transport are always refused — see clone.ts's assertAllowedRepoUrl. This refusal cannot be disabled through this endpoint under any circumstances. */
+            url: string;
+            /** @description Branch or tag to check out. Defaults to the repo's default branch. */
+            ref?: string;
+        };
+        /**
+         * @description One stage of the synchronous import pipeline (design §8).
+         * @enum {string}
+         */
+        ImportStage: "cloning" | "validating" | "parsing" | "writing" | "done" | "failed";
+        /** @description Per-entity outcome of one import. `archived` is always 0 for courses and tracks. */
+        ImportEntityCounts: {
+            created: number;
+            updated: number;
+            skipped: number;
+            archived: number;
+        };
+        /** @description Every entity kind's outcome for one import. */
+        ImportCounts: {
+            courses: components["schemas"]["ImportEntityCounts"];
+            tracks: components["schemas"]["ImportEntityCounts"];
+            modules: components["schemas"]["ImportEntityCounts"];
+            lessons: components["schemas"]["ImportEntityCounts"];
+        };
+        /** @description One line of the newline-delimited progress stream POST /api/v1/admin/imports returns. Only the fields relevant to `stage` are present on a given line — e.g. `problems` only appears on a 'failed' line, `counts` only on 'done'. */
+        ImportProgressEvent: {
+            stage: components["schemas"]["ImportStage"];
+            /** @description A short human-readable description of what's happening at this stage. */
+            message?: string;
+            /** @description Present when stage is 'failed'. Every problem found, file:line formatted where applicable — the same list the CLI prints (design §8). */
+            problems?: string[];
+            /** @description The import_runs row this attempt was recorded under, once known. */
+            importRunId?: string;
+            /** @description Present when stage is 'done'. The imported course's slug. */
+            slug?: string;
+            /** @description Present when stage is 'done'. The commit the content was cloned at. */
+            commitSha?: string;
+            counts?: components["schemas"]["ImportCounts"];
+        };
+        /**
+         * @description An import_runs row's status.
+         * @enum {string}
+         */
+        ImportRunStatus: "running" | "success" | "failed";
+        /** @description One import_runs row, for the admin history screen. */
+        ImportRunSummary: {
+            id: string;
+            status: components["schemas"]["ImportRunStatus"];
+            /** @description The content_repos URL this run came from, or null for a local-directory import. */
+            repoUrl: ((string | null) | null) | null;
+            /** @description The manifest's slug, when known — null only when the manifest itself couldn't be read (design §7's course_slug rationale). */
+            courseSlug: ((string | null) | null) | null;
+            commitSha: ((string | null) | null) | null;
+            /** Format: date-time */
+            startedAt: string;
+            /**
+             * Format: date-time
+             * @description Null while status is 'running' (a process that died mid-import).
+             */
+            finishedAt: ((string | null) | null) | null;
+            /** @description Present on a successful run, otherwise null. */
+            counts: components["schemas"]["ImportCounts"] | null;
+            /** @description The failure's summary message, or null on success. */
+            error: ((string | null) | null) | null;
+            /** @description The full file:line problem list for a failed run (design §8), or empty when there isn't one. */
+            problems: string[];
         };
     };
     responses: never;
@@ -755,6 +864,80 @@ export interface operations {
             };
             /** @description Course or lesson not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createAdminImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminImportRequest"];
+            };
+        };
+        responses: {
+            /** @description A stream of newline-delimited ImportProgressEvent objects, one per line, ending with a 'done' or 'failed' event. Always 200: the HTTP status is set before the outcome of the import is known, since the import result arrives inside the stream body, not the status line. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-ndjson": components["schemas"]["ImportProgressEvent"];
+                };
+            };
+            /** @description url is missing/empty, or ref is present and not a string */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The actor is not permitted to import content repos */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listAdminImportRuns: {
+        parameters: {
+            query?: {
+                /** @description Max runs to return. Defaults to 20, clamped to [1, 100]. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The import run history, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRunSummary"][];
+                };
+            };
+            /** @description The actor is not permitted to read import history */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

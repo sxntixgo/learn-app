@@ -36,6 +36,12 @@ const ICONS: Record<string, React.ReactNode> = {
       <path d="M20 20v-6" />
     </svg>
   ),
+  '/admin/imports': (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3.5 4.5 7v6c0 4 3 6.7 7.5 7.8 4.5-1.1 7.5-3.8 7.5-7.8V7L12 3.5Z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  ),
 };
 
 export default function Nav() {

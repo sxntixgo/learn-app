@@ -13,6 +13,10 @@ export type ActivityEvent = components['schemas']['ActivityEvent'];
 export type CourseProgressSummary = components['schemas']['CourseProgressSummary'];
 export type LessonProgressDetail = components['schemas']['LessonProgressDetail'];
 export type ProgressState = components['schemas']['ProgressState'];
+export type Me = components['schemas']['Me'];
+export type ImportRunSummary = components['schemas']['ImportRunSummary'];
+export type ImportProgressEvent = components['schemas']['ImportProgressEvent'];
+export type ImportCounts = components['schemas']['ImportCounts'];
 
 function apiBase(): string {
   const base = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -98,6 +102,25 @@ export async function fetchCourseProgress(courseSlug: string): Promise<CoursePro
     throw new Error(`Failed to fetch progress for course "${courseSlug}": ${res.status}`);
   }
   return (await res.json()) as CourseProgressSummary;
+}
+
+/** The actor's own profile — id, display name, and effective timezone (design §15). */
+export async function fetchMe(): Promise<Me> {
+  const res = await fetch(`${apiBase()}/api/v1/me`, { cache: 'no-store' });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch me: ${res.status}`);
+  }
+  return (await res.json()) as Me;
+}
+
+/** Import run history, newest first (design plan phase 5's admin screen). */
+export async function fetchImportRuns(limit?: number): Promise<ImportRunSummary[]> {
+  const query = limit !== undefined ? `?limit=${encodeURIComponent(String(limit))}` : '';
+  const res = await fetch(`${apiBase()}/api/v1/admin/import-runs${query}`, { cache: 'no-store' });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch import runs: ${res.status}`);
+  }
+  return (await res.json()) as ImportRunSummary[];
 }
 
 async function errorMessage(res: Response, fallback: string): Promise<string> {
