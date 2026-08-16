@@ -195,5 +195,9 @@ describe('scaffold CLI', () => {
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
     }
-  });
+    // Spawns three CLI subprocesses, each paying Node start-up plus TypeScript
+    // type-stripping. The 5s default is genuinely too tight under load and this
+    // test flaked in CI rather than failing honestly; the work is legitimately slow,
+    // so give it room instead of making the test do less.
+  }, 30_000);
 });
