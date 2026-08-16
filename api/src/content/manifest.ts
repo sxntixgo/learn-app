@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import { parse as parseYaml } from 'yaml';
@@ -42,7 +42,16 @@ const MANIFEST_FILENAMES = ['course.yaml', 'course.yml'];
 async function findManifestFile(dir: string): Promise<string> {
   for (const name of MANIFEST_FILENAMES) {
     const candidate = path.join(dir, name);
-    if (existsSync(candidate)) return candidate;
+    if (!existsSync(candidate)) continue;
+
+    // The manifest is the one file read before resolveLessonPath exists to
+    // protect anything, so it gets the same rule directly: a `course.yaml`
+    // that is a symlink to `/etc/shadow` would be read, fail to parse, and
+    // then quote the file it could not parse back at the operator.
+    if (lstatSync(candidate).isSymbolicLink()) {
+      throw new Error(`${name} is a symbolic link — refusing to read it (content repos may not contain symlinks).`);
+    }
+    return candidate;
   }
   throw new Error(
     `No course manifest found in ${dir} (expected one of: ${MANIFEST_FILENAMES.join(', ')}).`,
@@ -79,24 +88,147 @@ export async function loadCourseManifest(dir: string): Promise<CourseManifest> {
   return parsed as CourseManifest;
 }
 
+// ---------------------------------------------------------------------------
+// Path resolution — the single chokepoint (design §8.1: "Path traversal is
+// the real vulnerability here").
+//
+// Every string below arrives from a `course.yaml` inside a repository cloned
+// from a URL someone else controls. The importer runs with the application's
+// filesystem access, so a manifest entry of `../../../../etc/passwd` is a
+// request to read that file and store its contents in a lesson row that
+// students can then read back over HTTP. Four independent checks, in order:
+//
+//   1. Lexical: no absolute paths, no `..` segments, no NUL bytes.
+//   2. Containment: the resolved path is strictly inside the real course
+//      directory — compared with `path.relative`, never with `startsWith`,
+//      which cannot tell `/tmp/clone-evil` from inside `/tmp/clone`.
+//   3. No symlinks on ANY segment below the course directory, checked with
+//      `lstat` on each component — a symlinked intermediate directory
+//      escapes just as effectively as a symlinked file, and only the final
+//      component is visible to a naive check.
+//   4. Containment again, this time on the fully resolved real path. (2) and
+//      (3) should make this unreachable; it is here because "should" is not
+//      a security property and this check costs one syscall.
+// ---------------------------------------------------------------------------
+
+/** `C:\…`, `C:/…` or a UNC `\\server\share` — absolute on Windows, and NOT
+ * caught by `path.isAbsolute` when the importer itself runs on POSIX. */
+const WINDOWS_ABSOLUTE = /^(?:[A-Za-z]:[\\/]|[\\/][\\/])/;
+
+/** Splits on both separators: `modules\..\..\etc` must be seen as traversal
+ * even though `\` is a legal filename character on POSIX. */
+const PATH_SEPARATORS = /[\\/]+/;
+
+function rejectPath(srcPath: string, reason: string): Error {
+  // Names the offending manifest entry exactly as written (that is what the
+  // author has to go and fix) and never echoes the resolved absolute path,
+  // which would turn a rejection message into a filesystem-layout oracle.
+  return new Error(`${srcPath}: ${reason}`);
+}
+
+/** True when `candidate` is strictly below `root` (never equal to it). */
+function isInside(root: string, candidate: string): boolean {
+  const rel = path.relative(root, candidate);
+  return rel !== '' && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+}
+
+/** `realpathSync`, or undefined if the path does not exist yet. Any other
+ * error (permissions, symlink loop) is a real failure and propagates. */
+function realpathIfExists(p: string): string | undefined {
+  try {
+    return realpathSync(p);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw err;
+  }
+}
+
+/**
+ * Walks every path component below `root` and refuses the first symlink.
+ *
+ * Stops at the first component that does not exist: a path that cannot be
+ * read is the caller's error to report ("lesson file not found"), with a far
+ * better message than anything this function could produce.
+ */
+function assertNoSymlinkedSegment(root: string, candidate: string, srcPath: string): void {
+  const segments = path.relative(root, candidate).split(path.sep).filter(Boolean);
+
+  let current = root;
+  for (const [index, segment] of segments.entries()) {
+    current = path.join(current, segment);
+
+    let stat;
+    try {
+      stat = lstatSync(current);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw err;
+    }
+
+    if (stat.isSymbolicLink()) {
+      throw rejectPath(
+        srcPath,
+        `"${segments.slice(0, index + 1).join('/')}" is a symbolic link — symlinks are refused inside a content repo, ` +
+          `whether they point inside it or out of it.`,
+      );
+    }
+
+    const isLast = index === segments.length - 1;
+    if (isLast && !stat.isFile() && !stat.isDirectory()) {
+      // A FIFO or device node would make `readFile` block forever or read
+      // unbounded data. Git cannot store one, but a course directory
+      // imported from local disk is not necessarily a git checkout.
+      throw rejectPath(srcPath, 'is not a regular file — refused.');
+    }
+  }
+}
+
 /**
  * Resolves a manifest `src` path (e.g. a `modules[].lessons[]` entry) to an
- * absolute filesystem path, relative to the course directory.
+ * absolute filesystem path inside the course directory, or throws.
  *
  * ALL path resolution for manifest-referenced files must go through this
  * function — do not join `courseDir` and a manifest path anywhere else.
+ * Phase 2 created it as the single chokepoint precisely so this hardening
+ * would be one function rather than an audit of every call site.
  *
- * Phase 5 hardens this exact function: manifest `src` paths are
- * attacker-controlled strings once content repos are cloned from arbitrary
- * URLs (design §8.1), so Phase 5 adds the traversal/symlink checks that
- * assert the resolved path stays inside `courseDir` and refuse symlinks.
- * None of that hardening is implemented here — Phase 2 only reads from
- * local, trusted directories — but centralising resolution now is what
- * makes that later hardening a one-function change instead of an audit of
- * every call site.
+ * Throwing rather than returning a result object is deliberate: every caller
+ * must handle a refusal, and a `string` that might be a traversal is exactly
+ * the value that gets used by accident.
  */
 export function resolveLessonPath(courseDir: string, srcPath: string): string {
-  return path.resolve(courseDir, srcPath);
+  if (typeof srcPath !== 'string' || srcPath.trim() === '') {
+    throw rejectPath(JSON.stringify(srcPath), 'is not a usable path — manifest paths must be non-empty strings.');
+  }
+  if (srcPath.includes('\0')) {
+    throw rejectPath(JSON.stringify(srcPath), 'contains a NUL byte — refused.');
+  }
+  if (path.isAbsolute(srcPath) || WINDOWS_ABSOLUTE.test(srcPath)) {
+    throw rejectPath(srcPath, 'is an absolute path — manifest paths must be relative to the course directory.');
+  }
+  if (srcPath.split(PATH_SEPARATORS).includes('..')) {
+    throw rejectPath(srcPath, 'contains a ".." segment — a lesson path may not climb out of the course directory.');
+  }
+
+  // Resolve the ROOT through symlinks first, so a course directory that is
+  // itself reached via a symlink (a clone under a symlinked /tmp, say) does
+  // not make every path inside it look like an escape. A root that does not
+  // exist cannot be traversed out of, so lexical resolution is enough there.
+  const root = realpathIfExists(path.resolve(courseDir)) ?? path.resolve(courseDir);
+  const candidate = path.resolve(root, srcPath);
+
+  if (!isInside(root, candidate)) {
+    throw rejectPath(srcPath, 'resolves outside the course directory — refused.');
+  }
+
+  assertNoSymlinkedSegment(root, candidate, srcPath);
+
+  const real = realpathIfExists(candidate);
+  if (real !== undefined && !isInside(root, real)) {
+    throw rejectPath(srcPath, 'resolves outside the course directory — refused.');
+  }
+
+  return candidate;
 }
 
 export interface LoadedLesson extends ParsedLesson {

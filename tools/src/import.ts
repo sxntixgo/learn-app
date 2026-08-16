@@ -35,21 +35,48 @@ function formatSummary(slug: string, counts: ImportCounts): string {
 // ---------------------------------------------------------------------------
 // Argument parsing: two mutually exclusive modes.
 //   npm run import -- <dir>
-//   npm run import -- --url <git-url> [--ref <ref>]
+//   npm run import -- --url <git-url> [--ref <ref>] [--allow-file-url]
+//
+// `--allow-file-url` is the operator-level half of clone.ts's `allowFileUrl`
+// switch, and it is a SEPARATE argv token on purpose. A repo URL is one
+// element of `process.argv`; there is no quoting, escaping or query string
+// that makes one string become two array entries, so a URL can never turn the
+// flag on for itself no matter who supplied it.
+//
+// Allowing it here costs nothing an operator does not already have: this CLI
+// requires DATABASE_URL and a shell on the host, and its other mode imports
+// any local directory you name. `file://` from an operator's shell is not a
+// privilege — it is the same privilege spelled differently. The caller this
+// protects is the ADMIN API ROUTE (Phase 6+), which takes a URL from an HTTP
+// request and must call cloneCourseRepo(url) with no options at all.
 // ---------------------------------------------------------------------------
 
-type ParsedArgs = { mode: 'dir'; dir: string } | { mode: 'url'; url: string; ref: string | undefined };
+type ParsedArgs =
+  | { mode: 'dir'; dir: string }
+  | { mode: 'url'; url: string; ref: string | undefined; allowFileUrl: boolean };
 
 function parseArgs(argv: string[]): ParsedArgs | undefined {
   if (argv[0] === '--url') {
     const url = argv[1];
     if (!url) return undefined;
 
-    if (argv[2] === undefined) return { mode: 'url', url, ref: undefined };
-    if (argv[2] !== '--ref') return undefined;
-    const ref = argv[3];
-    if (!ref || argv[4] !== undefined) return undefined;
-    return { mode: 'url', url, ref };
+    let ref: string | undefined;
+    let allowFileUrl = false;
+
+    for (let i = 2; i < argv.length; ) {
+      if (argv[i] === '--ref') {
+        ref = argv[i + 1];
+        if (!ref) return undefined;
+        i += 2;
+      } else if (argv[i] === '--allow-file-url') {
+        allowFileUrl = true;
+        i += 1;
+      } else {
+        return undefined;
+      }
+    }
+
+    return { mode: 'url', url, ref, allowFileUrl };
   }
 
   const dirArg = argv[0];
@@ -103,10 +130,15 @@ async function importAndReport(
  * directory afterward (design §4: no content left on disk after an
  * import), whether the import succeeded or failed.
  */
-async function importFromUrl(pool: pg.Pool, url: string, ref: string | undefined): Promise<void> {
+async function importFromUrl(
+  pool: pg.Pool,
+  url: string,
+  ref: string | undefined,
+  allowFileUrl: boolean,
+): Promise<void> {
   let clone: ClonedRepo;
   try {
-    clone = await cloneCourseRepo(url, { ref });
+    clone = await cloneCourseRepo(url, { ref, allowFileUrl });
   } catch (err) {
     console.error(`Clone failed: ${err instanceof Error ? err.message : String(err)}`);
     process.exitCode = 1;
@@ -144,7 +176,7 @@ async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
   if (!parsed) {
     console.error('Usage: npm run import -- <dir>');
-    console.error('       npm run import -- --url <git-url> [--ref <ref>]');
+    console.error('       npm run import -- --url <git-url> [--ref <ref>] [--allow-file-url]');
     process.exitCode = 1;
     return;
   }
@@ -168,7 +200,7 @@ async function main(): Promise<void> {
       // nothing truthful to record. URL mode below supplies one from the clone.
       await importAndReport(pool, parsed.dir, { commit: null, repoId: null });
     } else {
-      await importFromUrl(pool, parsed.url, parsed.ref);
+      await importFromUrl(pool, parsed.url, parsed.ref, parsed.allowFileUrl);
     }
   } finally {
     await pool.end();

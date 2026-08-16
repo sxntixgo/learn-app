@@ -1,0 +1,35 @@
+# A deliberately hostile content repo. Every `src` below is an attack the
+# importer must refuse by name, and every lesson under `payloads` carries an
+# XSS payload the sanitizer must strip (design §8.1). Nothing here is valid
+# content — the file exists so the rejections have tests.
+schema: 1
+slug: hostile-course
+title: Hostile Course
+description: Malicious fixture for the Phase 5 hardening tests. Never import this for real.
+modules:
+  - id: traversal-relative
+    title: Escapes the clone with ..
+    lessons:
+      - ../../etc/passwd
+  - id: traversal-absolute
+    title: Absolute path
+    lessons:
+      - /etc/passwd
+  - id: traversal-deep
+    title: Escapes from inside a real subdirectory
+    lessons:
+      - modules/01-payloads/../../../../etc/passwd
+  - id: symlinked-file
+    title: Lesson file is a symlink out of the course
+    lessons:
+      - escape-link.md
+  - id: symlinked-dir
+    title: Intermediate directory is a symlink
+    lessons:
+      - linkdir/inside.md
+  - id: payloads
+    title: Lessons carrying script payloads
+    lessons:
+      - modules/01-payloads/script-tag.md
+      - modules/01-payloads/js-href.md
+      - modules/01-payloads/img-onerror.md

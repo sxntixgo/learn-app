@@ -102,7 +102,7 @@ describe.sequential('import CLI — URL mode', () => {
     const before = await cloneTempEntries();
     const url = `file://${repo.bareDir}`;
 
-    const { stdout, code } = await importCli(['--url', url]);
+    const { stdout, code } = await importCli(['--url', url, '--allow-file-url']);
 
     expect(code).toBe(0);
     expect(stdout).toContain(`${slug}: import ok`);
@@ -133,8 +133,28 @@ describe.sequential('import CLI — URL mode', () => {
     expect(after).toEqual(before);
   });
 
+  it('refuses the very same file:// URL when the internal opt-in flag is absent', async () => {
+    // The flag is a separate argv token, so this is the behaviour any caller
+    // that passes only a URL gets — including the future admin API route.
+    const before = await cloneTempEntries();
+
+    const { code, stderr } = await importCli(['--url', `file://${repo.bareDir}`]);
+
+    expect(code).toBe(1);
+    expect(stderr).toMatch(/Clone failed: Refusing to clone file:\/\//);
+    expect(stderr).toMatch(/only https:\/\/ and ssh:\/\/ remotes are allowed/);
+    expect(await cloneTempEntries()).toEqual(before);
+  });
+
+  it('refuses a URL that tries to smuggle the opt-in inside the URL string', async () => {
+    const { code, stderr } = await importCli(['--url', `file://${repo.bareDir}?--allow-file-url`]);
+
+    expect(code).toBe(1);
+    expect(stderr).toMatch(/Refusing to clone/);
+  });
+
   it('is a no-op at the lesson level on re-import of the same unchanged commit', async () => {
-    const { stdout, code } = await importCli(['--url', `file://${repo.bareDir}`]);
+    const { stdout, code } = await importCli(['--url', `file://${repo.bareDir}`, '--allow-file-url']);
 
     expect(code).toBe(0);
     expect(stdout).toMatch(/lessons\s+0 created,\s+0 updated,\s+1 skipped,\s+0 archived/);
@@ -147,7 +167,7 @@ describe.sequential('import CLI — URL mode', () => {
     try {
       const before = await cloneTempEntries();
 
-      const { code, stderr } = await importCli(['--url', `file://${badRepo.bareDir}`]);
+      const { code, stderr } = await importCli(['--url', `file://${badRepo.bareDir}`, '--allow-file-url']);
 
       expect(code).toBe(1);
       expect(stderr).toMatch(/no-such-track/);

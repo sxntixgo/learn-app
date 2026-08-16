@@ -45,7 +45,18 @@ export async function validateCourseDir(dir: string): Promise<ValidateResult> {
   for (const mod of manifest.modules) {
     for (const srcPath of mod.lessons) {
       lessonCount++;
-      const absPath = resolveLessonPath(dir, srcPath);
+
+      // A refused path (traversal, absolute, symlink — see resolveLessonPath)
+      // is collected like any other problem rather than aborting the run: a
+      // hostile manifest usually has more than one, and an author fixing a
+      // merely-careless one wants to see all of them at once.
+      let absPath: string;
+      try {
+        absPath = resolveLessonPath(dir, srcPath);
+      } catch (err) {
+        problems.push(`${err instanceof Error ? err.message : String(err)} (referenced by module "${mod.id}")`);
+        continue;
+      }
 
       if (!existsSync(absPath)) {
         problems.push(`${srcPath}: lesson file not found (referenced by module "${mod.id}")`);

@@ -1,11 +1,13 @@
 import type { Code, Heading, Root, RootContent, Yaml } from 'mdast';
 import { toString as mdastToString } from 'mdast-util-to-string';
+import rehypeSanitize from 'rehype-sanitize';
 import rehypeStringify from 'rehype-stringify';
 import remarkFrontmatter from 'remark-frontmatter';
 import remarkParse from 'remark-parse';
 import remarkRehype from 'remark-rehype';
 import { unified } from 'unified';
 import { parse as parseYaml } from 'yaml';
+import { proseSanitizeSchema } from './sanitize.ts';
 
 // Phase 1 supports exactly two block types (design §... / CLAUDE.md rule 5:
 // content is a typed block array, not HTML or a rehype AST). Do not add
@@ -36,7 +38,21 @@ export interface ParsedLesson {
 }
 
 const markdownParser = unified().use(remarkParse).use(remarkFrontmatter, ['yaml']);
-const htmlSerializer = unified().use(remarkRehype).use(rehypeStringify);
+
+// Prose HTML is produced under TWO independent guarantees, because a content
+// repo is untrusted input (design §8.1) and one of these is a configuration
+// flag someone could plausibly flip later:
+//
+//  1. `remark-rehype` runs WITHOUT `allowDangerousHtml`, so raw HTML written
+//     in a markdown file is discarded rather than rendered. Do not add
+//     `allowDangerousHtml` + `rehype-raw` here without reading (2).
+//  2. `rehype-sanitize` applies an allowlist to whatever hast the pipeline
+//     did produce. That is not redundant with (1): markdown alone is enough
+//     to emit `<a href="javascript:…">` from `[x](javascript:…)`, which is a
+//     stored-XSS payload that needs no raw HTML at all. This is also what
+//     makes (1) safe to revisit — the sanitizer, not the drop, is the
+//     security boundary.
+const htmlSerializer = unified().use(remarkRehype).use(rehypeSanitize, proseSanitizeSchema).use(rehypeStringify);
 
 /**
  * Converts a markdown lesson document into a title and a typed block array.

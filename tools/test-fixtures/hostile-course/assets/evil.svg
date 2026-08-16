@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" onload="alert('svg-onload')">
+  <title>Looks like a diagram</title>
+  <desc>Carries a script, handlers, smuggled HTML and external references.</desc>
+  <script type="text/javascript">alert('svg-script')</script>
+  <style>rect { fill: url(https://evil.example/paint.svg#p) }</style>
+  <defs>
+    <linearGradient id="grad">
+      <stop offset="0%" stop-color="#336699" />
+      <stop offset="100%" stop-color="#993366" />
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="80" height="40" fill="url(#grad)" stroke="#222" stroke-width="2"
+        onclick="alert('svg-onclick')" onmouseover="alert('svg-onmouseover')" />
+  <image href="https://evil.example/tracker.png" x="0" y="0" width="10" height="10" />
+  <use href="https://evil.example/sprite.svg#icon" />
+  <use href="#grad" xlink:href="https://evil.example/sprite.svg#icon" />
+  <a href="javascript:alert('svg-href')"><text x="10" y="70" font-size="10">click me</text></a>
+  <foreignObject x="0" y="80" width="100" height="20">
+    <div xmlns="http://www.w3.org/1999/xhtml"><script>alert('svg-foreignobject')</script>smuggled html</div>
+  </foreignObject>
+  <path d="M10 90 L90 90" stroke="#222" stroke-width="2" />
+</svg>

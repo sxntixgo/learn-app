@@ -196,4 +196,32 @@ describe('parseLesson', () => {
       ).toThrow(/estimate/i);
     });
   });
+
+  // Design §8.1: prose is untrusted output. The full policy is proven in
+  // sanitize.test.ts; these are the two things parseLesson itself must never
+  // stop doing.
+  describe('prose sanitization', () => {
+    function prose(markdown: string): string {
+      return parseLesson(markdown)
+        .blocks.filter((b) => b.type === 'prose')
+        .map((b) => b.html)
+        .join('\n');
+    }
+
+    it('never emits a javascript: URL from a plain markdown link — no raw HTML required', () => {
+      const html = prose('# T\n\n[click](javascript:alert(1)) and [ok](https://example.com/a)\n');
+      expect(html.toLowerCase()).not.toContain('javascript:');
+      expect(html).toContain('click');
+      expect(html).toContain('https://example.com/a');
+    });
+
+    it('never emits raw HTML from a markdown file, script or otherwise', () => {
+      const html = prose('# T\n\nBefore.\n\n<script>alert(1)</script>\n\n<div onclick="alert(2)">x</div>\n\nAfter.\n');
+      expect(html).not.toContain('<script');
+      expect(html).not.toContain('alert(1)');
+      expect(html).not.toMatch(/onclick/i);
+      expect(html).toContain('Before.');
+      expect(html).toContain('After.');
+    });
+  });
 });
