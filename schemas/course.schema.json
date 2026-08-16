@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://learn-app.example/schemas/course.schema.json",
+  "title": "Course manifest (course.yaml)",
+  "description": "The manifest a content repo's course.yaml must satisfy — design doc §6.1. This is the contract between content repos and the platform: an importer (in any language) only needs to produce data that validates against this schema. Phase 2 does not support the optional `degrees` block described in §6.1 — that ships with badges/degrees in a later phase — so it is deliberately not accepted here.",
+  "type": "object",
+  "required": ["schema", "slug", "title", "modules"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "description": "Manifest format version. Fixed at 1 for the lifetime of this schema.",
+      "const": 1
+    },
+    "slug": {
+      "description": "Globally-unique course handle (unique across every imported repo). Referenced by degrees, so it cannot be repo-local.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subtitle": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "tracks": {
+      "description": "Max 5 tracks — one hue each, from the fixed 5-hue palette.",
+      "type": "array",
+      "maxItems": 5,
+      "items": { "$ref": "#/$defs/track" }
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "modules": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/module" }
+    }
+  },
+  "$defs": {
+    "track": {
+      "type": "object",
+      "required": ["id", "name", "hue"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Stable track key, referenced by a lesson's frontmatter `track:` field.",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hue": {
+          "description": "The one hue this track owns. Rejecting anything outside this set is what keeps many courses looking like one system (design §6.1) — also enforced as a database CHECK constraint on the `tracks` table, not only here.",
+          "enum": ["blue", "teal", "ochre", "maroon", "slate"]
+        },
+        "blurb": {
+          "type": "string"
+        }
+      }
+    },
+    "module": {
+      "type": "object",
+      "required": ["id", "title", "lessons"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Stable module key, unique within the course.",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lessons": {
+          "description": "Repo-relative paths to lesson markdown files, in the order they should be presented — order lives here, not in filenames (design §6.1).",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

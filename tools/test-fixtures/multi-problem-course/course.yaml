@@ -1,0 +1,9 @@
+schema: 1
+slug: multi-problem-course
+title: Multi Problem Course
+modules:
+  - id: intro
+    title: Introduction
+    lessons:
+      - modules/01-intro/does-not-exist.md
+      - modules/01-intro/bad-kind.md

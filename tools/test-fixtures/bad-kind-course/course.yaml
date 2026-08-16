@@ -1,0 +1,8 @@
+schema: 1
+slug: bad-kind-course
+title: Bad Kind Course
+modules:
+  - id: intro
+    title: Introduction
+    lessons:
+      - modules/01-intro/bad-kind.md

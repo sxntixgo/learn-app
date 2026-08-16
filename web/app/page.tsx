@@ -1,13 +1,42 @@
 import Link from 'next/link';
+import { fetchCourses } from '../src/lib/api';
+import styles from './page.module.css';
 
-export default function Home() {
+export default async function Home() {
+  const courses = await fetchCourses();
+
   return (
-    <main style={{ maxWidth: '46ch', margin: '0 auto', padding: '2rem 1.25rem' }}>
-      <h1>Learn App</h1>
-      <p>Welcome to the learning platform.</p>
-      <p>
-        <Link href="/lessons/2-installation">Start reading: Installing MCP Servers</Link>
-      </p>
+    <main className={styles.page}>
+      <h1 className={styles.title}>Learn App</h1>
+      <p className={styles.intro}>Browse a course to start reading.</p>
+
+      {courses.length === 0 ? (
+        <p className={styles.empty}>No courses yet.</p>
+      ) : (
+        <ul className={styles.list}>
+          {courses.map((course) => (
+            <li key={course.slug}>
+              <Link href={`/courses/${encodeURIComponent(course.slug)}`} className={styles.card}>
+                <h2 className={styles.cardTitle}>{course.title}</h2>
+                {course.subtitle ? <p className={styles.cardSubtitle}>{course.subtitle}</p> : null}
+                <div className={styles.cardMeta}>
+                  <span>
+                    {course.moduleCount} module{course.moduleCount === 1 ? '' : 's'}
+                  </span>
+                  <span>
+                    {course.lessonCount} lesson{course.lessonCount === 1 ? '' : 's'}
+                  </span>
+                  {course.tags.map((tag) => (
+                    <span key={tag} className={styles.tag}>
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </main>
   );
 }

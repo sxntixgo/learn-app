@@ -2,10 +2,10 @@ import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
-import type { LessonRouteDeps } from './routes/lessons.ts';
-import { registerLessonRoutes } from './routes/lessons.ts';
+import type { CourseRouteDeps } from './routes/courses.ts';
+import { registerCourseRoutes } from './routes/courses.ts';
 
-export type BuildServerOptions = LessonRouteDeps;
+export type BuildServerOptions = CourseRouteDeps;
 
 export async function buildServer(options: BuildServerOptions = {}) {
   const fastify = Fastify({
@@ -16,7 +16,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
     return { status: 'ok' };
   });
 
-  registerLessonRoutes(fastify, options);
+  registerCourseRoutes(fastify, options);
 
   return fastify;
 }

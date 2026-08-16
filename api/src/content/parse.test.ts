@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseLesson } from './parse.ts';
+import { validateBlocks } from './validate.ts';
+import type { Block } from './parse.ts';
 
 describe('parseLesson', () => {
   it('takes the title from YAML frontmatter when present', () => {
@@ -63,5 +65,135 @@ describe('parseLesson', () => {
     // Raw markdown source, not HTML-escaped by a syntax highlighter or serializer.
     expect(code.source).not.toContain('&lt;');
     expect(code.source).not.toContain('<span');
+  });
+
+  describe('in-source annotation markers (design §6.3)', () => {
+    it('strips a `#` marker and records it as an annotation with a 1-based line number', () => {
+      const markdown = [
+        '# Title',
+        '',
+        '```python',
+        'def review(diff):',
+        '    for hunk in diff.hunks:        # [!note cx] Shallow module: interface as complex as the body',
+        '        pass',
+        '```',
+        '',
+      ].join('\n');
+
+      const { blocks } = parseLesson(markdown);
+      expect(blocks).toEqual([
+        {
+          type: 'code',
+          lang: 'python',
+          source: 'def review(diff):\n    for hunk in diff.hunks:\n        pass',
+          annotations: [{ line: 2, track: 'cx', body: 'Shallow module: interface as complex as the body' }],
+        },
+      ]);
+    });
+
+    it('supports a marker with no track', () => {
+      const markdown = ['# Title', '', '```python', 'x = 1  # [!note] just a note', '```', ''].join('\n');
+
+      const { blocks } = parseLesson(markdown);
+      const code = blocks[0] as { type: 'code'; annotations?: unknown };
+      expect(code.annotations).toEqual([{ line: 1, body: 'just a note' }]);
+    });
+
+    it('supports `//` and `--` comment leaders', () => {
+      const markdown = [
+        '# Title',
+        '',
+        '```js',
+        'const a = 1; // [!note cr] a note',
+        '```',
+        '',
+        '```sql',
+        "select 1; -- [!note] sql note",
+        '```',
+        '',
+      ].join('\n');
+
+      const { blocks } = parseLesson(markdown);
+      const jsBlock = blocks[0] as { type: 'code'; source: string; annotations?: unknown };
+      const sqlBlock = blocks[1] as { type: 'code'; source: string; annotations?: unknown };
+
+      expect(jsBlock.source).toBe('const a = 1;');
+      expect(jsBlock.annotations).toEqual([{ line: 1, track: 'cr', body: 'a note' }]);
+      expect(sqlBlock.source).toBe('select 1;');
+      expect(sqlBlock.annotations).toEqual([{ line: 1, body: 'sql note' }]);
+    });
+
+    it('produces output that validates against the blocks schema', () => {
+      const markdown = [
+        '# Title',
+        '',
+        '```python',
+        'def f():        # [!note cx] a note',
+        '    pass',
+        '```',
+        '',
+      ].join('\n');
+
+      const { blocks } = parseLesson(markdown);
+      expect(validateBlocks(blocks)).toEqual({ valid: true, errors: [] });
+    });
+
+    it('leaves markers inside prose (including inline code spans) completely alone', () => {
+      const markdown = [
+        '# Title',
+        '',
+        'See `# [!note cx] not a real marker` inline, and this text: [!note cx] also not a marker.',
+        '',
+      ].join('\n');
+
+      const { blocks } = parseLesson(markdown);
+      const prose = blocks[0] as { type: 'prose'; html: string };
+      expect(prose.html).toContain('[!note cx] not a real marker');
+      expect(prose.html).toContain('[!note cx] also not a marker');
+    });
+
+    it('REGRESSION: a code fence with no markers is byte-identical to un-annotated output', () => {
+      const source = 'def review(diff):\n    findings = []  # not a marker, just a comment\n    return findings';
+      const markdown = ['# Title', '', '```python', source, '```', ''].join('\n');
+
+      const { blocks } = parseLesson(markdown);
+      const expected: Block = { type: 'code', lang: 'python', source };
+      expect(blocks).toEqual([expected]);
+      expect('annotations' in (blocks[0] as object)).toBe(false);
+    });
+  });
+
+  describe('lesson frontmatter metadata (design §6.1)', () => {
+    it('defaults kind to "lesson" when absent', () => {
+      const { kind } = parseLesson('# Title\n\nBody.\n');
+      expect(kind).toBe('lesson');
+    });
+
+    it('reads track, kind, and estimate from frontmatter', () => {
+      const { track, kind, estimateMinutes } = parseLesson(
+        '---\ntitle: Exercise 1\ntrack: cr\nkind: exercise\nestimate: 25m\n---\n\nBody.\n',
+      );
+      expect(track).toBe('cr');
+      expect(kind).toBe('exercise');
+      expect(estimateMinutes).toBe(25);
+    });
+
+    it('omits track and estimateMinutes when absent from frontmatter', () => {
+      const { track, estimateMinutes } = parseLesson('# Title\n\nBody.\n');
+      expect(track).toBeUndefined();
+      expect(estimateMinutes).toBeUndefined();
+    });
+
+    it('throws a clear error naming the problem for an invalid kind', () => {
+      expect(() =>
+        parseLesson('---\ntitle: Bad\nkind: essay\n---\n\nBody.\n'),
+      ).toThrow(/kind.*essay/is);
+    });
+
+    it('throws a clear error for an unparseable estimate', () => {
+      expect(() =>
+        parseLesson('---\ntitle: Bad\nestimate: forever\n---\n\nBody.\n'),
+      ).toThrow(/estimate/i);
+    });
   });
 });

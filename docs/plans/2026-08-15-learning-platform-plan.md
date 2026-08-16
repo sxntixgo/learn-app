@@ -172,6 +172,38 @@ database access, no credentials in any committable file.
 > **Gate 2.** Browse a whole real course on the iPad. Review the `import_runs` log before
 > importing the rest.
 
+### Phase 2 outcome (built 2026-08-16)
+
+**Status: complete.** 96 tests passing, lint and typecheck clean, CI green.
+
+Verified here against a real 61-lesson retrofit of `claudecode-documentation`:
+
+- Re-import rewrites nothing — fingerprint over every lesson id/slug/timestamp identical
+- A failed import leaves the database **byte-identical**, and still writes a `failed`
+  `import_runs` row carrying the error
+- Errors name the file and the cause (e.g. an undeclared track, listing the declared ones)
+- Archived lessons are invisible: direct fetch 404s, catalog count drops, restore brings back
+- `prev`/`next` traverse the whole course, crossing module boundaries
+- Annotation markers extract correctly while leaving ordinary `#` comments in 8 real bash
+  blocks untouched, and identical-looking markers in prose alone
+- Round trip proven: `scaffold` → `validate` → `import` → idempotent re-import
+
+**Deviations from plan, and why:**
+
+| Deviation | Reason |
+|---|---|
+| No general tagged-fence registry | Phase 2's block schema is `prose`/`code` only; a registry with nothing to register is the speculative abstraction the plan's YAGNI section forbids. Arrives with the first tagged block in Phase 7 |
+| Migration `0003` added | `0002` had `archived_at` on lessons but not modules, so archiving a module would cascade-delete its lessons — the exact silent history loss the archive rule prevents |
+| `lessons.slug` became course-scoped | Two courses can each have an `intro`. Forced the lesson route to become course-scoped, so `openapi.yaml`, routes, tests and web pages changed together |
+| Retrofit `course.yaml` kept local, not committed to the content repo | User's call. It becomes a prerequisite in Phase 5 when git cloning lands |
+| `tools/src/seed.test.ts` rewritten | It never invoked `seed.ts` — it reimplemented an insert against a table it created itself, and would have passed with `seed.ts` deleted |
+
+**Known gap to decide at Gate 2:** the scaffolder skips root-level markdown
+(`INTRODUCTION.md`, `TABLE_OF_CONTENTS.md`) because it sits in no module directory. It
+reports each skip with a reason rather than dropping it silently, but real content does
+need moving or hand-adding. Reconciliation against the hand-written manifest was exact:
+61 − 4 root files + 13 nested example files = 70.
+
 ---
 
 ## Phase 3 — Progress and activity

@@ -1,6 +1,13 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { execFile } from 'node:child_process';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import pg from 'pg';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
+const run = promisify(execFile);
 const { Pool } = pg;
 
 const connectionString = process.env.TEST_DATABASE_URL;
@@ -8,165 +15,101 @@ if (!connectionString) {
   throw new Error('TEST_DATABASE_URL is not set — required to run seed.test.ts');
 }
 
-describe.sequential('seed', () => {
+const here = path.dirname(fileURLToPath(import.meta.url));
+const migrateCli = path.join(here, 'migrate.ts');
+const seedCli = path.join(here, 'seed.ts');
+
+// The CLIs read DATABASE_URL. Point it at the test database so we exercise the
+// real binaries rather than a reimplementation of them.
+const cliEnv = { ...process.env, DATABASE_URL: connectionString };
+
+/**
+ * Runs the actual seed CLI as a subprocess.
+ *
+ * This matters: an earlier version of this file inlined its own INSERT against a
+ * table it created itself, so it passed without ever executing seed.ts. A test
+ * that would still pass if the code under test were deleted is not a test.
+ */
+async function seed(file: string, slug?: string): Promise<string> {
+  const args = slug ? [seedCli, file, '--slug', slug] : [seedCli, file];
+  const { stdout } = await run(process.execPath, args, { env: cliEnv });
+  return stdout.trim();
+}
+
+describe.sequential('seed CLI', () => {
   const pool = new Pool({ connectionString });
+  let tmp: string;
+
+  beforeAll(async () => {
+    // Real schema, applied by the real migration runner.
+    await run(process.execPath, [migrateCli], { env: cliEnv });
+    tmp = await mkdtemp(path.join(tmpdir(), 'seed-test-'));
+  });
 
   afterAll(async () => {
-    await pool.query('DROP TABLE IF EXISTS lessons');
-    await pool.query('DROP TABLE IF EXISTS schema_migrations');
+    await pool.query(`delete from courses where slug = 'scratch'`);
     await pool.end();
+    await rm(tmp, { recursive: true, force: true });
   });
 
-  it('inserts a row with expected slug/title/block-count', async () => {
-    // Allow previous tests' connections to fully close
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    // Ensure fresh state
-    try {
-      await pool.query('DROP TABLE IF EXISTS lessons');
-    } catch {
-      // ignore
-    }
-    try {
-      await pool.query('DROP TABLE IF EXISTS schema_migrations');
-    } catch {
-      // ignore
-    }
-
-    // Create the table directly
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS lessons (
-        id           uuid primary key default gen_random_uuid(),
-        slug         text not null unique,
-        title        text not null,
-        blocks       jsonb not null,
-        created_at   timestamptz not null default now(),
-        updated_at   timestamptz not null default now()
-      )
-    `);
-
-    const { parseLesson } = await import('@learn/api/content/parse');
-    const markdown = `# Hello World
-
-This is a prose block.
-
-\`\`\`typescript
-const x = 42;
-\`\`\`
-
-Another prose block.
-`;
-
-    const parsed = parseLesson(markdown);
-    const slug = 'hello-world';
-    const blocksJson = JSON.stringify(parsed.blocks);
-
-    await pool.query(
-      `
-      INSERT INTO lessons (slug, title, blocks)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (slug) DO UPDATE SET
-        title = $2,
-        blocks = $3,
-        updated_at = now()
-      `,
-      [slug, parsed.title, blocksJson],
+  it('inserts a lesson attached to a real course and module', async () => {
+    const file = path.join(tmp, 'hello-world.md');
+    await writeFile(
+      file,
+      ['# Hello World', '', 'This is a prose block.', '', '```typescript', 'const x = 42;', '```', '', 'Another prose block.', ''].join('\n'),
     );
 
-    // Verify the row was inserted
-    const result = await pool.query('SELECT slug, title, blocks FROM lessons WHERE slug = $1', [slug]);
-    expect(result.rowCount).toBe(1);
-    expect(result.rows[0].slug).toBe('hello-world');
-    expect(result.rows[0].title).toBe('Hello World');
-    expect(result.rows[0].blocks).toHaveLength(3);
-    expect(result.rows[0].blocks[0].type).toBe('prose');
-    expect(result.rows[0].blocks[1].type).toBe('code');
-    expect(result.rows[0].blocks[1].lang).toBe('typescript');
-    expect(result.rows[0].blocks[2].type).toBe('prose');
+    const stdout = await seed(file);
+    expect(stdout).toContain('hello-world');
+    expect(stdout).toContain('Hello World');
+
+    const { rows } = await pool.query(
+      `select l.slug, l.lesson_key, l.kind, l.blocks, l.content_hash,
+              c.slug as course_slug, m.key as module_key
+         from lessons l
+         join modules m on m.id = l.module_id
+         join courses c on c.id = l.course_id
+        where l.slug = $1`,
+      ['hello-world'],
+    );
+
+    expect(rows).toHaveLength(1);
+    const row = rows[0];
+    expect(row.course_slug).toBe('scratch');
+    expect(row.module_key).toBe('scratch');
+    expect(row.kind).toBe('lesson');
+    expect(row.content_hash).toHaveLength(64); // sha256 hex
+    expect(row.blocks).toHaveLength(3);
+    expect(row.blocks[0].type).toBe('prose');
+    expect(row.blocks[1].type).toBe('code');
+    expect(row.blocks[1].lang).toBe('typescript');
+    expect(row.blocks[2].type).toBe('prose');
   });
 
-  it('upserts on slug conflict, updating updated_at', async () => {
-    // Allow previous tests' connections to fully close
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    // Ensure fresh state
-    try {
-      await pool.query('DROP TABLE IF EXISTS lessons');
-    } catch {
-      // ignore
-    }
-    try {
-      await pool.query('DROP TABLE IF EXISTS schema_migrations');
-    } catch {
-      // ignore
-    }
+  it('upserts rather than duplicating when the same slug is seeded twice', async () => {
+    const first = path.join(tmp, 'repeat.md');
+    await writeFile(first, '# Version One\n\nContent one.\n');
+    await seed(first, 'repeat-me');
 
-    // Create the table directly
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS lessons (
-        id           uuid primary key default gen_random_uuid(),
-        slug         text not null unique,
-        title        text not null,
-        blocks       jsonb not null,
-        created_at   timestamptz not null default now(),
-        updated_at   timestamptz not null default now()
-      )
-    `);
+    const before = await pool.query(`select title, updated_at from lessons where slug = 'repeat-me'`);
+    expect(before.rowCount).toBe(1);
 
-    const { parseLesson } = await import('@learn/api/content/parse');
-    const markdown1 = `# Lesson One
+    const second = path.join(tmp, 'repeat2.md');
+    await writeFile(second, "# Version Two\n\nContent two.\n\n```js\nconsole.log('update');\n```\n");
+    await seed(second, 'repeat-me');
 
-Content one.
-`;
-
-    const markdown2 = `# Lesson Two
-
-Content two.
-
-\`\`\`js
-console.log('update');
-\`\`\`
-`;
-
-    const parsed1 = parseLesson(markdown1);
-    const parsed2 = parseLesson(markdown2);
-    const slug = 'test-lesson';
-
-    // First insert
-    await pool.query(
-      `
-      INSERT INTO lessons (slug, title, blocks)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (slug) DO UPDATE SET
-        title = $2,
-        blocks = $3,
-        updated_at = now()
-      `,
-      [slug, parsed1.title, JSON.stringify(parsed1.blocks)],
+    const after = await pool.query(
+      `select title, blocks, updated_at from lessons where slug = 'repeat-me'`,
     );
-
-    // Wait a bit to ensure time difference
-    await new Promise((resolve) => setTimeout(resolve, 10));
-
-    // Second insert (update)
-    await pool.query(
-      `
-      INSERT INTO lessons (slug, title, blocks)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (slug) DO UPDATE SET
-        title = $2,
-        blocks = $3,
-        updated_at = now()
-      `,
-      [slug, parsed2.title, JSON.stringify(parsed2.blocks)],
+    expect(after.rowCount).toBe(1); // updated, not duplicated
+    expect(after.rows[0].title).toBe('Version Two');
+    expect(after.rows[0].blocks).toHaveLength(2);
+    expect(new Date(after.rows[0].updated_at).getTime()).toBeGreaterThanOrEqual(
+      new Date(before.rows[0].updated_at).getTime(),
     );
+  });
 
-    // Verify exactly one row exists
-    const countResult = await pool.query('SELECT COUNT(*)::int as count FROM lessons WHERE slug = $1', [slug]);
-    expect(countResult.rows[0].count).toBe(1);
-
-    // Verify the row was updated
-    const result = await pool.query('SELECT title, blocks FROM lessons WHERE slug = $1', [slug]);
-    expect(result.rows[0].title).toBe('Lesson Two');
-    expect(result.rows[0].blocks).toHaveLength(2);
-    expect(result.rows[0].blocks[1].type).toBe('code');
+  it('exits non-zero for a file that does not exist', async () => {
+    await expect(seed(path.join(tmp, 'nope-not-here.md'))).rejects.toThrow();
   });
 });

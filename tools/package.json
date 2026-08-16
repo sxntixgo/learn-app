@@ -10,7 +10,8 @@
   "scripts": {
     "build": "tsc",
     "migrate": "node ./src/migrate.ts",
-    "seed": "node ./src/seed.ts"
+    "seed": "node ./src/seed.ts",
+    "import": "node ./src/import.ts"
   },
   "dependencies": {
     "@learn/api": "*",

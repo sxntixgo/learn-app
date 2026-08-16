@@ -24,7 +24,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/lessons/{slug}": {
+    "/api/v1/courses": {
         parameters: {
             query?: never;
             header?: never;
@@ -32,10 +32,50 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get a lesson by slug
-         * @description Retrieves a lesson with all its blocks
+         * List all courses
+         * @description Returns a summary of every imported course, for the catalog page. Archived modules/lessons are excluded from moduleCount/lessonCount.
          */
-        get: operations["getLesson"];
+        get: operations["listCourses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{courseSlug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a course's full table of contents
+         * @description Returns the course, its tracks, and every non-archived module with its non-archived lessons, in manifest order — enough to render a full table of contents.
+         */
+        get: operations["getCourse"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{courseSlug}/lessons/{lessonSlug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a lesson within a course
+         * @description Retrieves a lesson with all its blocks, plus prev/next navigation stubs computed across the whole course in manifest order (not just within the lesson's module). An archived lesson (or a lesson whose module is archived) is not reachable here and returns 404.
+         */
+        get: operations["getCourseLesson"];
         put?: never;
         post?: never;
         delete?: never;
@@ -77,14 +117,111 @@ export interface components {
         };
         /** @description A content block, which may be prose or code */
         Block: components["schemas"]["ProseBlock"] | components["schemas"]["CodeBlock"];
-        /** @description A lesson containing a title and structured blocks */
+        /** @description A minimal pointer to an adjacent lesson, for prev/next navigation. */
+        LessonNavStub: {
+            /** @description The adjacent lesson's slug (unique within the course) */
+            slug: string;
+            /** @description The adjacent lesson's title */
+            title: string;
+        };
+        /** @description A lesson containing a title, structured blocks, and whole-course navigation. */
         Lesson: {
-            /** @description The URL-friendly identifier for the lesson */
+            /** @description The URL-friendly identifier for the lesson, unique within its course */
             slug: string;
             /** @description The human-readable title of the lesson */
             title: string;
+            /**
+             * @description The lesson's kind
+             * @enum {string}
+             */
+            kind: "lesson" | "exercise" | "quiz";
+            /** @description The key of the track (lens) this lesson belongs to, or null */
+            track: ((string | null) | null) | null;
+            /** @description Estimated minutes to complete the lesson, or null if not specified */
+            estimateMinutes: ((number | null) | null) | null;
             /** @description The ordered array of content blocks */
             blocks: components["schemas"]["Block"][];
+            /** @description The previous lesson in the whole course, in manifest order, or null if this is the first lesson. */
+            prev: components["schemas"]["LessonNavStub"] | null;
+            /** @description The next lesson in the whole course, in manifest order, or null if this is the last lesson. */
+            next: components["schemas"]["LessonNavStub"] | null;
+        };
+        /** @description A course track (lens) — a hue-owning grouping lessons can belong to. */
+        Track: {
+            /** @description The track's stable key, referenced by lessons */
+            key: string;
+            /** @description The human-readable track name */
+            name: string;
+            /**
+             * @description The one hue this track owns
+             * @enum {string}
+             */
+            hue: "blue" | "teal" | "ochre" | "maroon" | "slate";
+            /** @description A short description of the track, or null */
+            blurb: ((string | null) | null) | null;
+        };
+        /** @description A lesson as it appears in a course's table of contents. */
+        LessonSummary: {
+            /** @description The lesson's slug, unique within its course */
+            slug: string;
+            /** @description The lesson's title */
+            title: string;
+            /**
+             * @description The lesson's kind
+             * @enum {string}
+             */
+            kind: "lesson" | "exercise" | "quiz";
+            /** @description The lesson's position within its module (manifest order) */
+            position: number;
+            /** @description The key of the track (lens) this lesson belongs to, or null */
+            track: ((string | null) | null) | null;
+            /** @description Estimated minutes to complete the lesson, or null if not specified */
+            estimateMinutes: ((number | null) | null) | null;
+        };
+        /** @description A course module and its ordered, non-archived lessons. */
+        CourseModule: {
+            /** @description The module's stable key */
+            key: string;
+            /** @description The module's title */
+            title: string;
+            /** @description The module's position within the course (manifest order) */
+            position: number;
+            /** @description The module's non-archived lessons, in manifest order */
+            lessons: components["schemas"]["LessonSummary"][];
+        };
+        /** @description A course as it appears in the catalog listing. */
+        CourseSummary: {
+            /** @description The course's globally-unique slug */
+            slug: string;
+            /** @description The course's title */
+            title: string;
+            /** @description The course's subtitle, or null */
+            subtitle: ((string | null) | null) | null;
+            /** @description The course's description, or null */
+            description: ((string | null) | null) | null;
+            /** @description The course's tags */
+            tags: string[];
+            /** @description The count of the course's non-archived modules */
+            moduleCount: number;
+            /** @description The count of the course's non-archived lessons */
+            lessonCount: number;
+        };
+        /** @description A course's full table of contents. */
+        CourseDetail: {
+            /** @description The course's globally-unique slug */
+            slug: string;
+            /** @description The course's title */
+            title: string;
+            /** @description The course's subtitle, or null */
+            subtitle: ((string | null) | null) | null;
+            /** @description The course's description, or null */
+            description: ((string | null) | null) | null;
+            /** @description The course's tags */
+            tags: string[];
+            /** @description The course's tracks (lenses) */
+            tracks: components["schemas"]["Track"][];
+            /** @description The course's non-archived modules, in manifest order */
+            modules: components["schemas"]["CourseModule"][];
         };
         /** @description An error response */
         Error: {
@@ -120,13 +257,67 @@ export interface operations {
             };
         };
     };
-    getLesson: {
+    listCourses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Course summaries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseSummary"][];
+                };
+            };
+        };
+    };
+    getCourse: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description The lesson slug */
-                slug: string;
+                /** @description The course slug */
+                courseSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Course found */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseDetail"];
+                };
+            };
+            /** @description Course not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getCourseLesson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The course slug */
+                courseSlug: string;
+                /** @description The lesson slug (unique within the course) */
+                lessonSlug: string;
             };
             cookie?: never;
         };
@@ -141,7 +332,7 @@ export interface operations {
                     "application/json": components["schemas"]["Lesson"];
                 };
             };
-            /** @description Lesson not found */
+            /** @description Course or lesson not found */
             404: {
                 headers: {
                     [name: string]: unknown;

@@ -1,0 +1,8 @@
+schema: 1
+slug: missing-lesson-course
+title: Missing Lesson Course
+modules:
+  - id: intro
+    title: Introduction
+    lessons:
+      - modules/01-intro/does-not-exist.md

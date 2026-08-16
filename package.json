@@ -18,6 +18,9 @@
     "format": "prettier --write .",
     "migrate": "node tools/src/migrate.ts",
     "seed": "node tools/src/seed.ts",
+    "validate": "node tools/src/validate.ts",
+    "import": "node tools/src/import.ts",
+    "scaffold": "node tools/src/scaffold.ts",
     "gen:api": "openapi-typescript openapi/openapi.yaml -o web/src/lib/api-types.ts",
     "gen:api:check": "git ls-files --error-unmatch web/src/lib/api-types.ts >/dev/null || { echo 'gen:api:check: web/src/lib/api-types.ts is not tracked by git; commit it so staleness can be detected' >&2; exit 1; } && npm run gen:api && git diff --exit-code -- web/src/lib/api-types.ts"
   },

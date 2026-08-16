@@ -1,4 +1,5 @@
 import { describe, it, expect, afterAll } from 'vitest';
+import { readdir } from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
@@ -19,11 +20,40 @@ const migrationsDir = path.resolve(
   '../../db/migrations',
 );
 
+// Tables created across all migrations, dependents-first so a plain DROP
+// (no CASCADE needed, but harmless) always succeeds regardless of FK order.
+const ALL_TABLES = ['import_runs', 'lessons', 'modules', 'tracks', 'courses', 'content_repos', 'schema_migrations'];
+
 async function resetDatabase() {
   // Drop everything the migrations might create so each run starts from empty,
   // letting this test suite run repeatedly against the same test database.
-  await pool.query('DROP TABLE IF EXISTS lessons');
-  await pool.query('DROP TABLE IF EXISTS schema_migrations');
+  for (const table of ALL_TABLES) {
+    await pool.query(`DROP TABLE IF EXISTS ${table} CASCADE`);
+  }
+}
+
+/**
+ * How many migrations there are on disk. Counted rather than hard-coded so
+ * adding a migration does not silently make "was everything applied?" a
+ * weaker assertion than it looks.
+ */
+async function countMigrationFiles(): Promise<number> {
+  const files = await readdir(migrationsDir);
+  return files.filter((f) => f.endsWith('.sql')).length;
+}
+
+/** Creates a bare course + module pair, used as FK targets by the constraint tests below. */
+async function createCourseAndModule(): Promise<{ courseId: string; moduleId: string }> {
+  const course = await pool.query<{ id: string }>(
+    `insert into courses (slug, title) values ($1, $2) returning id`,
+    [`constraint-test-course-${Date.now()}-${Math.random()}`, 'Constraint Test Course'],
+  );
+  const courseId = course.rows[0]!.id;
+  const module = await pool.query<{ id: string }>(
+    `insert into modules (course_id, key, title) values ($1, $2, $3) returning id`,
+    [courseId, 'mod-1', 'Module One'],
+  );
+  return { courseId, moduleId: module.rows[0]!.id };
 }
 
 describe('migrate', () => {
@@ -32,24 +62,28 @@ describe('migrate', () => {
     await pool.end();
   });
 
-  it('applies migrations from empty and records the version', async () => {
+  it('applies every migration from empty and records each version', async () => {
     await resetDatabase();
 
     const result = await runMigrations(connectionString!, migrationsDir);
 
     expect(result.applied).toContain('0001_lessons');
+    expect(result.applied).toContain('0002_content_schema');
+    expect(result.applied).toContain('0003_import_bookkeeping');
 
-    const table = await pool.query(
-      `select table_name from information_schema.tables where table_schema = 'public' and table_name = 'lessons'`,
-    );
-    expect(table.rowCount).toBe(1);
+    for (const table of ['lessons', 'content_repos', 'courses', 'tracks', 'modules', 'import_runs']) {
+      const found = await pool.query(
+        `select table_name from information_schema.tables where table_schema = 'public' and table_name = $1`,
+        [table],
+      );
+      expect(found.rowCount, `expected table "${table}" to exist`).toBe(1);
+    }
 
     const migrations = await pool.query('select version from schema_migrations');
-    expect(migrations.rowCount).toBe(1);
-    expect(migrations.rows[0].version).toBe('0001_lessons');
+    expect(migrations.rowCount).toBe(await countMigrationFiles());
   });
 
-  it('is a no-op the second time and schema_migrations has exactly one row', async () => {
+  it('is a no-op the second time and schema_migrations has one row per migration file', async () => {
     await resetDatabase();
 
     await runMigrations(connectionString!);
@@ -58,6 +92,74 @@ describe('migrate', () => {
     expect(second.applied).toEqual([]);
 
     const migrations = await pool.query('select version from schema_migrations');
-    expect(migrations.rowCount).toBe(1);
+    expect(migrations.rowCount).toBe(await countMigrationFiles());
+  });
+
+  describe('0002_content_schema constraints', () => {
+    it('rejects a track hue outside the five-hue palette', async () => {
+      await resetDatabase();
+      await runMigrations(connectionString!);
+      const { courseId } = await createCourseAndModule();
+
+      await expect(
+        pool.query(`insert into tracks (course_id, key, name, hue) values ($1, $2, $3, $4)`, [
+          courseId,
+          'bad-track',
+          'Bad Track',
+          'purple',
+        ]),
+      ).rejects.toMatchObject({ code: '23514' /* check_violation */ });
+    });
+
+    it('accepts every valid hue', async () => {
+      await resetDatabase();
+      await runMigrations(connectionString!);
+      const { courseId } = await createCourseAndModule();
+
+      for (const hue of ['blue', 'teal', 'ochre', 'maroon', 'slate']) {
+        await expect(
+          pool.query(`insert into tracks (course_id, key, name, hue) values ($1, $2, $3, $4)`, [
+            courseId,
+            `track-${hue}`,
+            hue,
+            hue,
+          ]),
+        ).resolves.toBeTruthy();
+      }
+    });
+
+    it('rejects a lesson kind outside lesson|exercise|quiz', async () => {
+      await resetDatabase();
+      await runMigrations(connectionString!);
+      const { courseId, moduleId } = await createCourseAndModule();
+
+      await expect(
+        pool.query(
+          `insert into lessons (course_id, module_id, lesson_key, slug, title, kind, source_path, content_hash, blocks)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [courseId, moduleId, 'l1', 'l1', 'Lesson One', 'essay', 'l1.md', 'hash1', '[]'],
+        ),
+      ).rejects.toMatchObject({ code: '23514' /* check_violation */ });
+    });
+
+    it('rejects a duplicate (module_id, lesson_key) — the lesson-identity unique constraint', async () => {
+      await resetDatabase();
+      await runMigrations(connectionString!);
+      const { courseId, moduleId } = await createCourseAndModule();
+
+      await pool.query(
+        `insert into lessons (course_id, module_id, lesson_key, slug, title, source_path, content_hash, blocks)
+         values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [courseId, moduleId, 'dup-key', 'dup-key', 'First', 'dup.md', 'hash1', '[]'],
+      );
+
+      await expect(
+        pool.query(
+          `insert into lessons (course_id, module_id, lesson_key, slug, title, source_path, content_hash, blocks)
+           values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [courseId, moduleId, 'dup-key', 'dup-key-2', 'Second', 'dup2.md', 'hash2', '[]'],
+        ),
+      ).rejects.toMatchObject({ code: '23505' /* unique_violation */ });
+    });
   });
 });

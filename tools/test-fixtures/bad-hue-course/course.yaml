@@ -1,0 +1,10 @@
+schema: 1
+slug: bad-hue-course
+title: Bad Hue Course
+tracks:
+  - { id: cx, name: Complexity, hue: purple }
+modules:
+  - id: intro
+    title: Introduction
+    lessons:
+      - modules/01-intro/lesson-one.md

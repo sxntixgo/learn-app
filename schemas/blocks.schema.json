@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://learn-app.example/schemas/blocks.schema.json",
+  "title": "Lesson block array",
+  "description": "The typed block array a lesson's `blocks` jsonb column must satisfy — design §6.2/§7 ('lessons.blocks is jsonb, validated against the block schema before write'). Phase 2 supports exactly two block types, `prose` and `code`. Do NOT add chart/quiz/rubric/callout/figure here — those belong to later phases per the design's own phasing, and admitting them early would let un-implemented block types silently reach the database.",
+  "type": "array",
+  "items": { "$ref": "#/$defs/block" },
+  "$defs": {
+    "block": {
+      "oneOf": [{ "$ref": "#/$defs/proseBlock" }, { "$ref": "#/$defs/codeBlock" }]
+    },
+    "proseBlock": {
+      "type": "object",
+      "required": ["type", "html"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "prose" },
+        "html": {
+          "description": "Rendered HTML for this prose group, produced by the markdown pipeline at import time.",
+          "type": "string"
+        }
+      }
+    },
+    "codeBlock": {
+      "type": "object",
+      "required": ["type", "lang", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "code" },
+        "lang": {
+          "description": "Fence info-string language, or null when the fence declared none.",
+          "type": ["string", "null"]
+        },
+        "source": {
+          "description": "Raw code source, with any [!note ...] annotation marker comments stripped.",
+          "type": "string"
+        },
+        "annotations": {
+          "description": "Author annotations pulled from in-source marker comments (design §6.3). Optional — most code blocks carry none.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/annotation" }
+        }
+      }
+    },
+    "annotation": {
+      "type": "object",
+      "required": ["body"],
+      "additionalProperties": false,
+      "properties": {
+        "line": {
+          "description": "The single source line this annotation attaches to (1-indexed).",
+          "type": "integer",
+          "minimum": 1
+        },
+        "lines": {
+          "description": "An inclusive [start, end] line range (1-indexed) this annotation attaches to, for annotations spanning more than one line.",
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "track": {
+          "description": "Optional track id this annotation belongs to, e.g. \"cx\" — matches a track's `id` in course.yaml.",
+          "type": "string",
+          "minLength": 1
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "oneOf": [{ "required": ["line"] }, { "required": ["lines"] }]
+    }
+  }
+}

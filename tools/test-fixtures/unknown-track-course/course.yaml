@@ -1,0 +1,15 @@
+# A course that VALIDATES but cannot be IMPORTED: `lesson-one.md` names a
+# track that course.yaml does not declare. Cross-file consistency is not
+# something schemas/course.schema.json can express (it validates one document
+# at a time), so this fixture is what proves the importer refuses to write a
+# lesson with a silently-null track.
+schema: 1
+slug: unknown-track-course
+title: Unknown Track Course
+tracks:
+  - { id: cx, name: Complexity, hue: blue }
+modules:
+  - id: intro
+    title: Introduction
+    lessons:
+      - modules/01-intro/lesson-one.md

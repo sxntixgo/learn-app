@@ -1,9 +1,11 @@
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { codeToHtml } from 'shiki';
-import type { components } from '../../../src/lib/api-types';
+import type { Lesson } from '../../../../../src/lib/api';
+import { fetchLesson } from '../../../../../src/lib/api';
+import type { components } from '../../../../../src/lib/api-types';
 import styles from './lesson.module.css';
 
-type Lesson = components['schemas']['Lesson'];
 type Block = components['schemas']['Block'];
 type CodeBlock = Extract<Block, { type: 'code' }>;
 
@@ -11,26 +13,6 @@ type CodeBlock = Extract<Block, { type: 'code' }>;
 // app/globals.css that decide which half paints, driven by
 // prefers-color-scheme (no JS theme switcher; that's Phase 4).
 const CODE_THEMES = { light: 'github-light', dark: 'github-dark-dimmed' } as const;
-
-async function fetchLesson(slug: string): Promise<Lesson | null> {
-  const base = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (!base) {
-    throw new Error('NEXT_PUBLIC_API_BASE_URL is not set');
-  }
-
-  const res = await fetch(`${base}/api/v1/lessons/${encodeURIComponent(slug)}`, {
-    cache: 'no-store',
-  });
-
-  if (res.status === 404) {
-    return null;
-  }
-  if (!res.ok) {
-    throw new Error(`Failed to fetch lesson "${slug}": ${res.status}`);
-  }
-
-  return (await res.json()) as Lesson;
-}
 
 // Highlighting happens here, at render time, never at import/build time
 // (CLAUDE.md rule 4). A language shiki doesn't recognise falls back to
@@ -47,10 +29,10 @@ async function highlightCode(block: CodeBlock): Promise<string> {
 export default async function LessonPage({
   params,
 }: {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ courseSlug: string; lessonSlug: string }>;
 }) {
-  const { slug } = await params;
-  const lesson = await fetchLesson(slug);
+  const { courseSlug, lessonSlug } = await params;
+  const lesson: Lesson | null = await fetchLesson(courseSlug, lessonSlug);
 
   if (!lesson) {
     notFound();
@@ -61,9 +43,7 @@ export default async function LessonPage({
     .filter((entry): entry is { block: CodeBlock; index: number } => entry.block.type === 'code');
 
   const highlighted = new Map(
-    await Promise.all(
-      codeIndexes.map(async ({ block, index }) => [index, await highlightCode(block)] as const)
-    )
+    await Promise.all(codeIndexes.map(async ({ block, index }) => [index, await highlightCode(block)] as const)),
   );
 
   return (
@@ -83,9 +63,34 @@ export default async function LessonPage({
                 className={styles.code}
                 dangerouslySetInnerHTML={{ __html: highlighted.get(index) ?? '' }}
               />
-            )
+            ),
           )}
         </div>
+
+        {lesson.prev || lesson.next ? (
+          <nav className={styles.nav} aria-label="Lesson navigation">
+            {lesson.prev ? (
+              <Link
+                href={`/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lesson.prev.slug)}`}
+                className={styles.navLink}
+              >
+                <span className={styles.navLabel}>Previous</span>
+                <span className={styles.navTitle}>{lesson.prev.title}</span>
+              </Link>
+            ) : (
+              <span />
+            )}
+            {lesson.next ? (
+              <Link
+                href={`/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lesson.next.slug)}`}
+                className={`${styles.navLink} ${styles.navNext}`}
+              >
+                <span className={styles.navLabel}>Next</span>
+                <span className={styles.navTitle}>{lesson.next.title}</span>
+              </Link>
+            ) : null}
+          </nav>
+        ) : null}
       </article>
     </main>
   );

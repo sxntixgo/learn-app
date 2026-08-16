@@ -23,18 +23,78 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthStatus'
 
-  /api/v1/lessons/{slug}:
+  /api/v1/courses:
     get:
-      summary: Get a lesson by slug
-      description: Retrieves a lesson with all its blocks
-      operationId: getLesson
+      summary: List all courses
+      description: >-
+        Returns a summary of every imported course, for the catalog page.
+        Archived modules/lessons are excluded from moduleCount/lessonCount.
+      operationId: listCourses
+      tags:
+        - courses
+      responses:
+        '200':
+          description: Course summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CourseSummary'
+
+  /api/v1/courses/{courseSlug}:
+    get:
+      summary: Get a course's full table of contents
+      description: >-
+        Returns the course, its tracks, and every non-archived module with
+        its non-archived lessons, in manifest order — enough to render a
+        full table of contents.
+      operationId: getCourse
+      tags:
+        - courses
+      parameters:
+        - name: courseSlug
+          in: path
+          required: true
+          description: The course slug
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Course found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseDetail'
+        '404':
+          description: Course not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/courses/{courseSlug}/lessons/{lessonSlug}:
+    get:
+      summary: Get a lesson within a course
+      description: >-
+        Retrieves a lesson with all its blocks, plus prev/next navigation
+        stubs computed across the whole course in manifest order (not just
+        within the lesson's module). An archived lesson (or a lesson whose
+        module is archived) is not reachable here and returns 404.
+      operationId: getCourseLesson
       tags:
         - lessons
       parameters:
-        - name: slug
+        - name: courseSlug
           in: path
           required: true
-          description: The lesson slug
+          description: The course slug
+          schema:
+            type: string
+        - name: lessonSlug
+          in: path
+          required: true
+          description: The lesson slug (unique within the course)
           schema:
             type: string
       responses:
@@ -45,7 +105,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Lesson'
         '404':
-          description: Lesson not found
+          description: Course or lesson not found
           content:
             application/json:
               schema:
@@ -112,25 +172,260 @@ components:
           code: '#/components/schemas/CodeBlock'
       description: A content block, which may be prose or code
 
-    Lesson:
+    LessonNavStub:
       type: object
-      description: A lesson containing a title and structured blocks
+      description: A minimal pointer to an adjacent lesson, for prev/next navigation.
       properties:
         slug:
           type: string
-          description: The URL-friendly identifier for the lesson
+          description: The adjacent lesson's slug (unique within the course)
+        title:
+          type: string
+          description: The adjacent lesson's title
+      required:
+        - slug
+        - title
+
+    Lesson:
+      type: object
+      description: A lesson containing a title, structured blocks, and whole-course navigation.
+      properties:
+        slug:
+          type: string
+          description: The URL-friendly identifier for the lesson, unique within its course
         title:
           type: string
           description: The human-readable title of the lesson
+        kind:
+          type: string
+          enum:
+            - lesson
+            - exercise
+            - quiz
+          description: The lesson's kind
+        track:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: The key of the track (lens) this lesson belongs to, or null
+        estimateMinutes:
+          type:
+            - integer
+            - "null"
+          nullable: true
+          description: Estimated minutes to complete the lesson, or null if not specified
         blocks:
           type: array
           items:
             $ref: '#/components/schemas/Block'
           description: The ordered array of content blocks
+        prev:
+          description: >-
+            The previous lesson in the whole course, in manifest order, or
+            null if this is the first lesson.
+          oneOf:
+            - $ref: '#/components/schemas/LessonNavStub'
+            - type: "null"
+        next:
+          description: >-
+            The next lesson in the whole course, in manifest order, or null
+            if this is the last lesson.
+          oneOf:
+            - $ref: '#/components/schemas/LessonNavStub'
+            - type: "null"
       required:
         - slug
         - title
+        - kind
+        - track
+        - estimateMinutes
         - blocks
+        - prev
+        - next
+
+    Track:
+      type: object
+      description: A course track (lens) — a hue-owning grouping lessons can belong to.
+      properties:
+        key:
+          type: string
+          description: The track's stable key, referenced by lessons
+        name:
+          type: string
+          description: The human-readable track name
+        hue:
+          type: string
+          enum:
+            - blue
+            - teal
+            - ochre
+            - maroon
+            - slate
+          description: The one hue this track owns
+        blurb:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: A short description of the track, or null
+      required:
+        - key
+        - name
+        - hue
+        - blurb
+
+    LessonSummary:
+      type: object
+      description: A lesson as it appears in a course's table of contents.
+      properties:
+        slug:
+          type: string
+          description: The lesson's slug, unique within its course
+        title:
+          type: string
+          description: The lesson's title
+        kind:
+          type: string
+          enum:
+            - lesson
+            - exercise
+            - quiz
+          description: The lesson's kind
+        position:
+          type: integer
+          description: The lesson's position within its module (manifest order)
+        track:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: The key of the track (lens) this lesson belongs to, or null
+        estimateMinutes:
+          type:
+            - integer
+            - "null"
+          nullable: true
+          description: Estimated minutes to complete the lesson, or null if not specified
+      required:
+        - slug
+        - title
+        - kind
+        - position
+        - track
+        - estimateMinutes
+
+    CourseModule:
+      type: object
+      description: A course module and its ordered, non-archived lessons.
+      properties:
+        key:
+          type: string
+          description: The module's stable key
+        title:
+          type: string
+          description: The module's title
+        position:
+          type: integer
+          description: The module's position within the course (manifest order)
+        lessons:
+          type: array
+          items:
+            $ref: '#/components/schemas/LessonSummary'
+          description: The module's non-archived lessons, in manifest order
+      required:
+        - key
+        - title
+        - position
+        - lessons
+
+    CourseSummary:
+      type: object
+      description: A course as it appears in the catalog listing.
+      properties:
+        slug:
+          type: string
+          description: The course's globally-unique slug
+        title:
+          type: string
+          description: The course's title
+        subtitle:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: The course's subtitle, or null
+        description:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: The course's description, or null
+        tags:
+          type: array
+          items:
+            type: string
+          description: The course's tags
+        moduleCount:
+          type: integer
+          description: The count of the course's non-archived modules
+        lessonCount:
+          type: integer
+          description: The count of the course's non-archived lessons
+      required:
+        - slug
+        - title
+        - subtitle
+        - description
+        - tags
+        - moduleCount
+        - lessonCount
+
+    CourseDetail:
+      type: object
+      description: A course's full table of contents.
+      properties:
+        slug:
+          type: string
+          description: The course's globally-unique slug
+        title:
+          type: string
+          description: The course's title
+        subtitle:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: The course's subtitle, or null
+        description:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: The course's description, or null
+        tags:
+          type: array
+          items:
+            type: string
+          description: The course's tags
+        tracks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Track'
+          description: The course's tracks (lenses)
+        modules:
+          type: array
+          items:
+            $ref: '#/components/schemas/CourseModule'
+          description: The course's non-archived modules, in manifest order
+      required:
+        - slug
+        - title
+        - subtitle
+        - description
+        - tags
+        - tracks
+        - modules
 
     Error:
       type: object
