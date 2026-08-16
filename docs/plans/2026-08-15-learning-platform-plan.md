@@ -501,8 +501,38 @@ into pages rendered in an authenticated session. Present since Phase 1; no test 
       **Acceptance:** 429 after the configured attempt count
       **Model:** `sonnet`
 
+- [ ] **Security headers** — CSP, HSTS, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, and frame options, set at the web layer and on API responses
+      **Acceptance:** an integration test asserts every header on a real response. CSP must include an `img-src` policy — the Phase 5 hardening review found that content repos can otherwise make an authenticated reader's browser fetch arbitrary third-party URLs, and that is the correct control for it. Verify the app still functions with the policy on: self-hosted fonts, inline styles from CSS modules, and Shiki output must all survive
+      **Model:** `opus` — *(a) security: a header set this is trivially wrong in ways nothing else catches*
+
 > **Gate 6 — exposure.** Policy matrix green, admin exclusivity enforced in the database,
 > hardening from Phase 5 reviewed. **Only now may this go behind public Caddy.**
+
+---
+
+## Phase 6b — Backup and restore
+
+*The design asserts "backup = one `pg_dump`" as an architectural virtue. Nothing implements
+it, and an untested restore is not a backup. This lands before real progress data exists.*
+
+- [ ] **Backup script** — `tools/src/backup.ts`, a `pg_dump` wrapper writing a timestamped,
+      compressed dump to a configured path, with retention (keep N)
+      **Acceptance:** produces a dump; retention prunes correctly past the limit
+      **Model:** `haiku`
+- [ ] **Restore script + a REAL restore test** — restore into a scratch database and assert
+      the data matches
+      **Acceptance:** an automated test that dumps a populated database, restores it into a
+      fresh one, and asserts row counts and a content checksum match across `users`,
+      `lesson_progress`, `activity_events`, and `courses`. **This test is the deliverable** —
+      a backup nobody has restored is a hope, not a plan
+      **Model:** `sonnet`
+- [ ] **Document the operational loop** in `README.md` — where dumps go, how to restore, and
+      the reminder that avatars and content both live in Postgres, so one dump really is
+      everything
+      **Model:** `haiku`
+
+> **Gate 6b.** Run a restore on the WSL host and confirm the app comes up against the
+> restored database.
 
 ---
 
@@ -605,6 +635,10 @@ into pages rendered in an authenticated session. Present since Phase 1; no test 
       **Acceptance:** a JPEG with EXIF GPS yields a WebP with no metadata; SVG rejected; oversized rejected **before** decode; a decompression bomb does not exhaust memory
       **Model:** `opus` — *(a) security: untrusted binary input and image decoding*
 
+- [ ] **Account deletion and data export** — a student can export their own data and delete their account
+      **Acceptance:** export returns progress, submissions, badges and profile as JSON. Deletion removes personal data while preserving referential integrity — decide explicitly whether `activity_events` rows are deleted or anonymised, and record the choice, since that table is append-only by trigger and cannot simply be updated
+      **Model:** `opus` — *(b) data integrity: deletion against an append-only log is exactly where this goes wrong quietly*
+
 > **Gate 12.** Confirm no endpoint returns an email address to an unauthenticated caller.
 
 ---
@@ -628,6 +662,48 @@ into pages rendered in an authenticated session. Present since Phase 1; no test 
 - [ ] **`manifest.webmanifest`**, icons, theme colour, `display: standalone`
       **Acceptance:** Add to Home Screen on the iPad gives your icon and name, launches without browser chrome, and gets its own app-switcher card
       **Model:** `haiku`
+
+---
+
+## Phase 15 — End-to-end tests
+
+*286 tests cover the API, tools, and pure web logic. Nothing drives a real browser. Every UI
+claim so far was verified by reading served markup — which caught real defects but cannot
+catch layout, focus order, or whether a component is actually usable.*
+
+- [ ] **Playwright harness** against the built app plus a seeded test database
+      **Acceptance:** one spec runs green in CI, headless, with no flake across three runs
+      **Model:** `sonnet`
+- [ ] **Core journeys** — register via invite, browse the catalog, enrol, read a lesson, mark
+      it complete, see the event in the feed
+      **Acceptance:** each journey asserts on user-visible outcomes, not implementation detail
+      **Model:** `sonnet`
+- [ ] **Viewport specs at 375 / 834 / 1440** — the app shell switches shape, the heatmap
+      window changes column count, prose holds its measure
+      **Acceptance:** assertions on computed layout at each width. **This is the check that
+      would have caught what I could not verify without a browser**
+      **Model:** `sonnet`
+- [ ] **Accessibility pass** — axe against every route, keyboard-only traversal of the
+      heatmap and the annotatable code block
+      **Acceptance:** no critical violations; the grid is reachable and escapable by keyboard
+      **Model:** `sonnet`
+
+---
+
+## Phase 16 — Search
+
+*Content lives in Postgres partly because it is queryable, but nothing queries it. At sixty
+lessons this is convenience; across several courses it becomes how you find anything.*
+
+- [ ] **Postgres full-text search** over lesson titles and prose block text, respecting
+      course visibility and enrolment
+      **Acceptance:** a `tsvector` column maintained on import with a GIN index; results
+      exclude archived lessons and courses the actor cannot see — with a test per exclusion,
+      since search is the classic way private content leaks
+      **Model:** `opus` — *(a) security: search is a visibility boundary wearing a different hat*
+- [ ] **Search UI** in the shell, with results grouped by course
+      **Acceptance:** usable at 375px; keyboard reachable; empty and no-results states are real sentences
+      **Model:** `sonnet`
 
 ---
 
@@ -656,6 +732,11 @@ Flag any of these being wrong — each changes the plan:
 ## Out of scope (YAGNI)
 
 - Service worker / offline reading (progress writes stay idempotent, so it stays additive)
+- Observability beyond container logs — no metrics, tracing, or error aggregation. At five
+  users `docker compose logs` is the honest answer; revisit if that stops being true
+- Content-repo webhooks / auto-sync on push — the sync daemon remains a standalone Go
+  candidate, not a phase
+- General API rate limiting beyond login and the public profile route
 - Cohort-wide activity feed; peer review of submissions
 - TOTP two-factor
 - Avatar storage outside Postgres; object storage of any kind

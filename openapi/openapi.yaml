@@ -394,6 +394,90 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/v1/setup:
+    get:
+      summary: First-run setup status
+      description: >-
+        Whether this instance has been claimed yet (design §5.2). The
+        bootstrap wizard calls this to decide whether to show itself. It
+        reveals one bit, the same bit the 410 below already reveals.
+      operationId: getSetupStatus
+      tags:
+        - setup
+      responses:
+        '200':
+          description: The instance's bootstrap state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SetupStatus'
+    post:
+      summary: Claim the instance (first-run bootstrap)
+      description: >-
+        The single exception to invite-only registration (design §13).
+        Gated by the one-time setup token printed to the container logs on
+        boot — the plaintext is never stored, only its SHA-256.
+
+        Creates a LINKED PAIR (design §5.2): the operator account, holding
+        `admin` and nothing else because admin is exclusive (design §5.1),
+        and a student account, linked by `users.operator_for`. Both
+        accounts and the claim itself are one transaction.
+
+        The claim is atomic: `UPDATE instance_state SET bootstrapped_at =
+        now() WHERE bootstrapped_at IS NULL`. Two simultaneous requests
+        yield exactly one 201; the loser gets 409. Once claimed, the route
+        is permanently closed and answers 410 — recorded in
+        `instance_state`, not merely hidden from the UI.
+      operationId: createSetup
+      tags:
+        - setup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetupRequest'
+      responses:
+        '201':
+          description: The instance is claimed; the operator + student pair exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SetupResult'
+        '400':
+          description: >-
+            The request body is malformed — bad email, non-URL-safe or
+            reserved handle, short password, invalid timezone, or the two
+            accounts sharing an email or handle. The claim is untouched.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: >-
+            Wrong, tampered or absent setup token. The claim is NOT
+            consumed — the correct token still works afterwards.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: >-
+            The instance was unclaimed when this request arrived, and a
+            concurrent request won the race.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '410':
+          description: >-
+            The instance was already set up before this request arrived.
+            Permanent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   schemas:
     HealthStatus:
@@ -1195,3 +1279,109 @@ components:
         - counts
         - error
         - problems
+
+    SetupStatus:
+      type: object
+      description: Whether this instance has been claimed (design §5.2)
+      properties:
+        bootstrapped:
+          type: boolean
+          description: True once the first account has claimed the instance.
+      required:
+        - bootstrapped
+
+    SetupAccount:
+      type: object
+      description: One half of the linked pair the bootstrap wizard creates
+      properties:
+        email:
+          type: string
+          description: Lower-cased before storage; unique across the instance.
+        handle:
+          type: string
+          description: >-
+            The profile handle (`/u/<handle>`), 2-31 characters of a-z, 0-9,
+            hyphen or underscore. User-chosen and deliberately NOT derived
+            from the email local part (design §11).
+        password:
+          type: string
+          minLength: 12
+          maxLength: 200
+          description: >-
+            At least 12 characters. Hashed with Argon2id (design §13) by the
+            password-handling task; stored as NULL — meaning "no credential,
+            cannot authenticate" — until that is wired in.
+        displayName:
+          type: string
+          nullable: true
+          description: Optional human name shown on the profile.
+      required:
+        - email
+        - handle
+        - password
+
+    SetupRequest:
+      type: object
+      description: The bootstrap wizard's submission (design §5.2)
+      properties:
+        setupToken:
+          type: string
+          description: >-
+            The one-time token printed to the container logs on boot. Only
+            its SHA-256 is stored, and it is destroyed by a successful claim.
+        admin:
+          $ref: '#/components/schemas/SetupAccount'
+        student:
+          $ref: '#/components/schemas/SetupAccount'
+        timezone:
+          type: string
+          nullable: true
+          description: An IANA time zone name applied to both accounts (design §15).
+      required:
+        - setupToken
+        - admin
+        - student
+
+    SetupAccountResult:
+      type: object
+      description: An account created by the bootstrap
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        handle:
+          type: string
+        displayName:
+          type: string
+          nullable: true
+        roles:
+          type: array
+          items:
+            type: string
+            enum:
+              - student
+              - teacher
+              - admin
+          description: >-
+            The roles granted at creation. Roles are a set, not a ladder, and
+            `admin` is exclusive of the other two (design §5, §5.1).
+      required:
+        - id
+        - email
+        - handle
+        - displayName
+        - roles
+
+    SetupResult:
+      type: object
+      description: The linked operator + student pair (design §5.2)
+      properties:
+        admin:
+          $ref: '#/components/schemas/SetupAccountResult'
+        student:
+          $ref: '#/components/schemas/SetupAccountResult'
+      required:
+        - admin
+        - student

@@ -228,6 +228,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * First-run setup status
+         * @description Whether this instance has been claimed yet (design §5.2). The bootstrap wizard calls this to decide whether to show itself. It reveals one bit, the same bit the 410 below already reveals.
+         */
+        get: operations["getSetupStatus"];
+        put?: never;
+        /**
+         * Claim the instance (first-run bootstrap)
+         * @description The single exception to invite-only registration (design §13). Gated by the one-time setup token printed to the container logs on boot — the plaintext is never stored, only its SHA-256.
+         *     Creates a LINKED PAIR (design §5.2): the operator account, holding `admin` and nothing else because admin is exclusive (design §5.1), and a student account, linked by `users.operator_for`. Both accounts and the claim itself are one transaction.
+         *     The claim is atomic: `UPDATE instance_state SET bootstrapped_at = now() WHERE bootstrapped_at IS NULL`. Two simultaneous requests yield exactly one 201; the loser gets 409. Once claimed, the route is permanently closed and answers 410 — recorded in `instance_state`, not merely hidden from the UI.
+         */
+        post: operations["createSetup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -579,6 +605,46 @@ export interface components {
             error: ((string | null) | null) | null;
             /** @description The full file:line problem list for a failed run (design §8), or empty when there isn't one. */
             problems: string[];
+        };
+        /** @description Whether this instance has been claimed (design §5.2) */
+        SetupStatus: {
+            /** @description True once the first account has claimed the instance. */
+            bootstrapped: boolean;
+        };
+        /** @description One half of the linked pair the bootstrap wizard creates */
+        SetupAccount: {
+            /** @description Lower-cased before storage; unique across the instance. */
+            email: string;
+            /** @description The profile handle (`/u/<handle>`), 2-31 characters of a-z, 0-9, hyphen or underscore. User-chosen and deliberately NOT derived from the email local part (design §11). */
+            handle: string;
+            /** @description At least 12 characters. Hashed with Argon2id (design §13) by the password-handling task; stored as NULL — meaning "no credential, cannot authenticate" — until that is wired in. */
+            password: string;
+            /** @description Optional human name shown on the profile. */
+            displayName?: string | null;
+        };
+        /** @description The bootstrap wizard's submission (design §5.2) */
+        SetupRequest: {
+            /** @description The one-time token printed to the container logs on boot. Only its SHA-256 is stored, and it is destroyed by a successful claim. */
+            setupToken: string;
+            admin: components["schemas"]["SetupAccount"];
+            student: components["schemas"]["SetupAccount"];
+            /** @description An IANA time zone name applied to both accounts (design §15). */
+            timezone?: string | null;
+        };
+        /** @description An account created by the bootstrap */
+        SetupAccountResult: {
+            /** Format: uuid */
+            id: string;
+            email: string;
+            handle: string;
+            displayName: string | null;
+            /** @description The roles granted at creation. Roles are a set, not a ladder, and `admin` is exclusive of the other two (design §5, §5.1). */
+            roles: ("student" | "teacher" | "admin")[];
+        };
+        /** @description The linked operator + student pair (design §5.2) */
+        SetupResult: {
+            admin: components["schemas"]["SetupAccountResult"];
+            student: components["schemas"]["SetupAccountResult"];
         };
     };
     responses: never;
@@ -938,6 +1004,86 @@ export interface operations {
             };
             /** @description The actor is not permitted to read import history */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getSetupStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The instance's bootstrap state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+        };
+    };
+    createSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupRequest"];
+            };
+        };
+        responses: {
+            /** @description The instance is claimed; the operator + student pair exists */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupResult"];
+                };
+            };
+            /** @description The request body is malformed — bad email, non-URL-safe or reserved handle, short password, invalid timezone, or the two accounts sharing an email or handle. The claim is untouched. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Wrong, tampered or absent setup token. The claim is NOT consumed — the correct token still works afterwards. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The instance was unclaimed when this request arrived, and a concurrent request won the race. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The instance was already set up before this request arrived. Permanent. */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
