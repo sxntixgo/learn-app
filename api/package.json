@@ -7,7 +7,9 @@
     "./content/parse": "./src/content/parse.ts",
     "./content/validate": "./src/content/validate.ts",
     "./content/manifest": "./src/content/manifest.ts",
-    "./content/import": "./src/content/import.ts"
+    "./content/import": "./src/content/import.ts",
+    "./content/clone": "./src/content/clone.ts",
+    "./content/repos": "./src/content/repos.ts"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
