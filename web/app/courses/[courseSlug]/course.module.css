@@ -26,6 +26,47 @@
   line-height: 1.6;
 }
 
+/* Course progress summary (design plan phase 3 web §14: quiet, no new colour). */
+.progressSummary {
+  margin: 0 0 1.5rem;
+}
+
+.progressText {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.6rem;
+  margin-bottom: 0.4rem;
+}
+
+.progressLabel {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-text-secondary);
+}
+
+.progressValue {
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+
+.progressBar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-border-hairline);
+  overflow: hidden;
+}
+
+.progressBarFill {
+  height: 100%;
+  background: var(--color-link);
+  border-radius: inherit;
+}
+
 .tracks {
   list-style: none;
   margin: 0 0 2rem;
@@ -75,6 +116,12 @@
   text-decoration: none;
 }
 
+/* Marked structurally (the border, like the heatmap's "today" ring), not by
+ * colour alone — a completed row still reads correctly in greyscale. */
+.lessonRow[data-complete='true'] {
+  border-color: var(--color-link);
+}
+
 .lessonTitle {
   display: block;
 }
@@ -86,6 +133,21 @@
   font-size: 0.78rem;
   color: var(--color-text-secondary);
   margin-top: 0.15rem;
+}
+
+.lessonDone {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.lessonDone::before {
+  content: '';
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--color-link);
 }
 
 .empty {

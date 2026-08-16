@@ -4,6 +4,7 @@ import { codeToHtml } from 'shiki';
 import type { Lesson } from '../../../../../src/lib/api';
 import { fetchLesson } from '../../../../../src/lib/api';
 import type { components } from '../../../../../src/lib/api-types';
+import MarkCompleteButton from './MarkCompleteButton';
 import styles from './lesson.module.css';
 
 type Block = components['schemas']['Block'];
@@ -65,6 +66,15 @@ export default async function LessonPage({
               />
             ),
           )}
+        </div>
+
+        <div className={styles.progress}>
+          <MarkCompleteButton
+            courseSlug={courseSlug}
+            lessonSlug={lesson.slug}
+            kind={lesson.kind}
+            progress={lesson.progress}
+          />
         </div>
 
         {lesson.prev || lesson.next ? (

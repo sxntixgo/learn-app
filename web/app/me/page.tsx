@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
-import { fetchHeatmap } from '../../src/lib/api';
+import { fetchActivity, fetchHeatmap } from '../../src/lib/api';
 import { HEATMAP_MAX_WEEKS } from '../../src/lib/heatmap';
+import ActivityFeed from './ActivityFeed';
 import Heatmap from './Heatmap';
 import styles from './me.module.css';
 
@@ -13,15 +14,19 @@ function days(n: number): string {
 }
 
 /*
- * The student's own dashboard. Deliberately narrow in scope: the heatmap, the
- * streaks it is derived from, and nothing else. The activity feed, the app
+ * The student's own dashboard. Deliberately narrow in scope: the heatmap,
+ * the streaks it is derived from, and the activity feed below it. The app
  * shell and the nav are other people's work (design §10, plan phase 4).
  *
  * The full 53-week window is fetched here, once, on the server. How much of it
  * is visible without scrolling is a CSS decision — see src/lib/heatmap.ts.
+ *
+ * The feed's timestamps render in `heatmap.timezone` — the same effective
+ * IANA zone (design §15: real value, or the UTC fallback when unset) already
+ * resolved for the heatmap, rather than a second call to /api/v1/me.
  */
 export default async function MePage() {
-  const heatmap = await fetchHeatmap(HEATMAP_MAX_WEEKS);
+  const [heatmap, activity] = await Promise.all([fetchHeatmap(HEATMAP_MAX_WEEKS), fetchActivity()]);
 
   return (
     <main className={styles.page}>
@@ -54,6 +59,13 @@ export default async function MePage() {
         ) : (
           <p className={styles.timezoneNote}>Days are counted in {heatmap.timezone}.</p>
         )}
+      </section>
+
+      <section className={styles.feed} aria-labelledby="feed-heading">
+        <h2 className={styles.sectionTitle} id="feed-heading">
+          Recent activity
+        </h2>
+        <ActivityFeed events={activity} timezone={heatmap.timezone} />
       </section>
     </main>
   );
