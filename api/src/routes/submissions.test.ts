@@ -112,12 +112,29 @@ function exerciseMarkdown(title: string, code: string): string {
   return `---\ntitle: ${title}\nkind: exercise\n---\n\nReview this function.\n\n\`\`\`python\n${code}\n\`\`\`\n`;
 }
 
+/**
+ * An exercise lesson carrying BOTH a code block (for annotations) and a
+ * rubric block (design §9.4, Task A/C) — the fixture the grading tests
+ * (Task B/C) score against.
+ */
+function exerciseWithRubricMarkdown(title: string, code: string, criteriaYaml: string): string {
+  return (
+    `---\ntitle: ${title}\nkind: exercise\n---\n\nReview this function.\n\n` +
+    `\`\`\`python\n${code}\n\`\`\`\n\n\`\`\`rubric\ncriteria:\n${criteriaYaml}\n\`\`\`\n`
+  );
+}
+
 interface LessonFixture {
   file: string;
   body: string;
 }
 
-async function writeCourseDir(dir: string, slug: string, lessons: LessonFixture[]): Promise<string> {
+async function writeCourseDir(
+  dir: string,
+  slug: string,
+  lessons: LessonFixture[],
+  tracks: Array<{ id: string; name: string; hue: string }> = [],
+): Promise<string> {
   await rm(dir, { recursive: true, force: true });
   await mkdir(dir, { recursive: true });
 
@@ -125,6 +142,7 @@ async function writeCourseDir(dir: string, slug: string, lessons: LessonFixture[
     schema: 1,
     slug,
     title: 'Submission Test Course',
+    ...(tracks.length > 0 ? { tracks } : {}),
     modules: [{ id: 'exercises', title: 'Exercises', lessons: lessons.map((l) => l.file) }],
   };
   await writeFile(path.join(dir, 'course.yaml'), JSON.stringify(manifest, null, 2));
@@ -778,6 +796,455 @@ describe('exercise submissions', () => {
           .statusCode,
       ).toBe(403);
       await fastify.close();
+    });
+  });
+
+  // ===========================================================================
+  // GRADING (design §9.4, Task B/C): the teacher's half of this module.
+  //
+  // `exercise_submissions` is `unique (user_id, lesson_id)` — one submission
+  // per student per exercise, ever (migration 0011: "there is no retake
+  // row"). So every test below that needs an untouched submission creates
+  // its OWN student, via `freshSubmission()`, rather than sharing one across
+  // tests the way the describe block's `owner`/`otherTeacher` are shared —
+  // those are read-only actors here, but a student here is mutated by the
+  // very thing under test.
+  // ===========================================================================
+  describe('grading: POST .../submissions/{userId}/grade and GET .../submissions/{userId}', () => {
+    const RUBRIC_SLUG = `rubric-course-${RUN_ID}`;
+    const RUBRIC_EXERCISE_SLUG = 'exercises-ex01';
+    const NO_RUBRIC_EXERCISE_SLUG = 'exercises-plain-ex';
+
+    let owner: Actor;
+    let otherTeacher: Actor;
+
+    const gradeUrl = (userId: string) =>
+      `/api/v1/courses/${RUBRIC_SLUG}/lessons/${RUBRIC_EXERCISE_SLUG}/submissions/${userId}/grade`;
+    const teacherViewUrl = (userId: string) =>
+      `/api/v1/courses/${RUBRIC_SLUG}/lessons/${RUBRIC_EXERCISE_SLUG}/submissions/${userId}`;
+
+    beforeAll(async () => {
+      const dir = path.join(tmpRoot, 'rubric-course');
+      await importDir(
+        await writeCourseDir(
+          dir,
+          RUBRIC_SLUG,
+          [
+            {
+              file: 'modules/exercises/ex01.md',
+              body: exerciseWithRubricMarkdown(
+                'Rubric Exercise',
+                ORIGINAL_CODE,
+                '  - name: Spotted the shallow module\n    max: 5\n    track: cx\n  - name: Review tone\n    max: 3',
+              ),
+            },
+            { file: 'modules/exercises/plain-ex.md', body: exerciseMarkdown('No Rubric', ORIGINAL_CODE) },
+          ],
+          [{ id: 'cx', name: 'Complexity', hue: 'blue' }],
+        ),
+      );
+      await pool.query(`update courses set visibility = 'open' where slug = $1`, [RUBRIC_SLUG]);
+
+      const ownerRow = await pool.query<{ id: string }>(
+        `insert into users (display_name) values ('Rubric Owner') returning id`,
+      );
+      owner = { id: ownerRow.rows[0]!.id, roles: ['teacher'] };
+      await pool.query(`update courses set owner_id = $2 where slug = $1`, [RUBRIC_SLUG, owner.id]);
+
+      const otherRow = await pool.query<{ id: string }>(
+        `insert into users (display_name) values ('Other Teacher') returning id`,
+      );
+      otherTeacher = { id: otherRow.rows[0]!.id, roles: ['teacher'] };
+    });
+
+    /** A brand-new student, so each test gets an untouched (user_id, lesson_id) row. */
+    async function newStudent(displayName: string): Promise<Actor> {
+      const row = await pool.query<{ id: string }>(`insert into users (display_name) values ($1) returning id`, [
+        displayName,
+      ]);
+      return { id: row.rows[0]!.id, roles: ['student'] };
+    }
+
+    /** Creates a fresh student, submits one annotation for them, and returns both. */
+    async function freshSubmission(): Promise<{ student: Actor; submission: SubmissionBody }> {
+      const student = await newStudent('Grading Student');
+      const fastify = await buildServer({ actor: student });
+      await fastify.inject({
+        method: 'PUT',
+        url: submissionUrl(RUBRIC_SLUG, RUBRIC_EXERCISE_SLUG),
+        payload: {
+          annotations: [{ blockIndex: 1, startLine: 3, endLine: 4, body: 'The loop building this list.' }],
+        },
+      });
+      const submitted = await fastify.inject({
+        method: 'POST',
+        url: `${submissionUrl(RUBRIC_SLUG, RUBRIC_EXERCISE_SLUG)}/submit`,
+      });
+      await fastify.close();
+      return { student, submission: JSON.parse(submitted.payload) as SubmissionBody };
+    }
+
+    it('a teacher who does not own the course is refused — 403 on both the read and the grade route', async () => {
+      const { student, submission } = await freshSubmission();
+      const outsider = await buildServer({ actor: otherTeacher });
+
+      const read = await outsider.inject({ method: 'GET', url: teacherViewUrl(student.id) });
+      expect(read.statusCode).toBe(403);
+
+      const grade = await outsider.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: {
+          rubricScores: [
+            { criterion: 'Spotted the shallow module', points: 5 },
+            { criterion: 'Review tone', points: 3 },
+          ],
+        },
+      });
+      expect(grade.statusCode).toBe(403);
+
+      // Confirms the refusal actually stopped the write, not just the response code.
+      const refetch = await pool.query<{ status: string }>(
+        `select status from exercise_submissions where id = $1`,
+        [submission.id],
+      );
+      expect(refetch.rows[0]!.status).toBe('submitted');
+      await outsider.close();
+    });
+
+    it('the owning teacher scores every criterion and adds a reply and a top-level annotation in one call', async () => {
+      const { student, submission } = await freshSubmission();
+      const teacher = await buildServer({ actor: owner });
+
+      const studentAnnotationId = submission.annotations[0]!.id;
+
+      const graded = await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: {
+          rubricScores: [
+            { criterion: 'Spotted the shallow module', points: 4 },
+            { criterion: 'Review tone', points: 2 },
+          ],
+          annotations: [
+            { parentId: studentAnnotationId, body: 'Good catch — this is exactly the shallow-module smell.' },
+            { blockIndex: 1, startLine: 5, endLine: 5, body: 'You missed this: a mutable return value.' },
+          ],
+        },
+      });
+      expect(graded.statusCode).toBe(200);
+      const body = JSON.parse(graded.payload) as SubmissionBody & {
+        rubricScores: Array<{ criterion: string; points: number; max: number; track: string | null; scoredBy: string }>;
+      };
+
+      expect(body.status).toBe('returned');
+      expect(body.returnedAt).not.toBeNull();
+
+      expect(body.rubricScores).toHaveLength(2);
+      const byName = new Map(body.rubricScores.map((s) => [s.criterion, s]));
+      expect(byName.get('Spotted the shallow module')).toMatchObject({ points: 4, max: 5, track: 'cx' });
+      expect(byName.get('Review tone')).toMatchObject({ points: 2, max: 3, track: null });
+      expect(byName.get('Spotted the shallow module')!.scoredBy).toBe(owner.id);
+
+      expect(body.annotations).toHaveLength(3);
+      const reply = body.annotations.find((a) => a.parentId === studentAnnotationId);
+      expect(reply).toBeDefined();
+      expect(reply!.authorId).toBe(owner.id);
+      // The reply INHERITS the parent's anchor rather than trusting a
+      // resupplied one — the parent was blockIndex 1, lines 3-4.
+      expect(reply!.blockIndex).toBe(1);
+      expect(reply!.startLine).toBe(3);
+      expect(reply!.endLine).toBe(4);
+
+      const topLevel = body.annotations.find((a) => a.authorId === owner.id && a.parentId === null);
+      expect(topLevel).toBeDefined();
+      expect(topLevel!.startLine).toBe(5);
+
+      // Exactly one exercise_returned event, owned by the STUDENT.
+      const events = await pool.query<{ c: number }>(
+        `select count(*)::int as c from activity_events
+          where user_id = $1 and type = 'exercise_returned' and meta->>'submissionId' = $2`,
+        [student.id, submission.id],
+      );
+      expect(events.rows[0]!.c).toBe(1);
+
+      // The student sees their score and feedback through their own GET.
+      const studentServer = await buildServer({ actor: student });
+      const selfView = await studentServer.inject({
+        method: 'GET',
+        url: submissionUrl(RUBRIC_SLUG, RUBRIC_EXERCISE_SLUG),
+      });
+      const selfBody = JSON.parse(selfView.payload) as SubmissionBody & {
+        rubricScores: Array<{ criterion: string; points: number }>;
+      };
+      expect(selfBody.status).toBe('returned');
+      expect(selfBody.rubricScores).toHaveLength(2);
+      expect(selfBody.annotations).toHaveLength(3);
+      await studentServer.close();
+
+      await teacher.close();
+    });
+
+    it('re-grading updates a criterion and never deletes an annotation — and emits no second event', async () => {
+      const { student, submission } = await freshSubmission();
+      const teacher = await buildServer({ actor: owner });
+
+      const first = await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: {
+          rubricScores: [
+            { criterion: 'Spotted the shallow module', points: 3 },
+            { criterion: 'Review tone', points: 1 },
+          ],
+          annotations: [{ blockIndex: 1, startLine: 1, endLine: 1, body: 'First pass note.' }],
+        },
+      });
+      const firstBody = JSON.parse(first.payload) as SubmissionBody;
+      expect(firstBody.annotations).toHaveLength(2);
+      const returnedAtFirst = firstBody.returnedAt;
+
+      const second = await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: {
+          rubricScores: [
+            // Corrects the earlier score.
+            { criterion: 'Spotted the shallow module', points: 5 },
+            { criterion: 'Review tone', points: 1 },
+          ],
+          annotations: [{ blockIndex: 1, startLine: 2, endLine: 2, body: 'Second pass note.' }],
+        },
+      });
+      expect(second.statusCode).toBe(200);
+      const secondBody = JSON.parse(second.payload) as SubmissionBody & {
+        rubricScores: Array<{ criterion: string; points: number }>;
+      };
+
+      // returnedAt did not move — the student's "feedback arrived" moment is
+      // the first grade call, not every re-grade.
+      expect(secondBody.returnedAt).toBe(returnedAtFirst);
+
+      // The score was corrected in place, not duplicated.
+      expect(secondBody.rubricScores).toHaveLength(2);
+      expect(secondBody.rubricScores.find((s) => s.criterion === 'Spotted the shallow module')!.points).toBe(5);
+
+      // BOTH the student's original annotation AND the first grading pass's
+      // annotation are still there — a re-grade only ever adds.
+      expect(secondBody.annotations).toHaveLength(3);
+      const bodies = secondBody.annotations.map((a) => a.body);
+      expect(bodies).toContain('The loop building this list.');
+      expect(bodies).toContain('First pass note.');
+      expect(bodies).toContain('Second pass note.');
+
+      // Exactly one event despite two grade calls.
+      const events = await pool.query<{ c: number }>(
+        `select count(*)::int as c from activity_events
+          where user_id = $1 and type = 'exercise_returned' and meta->>'submissionId' = $2`,
+        [student.id, submission.id],
+      );
+      expect(events.rows[0]!.c).toBe(1);
+
+      await teacher.close();
+    });
+
+    it('threading is one level: a reply to a reply is refused', async () => {
+      const { student, submission } = await freshSubmission();
+      const teacher = await buildServer({ actor: owner });
+      const studentAnnotationId = submission.annotations[0]!.id;
+
+      const graded = await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: {
+          rubricScores: [
+            { criterion: 'Spotted the shallow module', points: 1 },
+            { criterion: 'Review tone', points: 1 },
+          ],
+          annotations: [{ parentId: studentAnnotationId, body: 'A reply to the student.' }],
+        },
+      });
+      const gradedBody = JSON.parse(graded.payload) as SubmissionBody;
+      const replyId = gradedBody.annotations.find((a) => a.parentId === studentAnnotationId)!.id;
+
+      const secondReply = await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: {
+          rubricScores: [
+            { criterion: 'Spotted the shallow module', points: 1 },
+            { criterion: 'Review tone', points: 1 },
+          ],
+          annotations: [{ parentId: replyId, body: 'A reply to a reply.' }],
+        },
+      });
+      expect(secondReply.statusCode).toBe(400);
+      expect((JSON.parse(secondReply.payload) as { message: string }).message).toMatch(/one level/i);
+
+      await teacher.close();
+    });
+
+    it('a reply cannot cross submissions — structurally impossible, not just refused by convention', async () => {
+      // Two DIFFERENT students, each with their own submission.
+      const { submission: submissionA } = await freshSubmission();
+
+      const secondStudent = await newStudent('Second Grading Student');
+      const studentB = await buildServer({ actor: secondStudent });
+      await studentB.inject({
+        method: 'PUT',
+        url: submissionUrl(RUBRIC_SLUG, RUBRIC_EXERCISE_SLUG),
+        payload: { annotations: [{ blockIndex: 1, startLine: 1, endLine: 1, body: "B's own comment." }] },
+      });
+      await studentB.inject({ method: 'POST', url: `${submissionUrl(RUBRIC_SLUG, RUBRIC_EXERCISE_SLUG)}/submit` });
+      await studentB.close();
+
+      const teacher = await buildServer({ actor: owner });
+      // Attempts to reply to student A's annotation while grading student B.
+      const crossSubmissionReply = await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(secondStudent.id),
+        payload: {
+          rubricScores: [
+            { criterion: 'Spotted the shallow module', points: 1 },
+            { criterion: 'Review tone', points: 1 },
+          ],
+          annotations: [{ parentId: submissionA.annotations[0]!.id, body: 'Wrong submission.' }],
+        },
+      });
+      expect(crossSubmissionReply.statusCode).toBe(400);
+
+      await teacher.close();
+    });
+
+    it('rubricScores must cover every declared criterion exactly once', async () => {
+      const { student } = await freshSubmission();
+      const teacher = await buildServer({ actor: owner });
+
+      const missing = await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: { rubricScores: [{ criterion: 'Spotted the shallow module', points: 1 }] },
+      });
+      expect(missing.statusCode).toBe(400);
+      expect((JSON.parse(missing.payload) as { message: string }).message).toMatch(/Review tone/);
+
+      const unknown = await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: {
+          rubricScores: [
+            { criterion: 'Spotted the shallow module', points: 1 },
+            { criterion: 'Review tone', points: 1 },
+            { criterion: 'Not a real criterion', points: 1 },
+          ],
+        },
+      });
+      expect(unknown.statusCode).toBe(400);
+
+      const tooManyPoints = await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: {
+          rubricScores: [
+            { criterion: 'Spotted the shallow module', points: 999 },
+            { criterion: 'Review tone', points: 1 },
+          ],
+        },
+      });
+      expect(tooManyPoints.statusCode).toBe(400);
+
+      await teacher.close();
+    });
+
+    it('refuses rubricScores on an exercise with no rubric block declared', async () => {
+      const student = await newStudent('No Rubric Student');
+      const studentServer = await buildServer({ actor: student });
+      await studentServer.inject({
+        method: 'POST',
+        url: `${submissionUrl(RUBRIC_SLUG, NO_RUBRIC_EXERCISE_SLUG)}/submit`,
+      });
+      await studentServer.close();
+
+      const teacher = await buildServer({ actor: owner });
+      const response = await teacher.inject({
+        method: 'POST',
+        url: `/api/v1/courses/${RUBRIC_SLUG}/lessons/${NO_RUBRIC_EXERCISE_SLUG}/submissions/${student.id}/grade`,
+        payload: { rubricScores: [{ criterion: 'Anything', points: 1 }] },
+      });
+      expect(response.statusCode).toBe(400);
+
+      // No rubric, no scores, still gradeable with annotations/return alone.
+      const returnOnly = await teacher.inject({
+        method: 'POST',
+        url: `/api/v1/courses/${RUBRIC_SLUG}/lessons/${NO_RUBRIC_EXERCISE_SLUG}/submissions/${student.id}/grade`,
+        payload: {},
+      });
+      expect(returnOnly.statusCode).toBe(200);
+      expect((JSON.parse(returnOnly.payload) as SubmissionBody).status).toBe('returned');
+
+      await teacher.close();
+    });
+
+    it('refuses to grade a submission that is still a draft', async () => {
+      const student = await newStudent('Draft Only Student');
+      const studentServer = await buildServer({ actor: student });
+      await studentServer.inject({
+        method: 'PUT',
+        url: submissionUrl(RUBRIC_SLUG, RUBRIC_EXERCISE_SLUG),
+        payload: { annotations: [] },
+      });
+      await studentServer.close();
+
+      const teacher = await buildServer({ actor: owner });
+      const response = await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: {
+          rubricScores: [
+            { criterion: 'Spotted the shallow module', points: 1 },
+            { criterion: 'Review tone', points: 1 },
+          ],
+        },
+      });
+      expect(response.statusCode).toBe(409);
+      await teacher.close();
+    });
+
+    it('404s when this student has no submission for the lesson', async () => {
+      const student = await newStudent('Never Submitted');
+      const teacher = await buildServer({ actor: owner });
+      const response = await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: {},
+      });
+      expect(response.statusCode).toBe(404);
+      await teacher.close();
+    });
+
+    it('the can() seam: asks for submission:grade, and rubric:score only when rubricScores is non-empty', async () => {
+      const { student } = await freshSubmission();
+      const canSpy = vi.fn().mockReturnValue(true);
+      const teacher = await buildServer({ can: canSpy, actor: owner });
+
+      await teacher.inject({ method: 'GET', url: teacherViewUrl(student.id) });
+      await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: {
+          rubricScores: [
+            { criterion: 'Spotted the shallow module', points: 1 },
+            { criterion: 'Review tone', points: 1 },
+          ],
+        },
+      });
+
+      const calls = canSpy.mock.calls as Array<[unknown, string, unknown]>;
+      const actions = calls.map((c) => c[1]);
+      expect(actions).toContain('submission:grade');
+      expect(actions).toContain('rubric:score');
+
+      await teacher.close();
     });
   });
 });

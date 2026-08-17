@@ -276,6 +276,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{courseSlug}/lessons/{lessonSlug}/submissions/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one student's exercise submission (teacher grading view)
+         * @description A teacher's view of a specific student's submission — the same payload GET .../submission returns for the student themself, including `rubricScores`. Gated by `submission:grade`, scoped to courses the actor OWNS (design §9.4: "visible to the student who wrote it and to teachers of the owning course"); a teacher who does not own this course gets 403, not a course-shaped 404, so "this course exists but isn't yours" is distinguishable from "no such course" the same way every other ownership-gated route in this API already behaves.
+         */
+        get: operations["getSubmissionForGrading"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{courseSlug}/lessons/{lessonSlug}/submissions/{userId}/grade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Grade a student's exercise submission
+         * @description Scores rubric criteria and adds annotations in one operation (design §9.4, Task C), then returns the submission: sets `status` to `returned`, stamps `returnedAt` (first grade call only — a re-grade does not move it), and emits exactly one `exercise_returned` activity event ever for this submission, however many times it is graded. Re-grading is allowed — see db/migrations/0012_rubric_scores.sql for why — and never deletes an annotation, so a student cannot silently lose feedback they have already read. Refuses a submission that is still `draft` (409): there is nothing to grade until the student hands it in. Gated by `submission:grade` (and `rubric:score` when `rubricScores` is non-empty), scoped to courses the actor owns.
+         */
+        post: operations["gradeSubmission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{courseSlug}/progress": {
         parameters: {
             query?: never;
@@ -514,8 +554,26 @@ export interface components {
             pass: number;
             questions: components["schemas"]["QuizQuestion"][];
         };
-        /** @description A content block, which may be prose, code, or a quiz */
-        Block: components["schemas"]["ProseBlock"] | components["schemas"]["CodeBlock"] | components["schemas"]["QuizBlock"];
+        /** @description One rubric criterion (design §9.4). Declared in content, beside the exercise it grades — name, max points, and an optional track. Nothing here is stripped or hidden: unlike a quiz choice's `correct`, students read the criteria before submitting. */
+        RubricCriterion: {
+            /** @description The criterion's display name, and its identifier when a teacher scores it (matched against rubric_scores.criterion). */
+            name: string;
+            /** @description Maximum points this criterion is worth. */
+            max: number;
+            /** @description Optional track id, matching a track's id in course.yaml. */
+            track?: string;
+        };
+        /** @description A rubric block (design §9.4: "rubrics are declared in content, filled in by the teacher"). Declares the criteria a teacher scores this exercise against, published alongside the exercise so every student is measured against the same bar and can read it before submitting. */
+        RubricBlock: {
+            /**
+             * @description The block type discriminator (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "rubric";
+            criteria: components["schemas"]["RubricCriterion"][];
+        };
+        /** @description A content block, which may be prose, code, a quiz, or a rubric */
+        Block: components["schemas"]["ProseBlock"] | components["schemas"]["CodeBlock"] | components["schemas"]["QuizBlock"] | components["schemas"]["RubricBlock"];
         /** @description A minimal pointer to an adjacent lesson, for prev/next navigation. */
         LessonNavStub: {
             /** @description The adjacent lesson's slug (unique within the course) */
@@ -790,7 +848,7 @@ export interface components {
         SubmissionDraftRequest: {
             annotations: components["schemas"]["SubmissionAnnotationInput"][];
         };
-        /** @description One annotation as stored and served back. Ids are server-assigned. `parentId` threads a reply to another annotation (design §9.4); Phase 8 writes only top-level student annotations, so this is null on everything this phase creates. */
+        /** @description One annotation as stored and served back. Ids are server-assigned. `parentId` threads a reply to another annotation (design §9.4) — always null on a student's own annotations (Phase 8 writes only top-level ones), and set on a teacher's reply to a specific student comment during grading (Phase 9, POST .../grade). A teacher may also write a top-level annotation of their own (parentId null) to flag a line the student missed entirely. Threading is one level: a reply's OWN parentId is always null, because a reply to a reply is refused by the grade route rather than silently flattened. */
         SubmissionAnnotation: {
             id: string;
             blockIndex: number;
@@ -803,7 +861,53 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
-        /** @description An exercise submission (design §9.4). `snapshot` is the lesson's blocks AS PRESENTED when the submission was first saved or submitted, frozen for the submission's entire life — the reader renders from this, never from the live lesson, so editing the lesson afterward cannot change what a past submission shows. `annotations` anchor to this snapshot, not to the live lesson. */
+        /** @description A teacher's score on one rubric criterion of a submission (design §9.4/§9.1, Task C). `criterion` matches a criterion `name` in the submission's own snapshot rubric block. Re-grading updates this row in place (`updatedAt` moves; `createdAt` stays put) rather than creating a second one — see db/migrations/0012_rubric_scores.sql for why re-grading is allowed at all. */
+        RubricScore: {
+            id: string;
+            criterion: string;
+            points: number;
+            max: number;
+            track: ((string | null) | null) | null;
+            /** @description The teacher's user id. */
+            scoredBy: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description One criterion's score, as a teacher submits it to POST .../grade. Neither `max` nor `track` is accepted here — both are read from the submission's own snapshot rubric block server-side (matched by `criterion` name), so a caller cannot inflate a criterion's ceiling, or record a score against a track the criterion does not itself declare, by simply asserting one. */
+        GradeRubricScoreInput: {
+            /** @description Must match a criterion name declared in the submission's snapshot rubric block. */
+            criterion: string;
+            /** @description Must not exceed that criterion's declared max. */
+            points: number;
+        };
+        /**
+         * @description One annotation a teacher adds while grading (design §9.4: a reply to a specific student comment, or a top-level annotation flagging a line the student missed). Exactly one of two shapes:
+         *       - A REPLY: `parentId` set, referencing an existing TOP-LEVEL
+         *         annotation on the same submission. Inherits that annotation's
+         *         anchor (blockIndex/startLine/endLine) — do not send them on a
+         *         reply; the server derives them from the parent so a reply can
+         *         never be anchored somewhere the comment it answers is not.
+         *       - A TOP-LEVEL annotation: `parentId` omitted or null, and
+         *         blockIndex/startLine/endLine required and validated against the
+         *         snapshot exactly as a student's own annotations are.
+         *     A reply to a reply is refused (400) — threading is one level.
+         */
+        GradeAnnotationInput: {
+            parentId?: ((string | null) | null) | null;
+            blockIndex?: number;
+            startLine?: number;
+            endLine?: number;
+            body: string;
+            track?: string;
+        };
+        /** @description Scores criteria and adds annotations in one operation (Task C). `rubricScores`, when the exercise's snapshot declares a rubric block, MUST cover every declared criterion — a partial score set is refused (400) rather than silently leaving some criteria unscored. When there is no rubric block, `rubricScores` must be empty or omitted. `annotations` is always optional: a teacher may return a submission with scores only, replies only, both, or neither. */
+        GradeRequest: {
+            rubricScores?: components["schemas"]["GradeRubricScoreInput"][];
+            annotations?: components["schemas"]["GradeAnnotationInput"][];
+        };
+        /** @description An exercise submission (design §9.4). `snapshot` is the lesson's blocks AS PRESENTED when the submission was first saved or submitted, frozen for the submission's entire life — the reader renders from this, never from the live lesson, so editing the lesson afterward cannot change what a past submission shows. `annotations` anchor to this snapshot, not to the live lesson. `rubricScores` is empty until a teacher grades the submission (POST .../grade); a returned submission's rubricScores is exactly what the student sees as their feedback. */
         Submission: {
             id: string;
             lessonSlug: string;
@@ -813,6 +917,7 @@ export interface components {
             /** @description A content hash of the snapshot, for cheap equality checks. */
             snapshotHash: string;
             annotations: components["schemas"]["SubmissionAnnotation"][];
+            rubricScores: components["schemas"]["RubricScore"][];
             /** Format: date-time */
             submittedAt: ((string | null) | null) | null;
             /** Format: date-time */
@@ -1664,6 +1769,114 @@ export interface operations {
                 };
             };
             /** @description This lesson is not kind "exercise" */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getSubmissionForGrading: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseSlug: string;
+                lessonSlug: string;
+                /** @description The student's user id. */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The student's submission */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Submission"];
+                };
+            };
+            /** @description The policy denied this request (no session, or a course the actor does not own) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Course not found, lesson not found, or this student has no submission for it */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    gradeSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseSlug: string;
+                lessonSlug: string;
+                /** @description The student's user id. */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GradeRequest"];
+            };
+        };
+        responses: {
+            /** @description The graded (now returned) submission */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Submission"];
+                };
+            };
+            /** @description Malformed input; an annotation anchor that does not fit the snapshot; a reply's parentId naming a non-existent annotation, an annotation on a different submission, or an annotation that is itself a reply (threading is one level); or rubricScores that do not exactly cover the exercise's declared criteria */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The policy denied this request (no session, or a course the actor does not own) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Course not found, lesson not found, or this student has no submission for it */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description This lesson is not kind "exercise", or the submission is still a draft (not yet submitted) */
             409: {
                 headers: {
                     [name: string]: unknown;

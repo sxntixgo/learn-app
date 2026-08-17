@@ -100,10 +100,50 @@ interface AnnotationInput {
   track?: string | null;
 }
 
-/** Loads a course id by slug, or null if no such course exists. Mirrors quiz.ts's helper. */
-async function findCourseId(courseSlug: string): Promise<string | null> {
-  const result = await getPool().query<{ id: string }>('select id from courses where slug = $1', [courseSlug]);
-  return result.rows[0]?.id ?? null;
+interface RubricScoreRow {
+  id: string;
+  criterion: string;
+  points: string;
+  max: string;
+  track: string | null;
+  scored_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * One rubric criterion's score, as a teacher submits it to POST .../grade.
+ * `max` is deliberately absent — Task C: never trust the client for a
+ * criterion's ceiling, read it from the submission's own snapshot instead
+ * (see matchRubricScores).
+ */
+interface RubricScoreInput {
+  criterion: string;
+  points: number;
+}
+
+/**
+ * One annotation a teacher adds while grading. Distinct from AnnotationInput
+ * (the student's shape) because a REPLY carries no anchor of its own — see
+ * the module header near the grading routes for why.
+ */
+interface GradeAnnotationInput {
+  parentId: string | null;
+  blockIndex: number | null;
+  startLine: number | null;
+  endLine: number | null;
+  body: string;
+  track: string | null;
+}
+
+/** Loads a course by slug, or null if no such course exists. Mirrors quiz.ts's helper. */
+async function findCourse(courseSlug: string): Promise<{ id: string; ownerId: string | null } | null> {
+  const result = await getPool().query<{ id: string; owner_id: string | null }>(
+    'select id, owner_id from courses where slug = $1',
+    [courseSlug],
+  );
+  const row = result.rows[0];
+  return row ? { id: row.id, ownerId: row.owner_id } : null;
 }
 
 /**
@@ -221,8 +261,25 @@ async function loadAnnotations(client: pg.PoolClient | pg.Pool, submissionId: st
   return rows;
 }
 
+/** Loads a submission's rubric scores (design §9.4, Task C) — empty until a teacher grades it. */
+async function loadRubricScores(client: pg.PoolClient | pg.Pool, submissionId: string): Promise<RubricScoreRow[]> {
+  const { rows } = await client.query<RubricScoreRow>(
+    `select id, criterion, points, max, track, scored_by, created_at, updated_at
+       from rubric_scores
+      where submission_id = $1
+      order by criterion`,
+    [submissionId],
+  );
+  return rows;
+}
+
 /** The wire form of a submission. `snapshot` is what the reader renders from. */
-function serialize(lessonSlug: string, row: SubmissionRow, annotations: AnnotationRow[]): unknown {
+function serialize(
+  lessonSlug: string,
+  row: SubmissionRow,
+  annotations: AnnotationRow[],
+  rubricScores: RubricScoreRow[],
+): unknown {
   return {
     id: row.id,
     lessonSlug,
@@ -239,6 +296,19 @@ function serialize(lessonSlug: string, row: SubmissionRow, annotations: Annotati
       parentId: a.parent_id,
       authorId: a.author_id,
       createdAt: a.created_at,
+    })),
+    // numeric columns arrive as strings off `pg` (no type parser registered
+    // — see db.ts); Number() here is the one place that matters, since this
+    // is the JSON a browser reads scores from.
+    rubricScores: rubricScores.map((r) => ({
+      id: r.id,
+      criterion: r.criterion,
+      points: Number(r.points),
+      max: Number(r.max),
+      track: r.track,
+      scoredBy: r.scored_by,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
     })),
     submittedAt: row.submitted_at,
     returnedAt: row.returned_at,
@@ -340,16 +410,23 @@ export function registerSubmissionRoutes(fastify: FastifyInstance, deps: Submiss
   async function resolveLesson(
     courseSlug: string,
     lessonSlug: string,
-  ): Promise<{ courseId: string; lesson: ExerciseLessonRow } | { error: { code: number; message: string } }> {
-    const courseId = await findCourseId(courseSlug);
-    if (!courseId) {
+  ): Promise<
+    | { courseId: string; ownerId: string | null; lesson: ExerciseLessonRow }
+    | { error: { code: number; message: string } }
+  > {
+    const course = await findCourse(courseSlug);
+    if (!course) {
       return { error: { code: 404, message: `Course not found: ${courseSlug}` } };
     }
-    const lesson = await findLiveLesson(courseId, lessonSlug);
+    const lesson = await findLiveLesson(course.id, lessonSlug);
     if (!lesson) {
       return { error: { code: 404, message: `Lesson not found: ${lessonSlug}` } };
     }
-    return { courseId, lesson };
+    // `ownerId` rides along unused by the three student routes below (they
+    // are SELF-scoped, not OWN_COURSE) and is what lets the grading routes
+    // further down reuse this exact function rather than re-querying
+    // `courses` a second time.
+    return { courseId: course.id, ownerId: course.ownerId, lesson };
   }
 
   /**
@@ -400,7 +477,8 @@ export function registerSubmissionRoutes(fastify: FastifyInstance, deps: Submiss
       }
 
       const annotations = await loadAnnotations(getPool(), submission.id);
-      return reply.code(200).send(serialize(resolved.lesson.slug, submission, annotations));
+      const rubricScores = await loadRubricScores(getPool(), submission.id);
+      return reply.code(200).send(serialize(resolved.lesson.slug, submission, annotations, rubricScores));
     },
   );
 
@@ -476,9 +554,14 @@ export function registerSubmissionRoutes(fastify: FastifyInstance, deps: Submiss
         );
         const saved = touched.rows[0]!;
         const stored = await loadAnnotations(client, saved.id);
+        // A draft is never graded (the grade route 409s on status 'draft'),
+        // so this is always empty here — loaded anyway so the response
+        // shape is identical across every submission route, not a special
+        // case a client has to remember.
+        const storedRubricScores = await loadRubricScores(client, saved.id);
 
         await client.query('COMMIT');
-        return reply.code(200).send(serialize(resolved.lesson.slug, saved, stored));
+        return reply.code(200).send(serialize(resolved.lesson.slug, saved, stored, storedRubricScores));
       } catch (err) {
         await client.query('ROLLBACK');
         throw err;
@@ -528,8 +611,9 @@ export function registerSubmissionRoutes(fastify: FastifyInstance, deps: Submiss
 
         if (alreadySubmitted) {
           const stored = await loadAnnotations(client, submission!.id);
+          const storedRubricScores = await loadRubricScores(client, submission!.id);
           await client.query('COMMIT');
-          return reply.code(200).send(serialize(resolved.lesson.slug, submission!, stored));
+          return reply.code(200).send(serialize(resolved.lesson.slug, submission!, stored, storedRubricScores));
         }
 
         // Submitting an exercise never opened is legitimate — an exercise
@@ -571,8 +655,526 @@ export function registerSubmissionRoutes(fastify: FastifyInstance, deps: Submiss
         );
 
         const stored = await loadAnnotations(client, saved.id);
+        const storedRubricScores = await loadRubricScores(client, saved.id);
         await client.query('COMMIT');
-        return reply.code(200).send(serialize(resolved.lesson.slug, saved, stored));
+        return reply.code(200).send(serialize(resolved.lesson.slug, saved, stored, storedRubricScores));
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+  );
+
+  // ===========================================================================
+  // GRADING (design §9.4, Task C/B). Everything below is the TEACHER'S half
+  // of this module; everything above is the student's. Both operate on the
+  // same exercise_submissions/annotations rows because grading is, per
+  // design §9.4, "an additive layer attaching a score and feedback
+  // afterward" to the submission the student already wrote — not a second
+  // system.
+  //
+  // THREADING (Task B). A reply's anchor is DERIVED from its parent, never
+  // resent by the caller: `parentId` set means "reply to that annotation, at
+  // its own anchor", and blockIndex/startLine/endLine are refused if sent
+  // alongside it (400) — a reply can never claim an anchor other than the
+  // one it is actually replying to. `parentId` omitted means a fresh
+  // top-level annotation (§9.4: "a top-level teacher annotation flags a
+  // line the student missed entirely"), validated against the snapshot
+  // exactly like a student's own. A reply's parent must itself be
+  // top-level — reachable only among rows on THIS submission (the query is
+  // `where id = $1 and submission_id = $2`) — so cross-submission threading
+  // is structurally impossible before migration 0011's own composite FK
+  // (parent_id, submission_id) -> annotations(id, submission_id) ever gets a
+  // chance to refuse it as a backstop. A reply to a reply is refused (400):
+  // one level is enough for "teacher answers a specific comment", and
+  // allowing a second level would need a UI, a fetch shape and a threading
+  // rule this design does not ask for — refusing loudly beats flattening
+  // silently.
+  //
+  // RUBRIC SCORING (Task C). `rubricScores` is matched against the exercise's
+  // OWN rubric block, read from the SNAPSHOT (never the live lesson — same
+  // rule as annotation anchors), and must cover every declared criterion
+  // exactly once — see matchRubricScores. `max` is never accepted from the
+  // caller.
+  // ===========================================================================
+
+  /**
+   * Shape validation for `rubricScores`, before any database work — mirrors
+   * `inputError`'s role for annotations. Semantic validation (does this
+   * criterion exist, is this submission's rubric even declared, is `points`
+   * within range) happens in matchRubricScores, against the snapshot.
+   */
+  function rubricScoreInputError(value: unknown): string | null {
+    if (!Array.isArray(value)) {
+      return 'rubricScores must be an array of { criterion, points }.';
+    }
+    for (const [index, raw] of value.entries()) {
+      if (typeof raw !== 'object' || raw === null) {
+        return `rubricScores[${index}] must be an object.`;
+      }
+      const { criterion, points } = raw as Record<string, unknown>;
+      if (typeof criterion !== 'string' || criterion.trim() === '') {
+        return `rubricScores[${index}].criterion must be a non-empty string.`;
+      }
+      if (typeof points !== 'number' || !Number.isFinite(points) || points < 0) {
+        return `rubricScores[${index}].points must be a non-negative number.`;
+      }
+    }
+    return null;
+  }
+
+  function normalizeRubricScoreInput(value: unknown[]): RubricScoreInput[] {
+    return value.map((raw) => {
+      const { criterion, points } = raw as Record<string, unknown>;
+      return { criterion: (criterion as string).trim(), points: points as number };
+    });
+  }
+
+  /**
+   * Shape validation for `annotations` on a grade request — mirrors
+   * `inputError`, but a reply (`parentId` set) carries no anchor of its own
+   * (see the module note above): its blockIndex/startLine/endLine must be
+   * ABSENT, refused rather than silently ignored if sent, so a caller never
+   * believes it chose an anchor that was actually discarded.
+   */
+  function gradeAnnotationInputError(value: unknown): string | null {
+    if (!Array.isArray(value)) {
+      return 'annotations must be an array of { parentId?, blockIndex?, startLine?, endLine?, body, track? }.';
+    }
+    if (value.length > MAX_ANNOTATIONS) {
+      return `A single grade call may add at most ${MAX_ANNOTATIONS} annotations.`;
+    }
+
+    for (const [index, raw] of value.entries()) {
+      if (typeof raw !== 'object' || raw === null) {
+        return `annotations[${index}] must be an object.`;
+      }
+      const { parentId, blockIndex, startLine, endLine, body, track } = raw as Record<string, unknown>;
+
+      if (parentId !== undefined && parentId !== null && (typeof parentId !== 'string' || parentId.trim() === '')) {
+        return `annotations[${index}].parentId must be a string or null.`;
+      }
+      const isReply = typeof parentId === 'string' && parentId.trim() !== '';
+
+      if (isReply) {
+        if (blockIndex !== undefined || startLine !== undefined || endLine !== undefined) {
+          return (
+            `annotations[${index}] is a reply (parentId set) — blockIndex/startLine/endLine are derived ` +
+            `from the annotation it replies to and must not be sent.`
+          );
+        }
+      } else {
+        if (!Number.isInteger(blockIndex) || (blockIndex as number) < 0) {
+          return `annotations[${index}].blockIndex must be a non-negative integer (required on a top-level annotation).`;
+        }
+        if (!Number.isInteger(startLine) || (startLine as number) < 1) {
+          return `annotations[${index}].startLine must be an integer of at least 1.`;
+        }
+        if (!Number.isInteger(endLine) || (endLine as number) < 1) {
+          return `annotations[${index}].endLine must be an integer of at least 1.`;
+        }
+        if ((endLine as number) < (startLine as number)) {
+          return `annotations[${index}]: endLine (${String(endLine)}) is before startLine (${String(startLine)}).`;
+        }
+      }
+
+      if (typeof body !== 'string' || body.trim() === '') {
+        return `annotations[${index}].body must be a non-empty string.`;
+      }
+      if (body.length > MAX_BODY_LENGTH) {
+        return `annotations[${index}].body exceeds ${MAX_BODY_LENGTH} characters.`;
+      }
+      if (track !== undefined && track !== null && (typeof track !== 'string' || track.trim() === '')) {
+        return `annotations[${index}].track must be a non-empty string when present.`;
+      }
+    }
+
+    return null;
+  }
+
+  function normalizeGradeAnnotationInput(value: unknown[]): GradeAnnotationInput[] {
+    return value.map((raw) => {
+      const { parentId, blockIndex, startLine, endLine, body, track } = raw as Record<string, unknown>;
+      const parentIdValue = typeof parentId === 'string' && parentId.trim() !== '' ? parentId.trim() : null;
+      return {
+        parentId: parentIdValue,
+        blockIndex: parentIdValue === null ? (blockIndex as number) : null,
+        startLine: parentIdValue === null ? (startLine as number) : null,
+        endLine: parentIdValue === null ? (endLine as number) : null,
+        body: (body as string).trim(),
+        track: typeof track === 'string' && track.trim() !== '' ? track.trim() : null,
+      };
+    });
+  }
+
+  /**
+   * The rubric criteria declared on THIS submission — read from its frozen
+   * snapshot, never the live lesson (same rule annotation anchors follow).
+   * Defensive rather than throwing: `snapshot` is `unknown` off jsonb, and a
+   * shape this doesn't recognise means "no rubric", not a 500.
+   */
+  function rubricCriteriaOf(snapshot: unknown): Array<{ name: string; max: number; track: string | null }> {
+    const blocks = Array.isArray(snapshot) ? snapshot : [];
+    for (const block of blocks) {
+      if (typeof block !== 'object' || block === null || (block as { type?: unknown }).type !== 'rubric') {
+        continue;
+      }
+      const criteria = (block as { criteria?: unknown }).criteria;
+      if (!Array.isArray(criteria)) continue;
+      return criteria
+        .filter((c): c is Record<string, unknown> => typeof c === 'object' && c !== null)
+        .map((c) => ({
+          name: String(c.name),
+          max: Number(c.max),
+          track: typeof c.track === 'string' ? c.track : null,
+        }));
+    }
+    return [];
+  }
+
+  interface MatchedRubricScore {
+    criterion: string;
+    points: number;
+    max: number;
+    track: string | null;
+  }
+
+  /**
+   * Matches a grade call's rubricScores against the exercise's declared
+   * criteria. Every declared criterion must be scored EXACTLY once — Task
+   * C: "scores criteria ... in one operation", not a partial write that
+   * would leave a graded submission missing feedback on some criteria. When
+   * the exercise declares no rubric block at all, rubricScores must be
+   * empty. `max`/`track` in the returned rows come from the criterion
+   * definition, never the caller.
+   */
+  function matchRubricScores(
+    criteria: Array<{ name: string; max: number; track: string | null }>,
+    inputs: readonly RubricScoreInput[],
+  ): { rows: MatchedRubricScore[] } | { error: string } {
+    if (criteria.length === 0) {
+      if (inputs.length > 0) {
+        return { error: 'This exercise has no rubric block; rubricScores must be empty.' };
+      }
+      return { rows: [] };
+    }
+
+    const byName = new Map(criteria.map((c) => [c.name, c]));
+    const seen = new Set<string>();
+    const rows: MatchedRubricScore[] = [];
+
+    for (const input of inputs) {
+      const def = byName.get(input.criterion);
+      if (!def) {
+        const known = criteria.map((c) => c.name).join(', ');
+        return {
+          error: `rubricScores: "${input.criterion}" is not a criterion declared on this exercise (declared: ${known}).`,
+        };
+      }
+      if (seen.has(input.criterion)) {
+        return { error: `rubricScores: "${input.criterion}" is scored twice in the same request.` };
+      }
+      seen.add(input.criterion);
+      if (input.points > def.max) {
+        return {
+          error: `rubricScores: "${input.criterion}" must score between 0 and ${def.max}, got ${input.points}.`,
+        };
+      }
+      rows.push({ criterion: def.name, points: input.points, max: def.max, track: def.track });
+    }
+
+    if (seen.size !== criteria.length) {
+      const missing = criteria.filter((c) => !seen.has(c.name)).map((c) => c.name);
+      return { error: `rubricScores must cover every declared criterion; missing: ${missing.join(', ')}.` };
+    }
+
+    return { rows };
+  }
+
+  // -------------------------------------------------------------------------
+  // GET — a teacher's view of one student's submission.
+  // -------------------------------------------------------------------------
+  fastify.get<{ Params: { courseSlug: string; lessonSlug: string; userId: string } }>(
+    '/api/v1/courses/:courseSlug/lessons/:lessonSlug/submissions/:userId',
+    async (request, reply) => {
+      const actor = actorFor(request, deps);
+      const { courseSlug, lessonSlug, userId } = request.params;
+
+      const resolved = await resolveLesson(courseSlug, lessonSlug);
+      if ('error' in resolved) {
+        return reply.code(resolved.error.code).send({ message: resolved.error.message });
+      }
+
+      // §9.4: "visible to ... teachers of the owning course". OWN_COURSE,
+      // not a role check — see MATRIX's comment on why lesson:exercise:read
+      // deliberately has no teacher cell.
+      if (!can(actor, 'submission:grade', { course: { ownerId: resolved.ownerId } })) {
+        return reply.code(403).send({ message: 'Forbidden' });
+      }
+
+      const { rows } = await getPool().query<SubmissionRow>(
+        `select ${SUBMISSION_COLUMNS} from exercise_submissions where user_id = $1 and lesson_id = $2`,
+        [userId, resolved.lesson.id],
+      );
+      const submission = rows[0];
+      if (!submission) {
+        return reply.code(404).send({ message: `No submission from this student for lesson: ${lessonSlug}` });
+      }
+
+      const annotations = await loadAnnotations(getPool(), submission.id);
+      const rubricScores = await loadRubricScores(getPool(), submission.id);
+      return reply.code(200).send(serialize(resolved.lesson.slug, submission, annotations, rubricScores));
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // POST .../grade — score criteria and add annotations in one operation.
+  // -------------------------------------------------------------------------
+  fastify.post<{
+    Params: { courseSlug: string; lessonSlug: string; userId: string };
+    Body: { rubricScores?: unknown; annotations?: unknown };
+  }>(
+    '/api/v1/courses/:courseSlug/lessons/:lessonSlug/submissions/:userId/grade',
+    async (request, reply) => {
+      const actor = actorFor(request, deps);
+      const { courseSlug, lessonSlug, userId } = request.params;
+      const body = request.body ?? {};
+
+      const resolved = await resolveLesson(courseSlug, lessonSlug);
+      if ('error' in resolved) {
+        return reply.code(resolved.error.code).send({ message: resolved.error.message });
+      }
+
+      const courseCtx = { course: { ownerId: resolved.ownerId } };
+      if (!can(actor, 'submission:grade', courseCtx)) {
+        return reply.code(403).send({ message: 'Forbidden' });
+      }
+
+      // A second, narrower gate: MATRIX carries `submission:grade` and
+      // `rubric:score` as two cells of the same row (both OWN_COURSE today,
+      // deliberately checked separately — a future instance handing
+      // rubric:score to a TA without submission:grade must not have to
+      // change this route to get that split for free). Checked against the
+      // RAW body (not yet shape-validated) since all this needs to know is
+      // "did the caller ask to score anything at all".
+      const rubricScoresRaw = body.rubricScores ?? [];
+      if (Array.isArray(rubricScoresRaw) && rubricScoresRaw.length > 0 && !can(actor, 'rubric:score', courseCtx)) {
+        return reply.code(403).send({ message: 'Forbidden' });
+      }
+
+      const kindError = wrongKind(resolved.lesson);
+      if (kindError) {
+        return reply.code(409).send({ message: kindError });
+      }
+
+      const rubricShapeError = rubricScoreInputError(rubricScoresRaw);
+      if (rubricShapeError) {
+        return reply.code(400).send({ message: rubricShapeError });
+      }
+      const rubricInputs = normalizeRubricScoreInput(rubricScoresRaw as unknown[]);
+
+      const annotationsRaw = body.annotations ?? [];
+      const annotationShapeError = gradeAnnotationInputError(annotationsRaw);
+      if (annotationShapeError) {
+        return reply.code(400).send({ message: annotationShapeError });
+      }
+      const annotationInputs = normalizeGradeAnnotationInput(annotationsRaw as unknown[]);
+
+      const client = await getPool().connect();
+      try {
+        await client.query('BEGIN');
+
+        // Same lockSubmission the student routes use — it is generic on
+        // whose (user_id, lesson_id) it locks, and a teacher grading is
+        // exactly as much "the current state of this row, held for the rest
+        // of the transaction" as a student's own draft save is.
+        const submission = await lockSubmission(client, userId, resolved.lesson.id);
+        if (!submission) {
+          await client.query('ROLLBACK');
+          return reply.code(404).send({ message: `No submission from this student for lesson: ${lessonSlug}` });
+        }
+
+        // §9.4's flow is submit -> grading queue -> returned. A draft is
+        // still the student's own private work in progress (design §9.4:
+        // visible to the student who wrote it, and to teachers only via
+        // submission:grade — but there is nothing to grade until it is
+        // handed in), so grading one is refused rather than treated as an
+        // early return.
+        if (submission.status === 'draft') {
+          await client.query('ROLLBACK');
+          return reply.code(409).send({
+            message: 'This submission is still a draft; there is nothing to grade until the student submits it.',
+          });
+        }
+
+        const criteria = rubricCriteriaOf(submission.snapshot);
+        const matched = matchRubricScores(criteria, rubricInputs);
+        if ('error' in matched) {
+          await client.query('ROLLBACK');
+          return reply.code(400).send({ message: matched.error });
+        }
+
+        // Top-level annotations are validated against the snapshot with the
+        // SAME anchorError the student's own PUT route uses — one rule for
+        // "does this anchor exist", not two that could drift apart.
+        const topLevelInputs = annotationInputs.filter((a) => a.parentId === null);
+        const anchorProblem = anchorError(
+          submission.snapshot,
+          topLevelInputs.map((a) => ({
+            blockIndex: a.blockIndex!,
+            startLine: a.startLine!,
+            endLine: a.endLine!,
+            body: a.body,
+            track: a.track,
+          })),
+        );
+        if (anchorProblem) {
+          await client.query('ROLLBACK');
+          return reply.code(400).send({ message: anchorProblem });
+        }
+
+        // Resolve every annotation to its final (parentId, anchor) — a
+        // top-level one keeps what the caller sent; a reply's anchor comes
+        // from its parent row, looked up scoped to THIS submission (Task B:
+        // "enforce that structurally, not by convention"). The WHERE clause
+        // below is that structure: a parentId belonging to another
+        // submission simply is not found here, full stop — and migration
+        // 0011's composite FK (parent_id, submission_id) refuses it a
+        // second time at insert if this check were ever bypassed.
+        interface ResolvedAnnotation {
+          parentId: string | null;
+          blockIndex: number;
+          startLine: number;
+          endLine: number;
+          body: string;
+          track: string | null;
+        }
+        const resolvedAnnotations: ResolvedAnnotation[] = [];
+
+        for (const [index, input] of annotationInputs.entries()) {
+          if (input.parentId === null) {
+            resolvedAnnotations.push({
+              parentId: null,
+              blockIndex: input.blockIndex!,
+              startLine: input.startLine!,
+              endLine: input.endLine!,
+              body: input.body,
+              track: input.track,
+            });
+            continue;
+          }
+
+          const parentResult = await client.query<{
+            id: string;
+            block_index: number;
+            start_line: number;
+            end_line: number;
+            parent_id: string | null;
+          }>(
+            `select id, block_index, start_line, end_line, parent_id
+               from annotations
+              where id = $1 and submission_id = $2`,
+            [input.parentId, submission.id],
+          );
+          const parent = parentResult.rows[0];
+          if (!parent) {
+            await client.query('ROLLBACK');
+            return reply.code(400).send({
+              message: `annotations[${index}].parentId does not name an existing annotation on this submission.`,
+            });
+          }
+          // Threading is one level (Task B): refused, not flattened, so a
+          // caller cannot believe it built a thread that does not exist.
+          if (parent.parent_id !== null) {
+            await client.query('ROLLBACK');
+            return reply.code(400).send({
+              message: `annotations[${index}]: cannot reply to a reply — threading is one level.`,
+            });
+          }
+
+          resolvedAnnotations.push({
+            parentId: parent.id,
+            blockIndex: parent.block_index,
+            startLine: parent.start_line,
+            endLine: parent.end_line,
+            body: input.body,
+            track: input.track,
+          });
+        }
+
+        // Writes. Rubric scores UPSERT (re-grading updates a criterion in
+        // place — db/migrations/0012_rubric_scores.sql's header justifies
+        // allowing it); annotations only ever INSERT — a grade call can
+        // never edit or delete an existing annotation, the student's or an
+        // earlier grading pass's own, which is what makes "the student
+        // cannot silently lose feedback they have read" true by
+        // construction rather than by policy.
+        for (const row of matched.rows) {
+          await client.query(
+            `insert into rubric_scores (submission_id, criterion, points, max, track, scored_by)
+             values ($1, $2, $3, $4, $5, $6)
+             on conflict (submission_id, criterion) do update set
+               points = excluded.points, max = excluded.max, track = excluded.track,
+               scored_by = excluded.scored_by, updated_at = now()`,
+            [submission.id, row.criterion, row.points, row.max, row.track, actor.id],
+          );
+        }
+
+        for (const row of resolvedAnnotations) {
+          await client.query(
+            `insert into annotations
+               (submission_id, snapshot_hash, author_id, parent_id, block_index, start_line, end_line, body, track)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [
+              submission.id,
+              submission.snapshot_hash,
+              actor.id,
+              row.parentId,
+              row.blockIndex,
+              row.startLine,
+              row.endLine,
+              row.body,
+              row.track,
+            ],
+          );
+        }
+
+        // THE RETURN FLOW (Task C). `returned_at` is stamped once — coalesce
+        // leaves a prior value untouched, so a re-grade cannot pretend the
+        // feedback arrived again — and status moves to 'returned'
+        // unconditionally (idempotent: writing 'returned' over 'returned'
+        // changes nothing that matters). Whether THIS call is the one that
+        // returns it, decided from state read before any write above, is
+        // what gates the activity event next.
+        const wasReturned = submission.status === 'returned';
+        const updated = await client.query<SubmissionRow>(
+          `update exercise_submissions
+              set status = 'returned', returned_at = coalesce(returned_at, now()), updated_at = now()
+            where id = $1
+        returning ${SUBMISSION_COLUMNS}`,
+          [submission.id],
+        );
+        const saved = updated.rows[0]!;
+
+        // Exactly one `exercise_returned` event per submission, ever — the
+        // same lock-then-read idempotence technique as every other event in
+        // this codebase (progress.ts, quiz.ts, submissions.ts's own submit
+        // route). Owned by the STUDENT (design §10: "what tells a student
+        // their feedback has arrived"), not the grading teacher.
+        if (!wasReturned) {
+          await client.query(
+            `insert into activity_events (user_id, type, course_id, lesson_id, meta)
+             values ($1, 'exercise_returned', $2, $3, $4::jsonb)`,
+            [userId, resolved.courseId, resolved.lesson.id, JSON.stringify({ submissionId: saved.id, gradedBy: actor.id })],
+          );
+        }
+
+        const storedAnnotations = await loadAnnotations(client, saved.id);
+        const storedRubricScores = await loadRubricScores(client, saved.id);
+        await client.query('COMMIT');
+        return reply.code(200).send(serialize(resolved.lesson.slug, saved, storedAnnotations, storedRubricScores));
       } catch (err) {
         await client.query('ROLLBACK');
         throw err;

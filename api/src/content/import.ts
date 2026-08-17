@@ -606,6 +606,36 @@ async function loadExistingLessons(
   return new Map(rows.map((r) => [lessonIdentity(r.module_id, r.lesson_key), r]));
 }
 
+/**
+ * Task A: refuses a rubric criterion that names a track this course.yaml
+ * does not declare. Walks every `rubric` block in the lesson (there is
+ * ordinarily at most one, but nothing stops a document having more) rather
+ * than assuming block position, since content authoring is otherwise free
+ * to interleave rubric and prose/code blocks however the lesson reads best.
+ *
+ * KNOWN GAP, stated rather than silently extended: quiz questions (Phase 7)
+ * carry the identical optional `track` field and are NOT checked here or
+ * anywhere else in the importer — a pre-existing hole this task was not
+ * asked to close. Closing it would be the same one-line shape as this
+ * function, applied to `quizBlock.questions[].track` instead of
+ * `rubricBlock.criteria[].track`.
+ */
+function validateRubricTracks(sourcePath: string, blocks: Block[], trackIds: Map<string, string>): void {
+  for (const block of blocks) {
+    if (block.type !== 'rubric') continue;
+    for (const criterion of block.criteria) {
+      if (criterion.track === undefined) continue;
+      if (!trackIds.has(criterion.track)) {
+        const known = [...trackIds.keys()];
+        throw new Error(
+          `${sourcePath}: rubric criterion "${criterion.name}" names track "${criterion.track}" which is ` +
+            `not declared in course.yaml (declared tracks: ${known.length > 0 ? known.join(', ') : 'none'}).`,
+        );
+      }
+    }
+  }
+}
+
 async function upsertLesson(
   client: pg.PoolClient,
   args: {
@@ -636,6 +666,17 @@ async function upsertLesson(
     }
     trackId = resolved;
   }
+
+  // Task A: "a criterion referencing a track not declared in course.yaml
+  // must fail import with a clear message, the same way a lesson's
+  // frontmatter track does" — same trackIds map, same place, same style of
+  // error, just walking the lesson's rubric block(s) instead of its
+  // frontmatter. (Quiz questions carry an equally optional `track` and are
+  // NOT validated here — a pre-existing gap in the Phase 7 quiz block that
+  // this task does not extend to fix; see the module-level note above
+  // upsertTracks for why the schema already anticipates rubric_scores
+  // needing the same track_id foreign key quiz_attempts has.)
+  validateRubricTracks(lesson.sourcePath, lesson.blocks, trackIds);
 
   const blocksJson = JSON.stringify(lesson.blocks);
 

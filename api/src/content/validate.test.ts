@@ -206,4 +206,70 @@ describe('validateBlocks', () => {
       expect(result.valid).toBe(false);
     });
   });
+
+  describe('rubric blocks (design §9.4, Task A)', () => {
+    function validRubric() {
+      return {
+        type: 'rubric',
+        criteria: [
+          { name: 'Spotted the shallow module', max: 5, track: 'cx' },
+          { name: 'Review tone', max: 3 },
+        ],
+      };
+    }
+
+    it('accepts a valid rubric block', () => {
+      expect(validateBlocks([validRubric()])).toEqual({ valid: true, errors: [] });
+    });
+
+    it('accepts a criterion with no track (track is optional)', () => {
+      const rubric = validRubric();
+      expect(validateBlocks([rubric])).toEqual({ valid: true, errors: [] });
+    });
+
+    it('rejects a rubric with no criteria', () => {
+      const rubric = validRubric();
+      rubric.criteria = [];
+      const result = validateBlocks([rubric]);
+      expect(result.valid).toBe(false);
+    });
+
+    it('rejects a criterion missing a name', () => {
+      const rubric = validRubric();
+      delete (rubric.criteria[0] as { name?: string }).name;
+      const result = validateBlocks([rubric]);
+      expect(result.valid).toBe(false);
+    });
+
+    it('rejects a criterion missing max', () => {
+      const rubric = validRubric();
+      delete (rubric.criteria[0] as { max?: number }).max;
+      const result = validateBlocks([rubric]);
+      expect(result.valid).toBe(false);
+    });
+
+    it('rejects max <= 0', () => {
+      const rubric = validRubric();
+      rubric.criteria[0]!.max = 0;
+      const result = validateBlocks([rubric]);
+      expect(result.valid).toBe(false);
+    });
+
+    it('rejects a criterion with an unknown property', () => {
+      const rubric = validRubric();
+      (rubric.criteria[0] as { bogus?: string }).bogus = 'nope';
+      const result = validateBlocks([rubric]);
+      expect(result.valid).toBe(false);
+    });
+
+    it('strips nothing at the schema level either: every field round-trips', () => {
+      // Companion to parse.test.ts's assertion of the same thing — the
+      // schema does not merely tolerate extra fields, it requires exactly
+      // the ones a course author wrote, with additionalProperties: false.
+      const rubric = validRubric();
+      const result = validateBlocks([rubric]);
+      expect(result).toEqual({ valid: true, errors: [] });
+      expect(rubric.criteria[0]).toEqual({ name: 'Spotted the shallow module', max: 5, track: 'cx' });
+    });
+  });
 });

@@ -553,6 +553,76 @@ describe.sequential('importCourse', () => {
     expect(failed.log.error.message).toMatch(/nope/);
   });
 
+  // ---------------------------------------------------------------------------
+  // Task A: a rubric criterion naming an undeclared track fails import, the
+  // same way a lesson's frontmatter track does.
+  // ---------------------------------------------------------------------------
+
+  function rubricMarkdown(title: string, criteria: string): string {
+    return `---\ntitle: ${title}\nkind: exercise\n---\n\nReview this.\n\n\`\`\`rubric\ncriteria:\n${criteria}\n\`\`\`\n`;
+  }
+
+  it('imports a rubric block whose criterion track IS declared in course.yaml', async () => {
+    const slug = `${SLUG_PREFIX}-rubric-ok`;
+    const dirPath = path.join(tmp, 'rubric-ok');
+    await writeCourse(dirPath, {
+      slug,
+      tracks: [{ id: 'cx', name: 'Complexity', hue: 'blue' }],
+      modules: [
+        {
+          id: 'exercises',
+          title: 'Exercises',
+          lessons: [
+            {
+              file: 'm/ex.md',
+              body: rubricMarkdown('Ex One', '  - name: Spotted the shallow module\n    max: 5\n    track: cx'),
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = await importDir(dirPath);
+    expect(result.counts.lessons.created).toBe(1);
+
+    const rows = await lessonRows(slug);
+    const rubricBlock = (rows[0]!.blocks as Array<{ type: string; criteria?: unknown }>).find(
+      (b) => b.type === 'rubric',
+    );
+    expect(rubricBlock).toEqual({
+      type: 'rubric',
+      criteria: [{ name: 'Spotted the shallow module', max: 5, track: 'cx' }],
+    });
+  });
+
+  it('fails import with a clear message when a rubric criterion names a track not declared in course.yaml', async () => {
+    const slug = `${SLUG_PREFIX}-rubric-bad-track`;
+    const dirPath = path.join(tmp, 'rubric-bad-track');
+    await writeCourse(dirPath, {
+      slug,
+      tracks: [{ id: 'cx', name: 'Complexity', hue: 'blue' }],
+      modules: [
+        {
+          id: 'exercises',
+          title: 'Exercises',
+          lessons: [
+            {
+              file: 'm/ex.md',
+              body: rubricMarkdown('Ex One', '  - name: Something\n    max: 5\n    track: not-a-real-track'),
+            },
+          ],
+        },
+      ],
+    });
+
+    await expect(importDir(dirPath)).rejects.toThrow(/not-a-real-track/);
+    await expect(importDir(dirPath)).rejects.toThrow(/not declared in course\.yaml/);
+
+    // Rolled back completely — same guarantee as the frontmatter-track case.
+    const rows = await pool.query(`select 1 from courses where slug = $1`, [slug]);
+    expect(rows.rowCount).toBe(0);
+  });
+
   it('rejects two lessons that would collide on the same identity', async () => {
     const slug = `${SLUG_PREFIX}-dupe`;
     const dirPath = path.join(tmp, 'dupe');

@@ -272,6 +272,77 @@ describe('parseLesson', () => {
     });
   });
 
+  describe('rubric blocks (design §9.4/Task A: tagged fenced blocks with YAML, following quiz exactly)', () => {
+    const validRubricMarkdown = [
+      '# Title',
+      '',
+      '```rubric',
+      'criteria:',
+      '  - name: Spotted the shallow module',
+      '    max: 5',
+      '    track: cx',
+      '  - name: Review tone',
+      '    max: 3',
+      '```',
+      '',
+    ].join('\n');
+
+    it('parses a ```rubric fence into a typed rubric block', () => {
+      const { blocks } = parseLesson(validRubricMarkdown);
+      expect(blocks).toEqual([
+        {
+          type: 'rubric',
+          criteria: [
+            { name: 'Spotted the shallow module', max: 5, track: 'cx' },
+            { name: 'Review tone', max: 3 },
+          ],
+        },
+      ]);
+    });
+
+    it('produces output that validates against the blocks schema', () => {
+      const { blocks } = parseLesson(validRubricMarkdown);
+      expect(validateBlocks(blocks)).toEqual({ valid: true, errors: [] });
+    });
+
+    it('strips nothing: every criterion field a course author wrote is present verbatim', () => {
+      // Unlike quiz's `correct`, design §9.4 says there is nothing secret in
+      // a rubric — students read the criteria before submitting.
+      const { blocks } = parseLesson(validRubricMarkdown);
+      const rubric = blocks[0] as { type: 'rubric'; criteria: Array<{ name: string; max: number; track?: string }> };
+      expect(rubric.criteria[0]).toEqual({ name: 'Spotted the shallow module', max: 5, track: 'cx' });
+      expect(rubric.criteria[1]).toEqual({ name: 'Review tone', max: 3 });
+    });
+
+    it('preserves document order alongside prose and code', () => {
+      const markdown = ['# Title', '', 'Some prose.', '', validRubricMarkdown.split('\n').slice(2).join('\n')].join(
+        '\n',
+      );
+      const { blocks } = parseLesson(markdown);
+      expect(blocks.map((b) => b.type)).toEqual(['prose', 'rubric']);
+    });
+
+    it('throws a clear error naming the file line for malformed YAML inside the fence', () => {
+      const markdown = [
+        '# Title',
+        '', // line 2
+        '```rubric', // line 3 — fence opens
+        'criteria:', // line 4
+        '  - name: Bad indentation ahead', // line 5
+        '   max: 5', // line 6 — bad indent, malformed YAML
+        '```',
+        '',
+      ].join('\n');
+
+      expect(() => parseLesson(markdown)).toThrow(/line 6/);
+    });
+
+    it('throws a clear error when the fence content is not a YAML mapping', () => {
+      const markdown = ['# Title', '', '```rubric', '- just', '- a', '- list', '```', ''].join('\n');
+      expect(() => parseLesson(markdown)).toThrow(/rubric/i);
+    });
+  });
+
   describe('prose sanitization', () => {
     function prose(markdown: string): string {
       return parseLesson(markdown)

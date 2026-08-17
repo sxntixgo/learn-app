@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://learn-app.example/schemas/blocks.schema.json",
   "title": "Lesson block array",
-  "description": "The typed block array a lesson's `blocks` jsonb column must satisfy \u2014 design \u00a76.2/\u00a77 ('lessons.blocks is jsonb, validated against the block schema before write'). Phase 2 supported exactly two block types, `prose` and `code`; Phase 7 adds `quiz`, the first tagged-fenced-YAML block type (design \u00a76.3). Do NOT add chart/rubric/callout/figure here \u2014 those belong to later phases per the design's own phasing, and admitting them early would let un-implemented block types silently reach the database.",
+  "description": "The typed block array a lesson's `blocks` jsonb column must satisfy \u2014 design \u00a76.2/\u00a77 ('lessons.blocks is jsonb, validated against the block schema before write'). Phase 2 supported exactly two block types, `prose` and `code`; Phase 7 added `quiz`, the first tagged-fenced-YAML block type (design \u00a76.3); Phase 9 adds `rubric`, the second, following the quiz pattern exactly (design \u00a79.4). Do NOT add chart/callout/figure here \u2014 those belong to later phases per the design's own phasing, and admitting them early would let un-implemented block types silently reach the database.",
   "type": "array",
   "items": {
     "$ref": "#/$defs/block"
@@ -20,6 +20,9 @@
         },
         {
           "$ref": "#/$defs/quizBlock"
+        },
+        {
+          "$ref": "#/$defs/rubricBlock"
         }
       ],
       "discriminator": {
@@ -159,6 +162,52 @@
       "properties": {
         "correct": {
           "const": true
+        }
+      }
+    },
+    "rubricBlock": {
+      "description": "Design §9.4: rubrics are declared in content, filled in by the teacher, so every student is measured against the same published bar and can read the criteria before submitting. Unlike a quiz's `correct`, nothing in a rubric is secret — present.ts passes it through unchanged.",
+      "type": "object",
+      "required": [
+        "type",
+        "criteria"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "rubric"
+        },
+        "criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/rubricCriterion"
+          }
+        }
+      }
+    },
+    "rubricCriterion": {
+      "type": "object",
+      "required": [
+        "name",
+        "max"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "The criterion's display name, and its identifier when a teacher scores it (api/src/routes/submissions.ts's grade route matches rubric_scores.criterion against this).",
+          "type": "string",
+          "minLength": 1
+        },
+        "max": {
+          "description": "Maximum points this criterion is worth. A teacher's score must fall within [0, max].",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "track": {
+          "description": "Optional track id this criterion belongs to, e.g. \"cx\" — matches a track's `id` in course.yaml. Carried through to rubric_scores so per-track scoring (design §9.1/§9.3) is a query, not a reconstruction.",
+          "type": "string",
+          "minLength": 1
         }
       }
     },

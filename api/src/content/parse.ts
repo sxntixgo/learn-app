@@ -13,8 +13,9 @@ import { proseSanitizeSchema } from './sanitize.ts';
 // content is a typed block array, not HTML or a rehype AST). Phase 7 adds
 // `quiz` — the first TAGGED fenced block (design §6.3: "tagged fenced
 // blocks with YAML"), a ```quiz fence whose body is a YAML mapping rather
-// than a language source. Do not add chart/rubric/callout/figure here —
-// those are later phases.
+// than a language source. Phase 9 adds `rubric`, the second — same fence
+// shape, following the quiz pattern exactly (Task A). Do not add
+// chart/callout/figure here — those are later phases.
 export interface Annotation {
   line: number;
   track?: string;
@@ -47,10 +48,30 @@ export interface QuizBlock {
   questions: QuizQuestion[];
 }
 
+/**
+ * One rubric criterion (design §9.4: "the exercise block declares its
+ * criteria in git — name, max points, optional track — beside the exercise
+ * they grade"). Unlike a quiz choice's `correct`, nothing here is secret:
+ * students read the criteria before submitting, so this is never stripped
+ * on the way to the browser (contrast content/present.ts's quiz handling).
+ */
+export interface RubricCriterion {
+  name: string;
+  max: number;
+  /** Optional track id (design §6.1's course.yaml tracks), for per-track roll-up (design §9.1/§9.3). */
+  track?: string;
+}
+
+export interface RubricBlock {
+  type: 'rubric';
+  criteria: RubricCriterion[];
+}
+
 export type Block =
   | { type: 'prose'; html: string }
   | { type: 'code'; lang: string | null; source: string; annotations?: Annotation[] }
-  | QuizBlock;
+  | QuizBlock
+  | RubricBlock;
 
 export type LessonKind = 'lesson' | 'exercise' | 'quiz';
 
@@ -201,6 +222,10 @@ function buildBlocks(nodes: RootContent[]): Block[] {
         blocks.push(buildQuizBlock(codeNode));
         continue;
       }
+      if (codeNode.lang === 'rubric') {
+        blocks.push(buildRubricBlock(codeNode));
+        continue;
+      }
       const { source, annotations } = extractAnnotations(codeNode.value);
       const block: Block = { type: 'code', lang: codeNode.lang ?? null, source };
       if (annotations.length > 0) block.annotations = annotations;
@@ -215,9 +240,11 @@ function buildBlocks(nodes: RootContent[]): Block[] {
 }
 
 // ---------------------------------------------------------------------------
-// The quiz block (design §6.3, Task A): the first TAGGED fenced block. A
-// ```quiz fence's body is a YAML mapping, not a language source — CommonMark
-// core handles the fence itself, so this is the whole "parser extension" cost.
+// Tagged fenced YAML blocks (design §6.3, Task A): a fence whose body is a
+// YAML mapping rather than a language source — CommonMark core handles the
+// fence itself, so this is the whole "parser extension" cost. `quiz` (Phase
+// 7) was the first; `rubric` (Phase 9) follows the identical shape, so the
+// line-numbering helper below is shared rather than duplicated.
 // ---------------------------------------------------------------------------
 
 /** The shape `yaml`'s YAMLParseError carries — duck-typed rather than an
@@ -233,12 +260,13 @@ function hasLinePos(err: unknown): err is YamlPositionedError {
 }
 
 /**
- * The 1-based line IN THE WHOLE LESSON FILE a ```quiz fence's Nth content
- * line falls on, given the fence's own mdast position. Content starts the
- * line after the opening fence, and `yaml`'s `linePos[0].line` is 1-based
- * within the fence body — so line 1 of the body is `fenceStartLine + 1`.
+ * The 1-based line IN THE WHOLE LESSON FILE a tagged fence's (```quiz,
+ * ```rubric) Nth content line falls on, given the fence's own mdast
+ * position. Content starts the line after the opening fence, and `yaml`'s
+ * `linePos[0].line` is 1-based within the fence body — so line 1 of the
+ * body is `fenceStartLine + 1`.
  */
-function quizContentLine(codeNode: Code, relativeLine: number): number {
+function fencedYamlContentLine(codeNode: Code, relativeLine: number): number {
   const fenceStartLine = codeNode.position?.start.line ?? 0;
   return fenceStartLine + relativeLine;
 }
@@ -263,13 +291,13 @@ function buildQuizBlock(codeNode: Code): QuizBlock {
     parsed = parseYaml(codeNode.value);
   } catch (err) {
     const relativeLine = hasLinePos(err) ? (err.linePos?.[0]?.line ?? 1) : 1;
-    const line = quizContentLine(codeNode, relativeLine);
+    const line = fencedYamlContentLine(codeNode, relativeLine);
     const detail = err instanceof Error ? err.message : String(err);
     throw new Error(`invalid quiz block YAML at line ${line}: ${detail}`);
   }
 
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    const line = quizContentLine(codeNode, 1);
+    const line = fencedYamlContentLine(codeNode, 1);
     throw new Error(
       `invalid quiz block at line ${line}: the \`\`\`quiz fence body must be a YAML mapping with "pass" and ` +
         `"questions" keys, got ${Array.isArray(parsed) ? 'a list' : typeof parsed}.`,
@@ -278,6 +306,39 @@ function buildQuizBlock(codeNode: Code): QuizBlock {
 
   const record = parsed as Record<string, unknown>;
   return { type: 'quiz', pass: record.pass as number, questions: record.questions as QuizQuestion[] };
+}
+
+/**
+ * Parses a ```rubric fence's body into a typed RubricBlock (design §9.4,
+ * Task A). Mirrors buildQuizBlock exactly — same error-quality contract
+ * (line-numbered YAML errors, a clear message when the body isn't a
+ * mapping) — and, like buildQuizBlock, does NOT re-validate the shape of
+ * `criteria` here: that is schemas/blocks.schema.json's job (validateBlocks,
+ * at import time). The one thing this function will NOT do, on purpose, is
+ * strip anything: design §9.4 says rubric criteria are for students to read
+ * before submitting, so unlike a quiz's `correct` there is no secret here.
+ */
+function buildRubricBlock(codeNode: Code): RubricBlock {
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(codeNode.value);
+  } catch (err) {
+    const relativeLine = hasLinePos(err) ? (err.linePos?.[0]?.line ?? 1) : 1;
+    const line = fencedYamlContentLine(codeNode, relativeLine);
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`invalid rubric block YAML at line ${line}: ${detail}`);
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    const line = fencedYamlContentLine(codeNode, 1);
+    throw new Error(
+      `invalid rubric block at line ${line}: the \`\`\`rubric fence body must be a YAML mapping with a ` +
+        `"criteria" key, got ${Array.isArray(parsed) ? 'a list' : typeof parsed}.`,
+    );
+  }
+
+  const record = parsed as Record<string, unknown>;
+  return { type: 'rubric', criteria: record.criteria as RubricCriterion[] };
 }
 
 // In-source annotation markers (design §6.3): a trailing comment of the form
