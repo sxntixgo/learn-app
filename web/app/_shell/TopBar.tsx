@@ -7,16 +7,21 @@
 
 import Link from 'next/link';
 import type { ThemePreference } from '../../src/lib/theme';
+import type { Me } from '../../src/lib/api';
 import ThemeToggle from './ThemeToggle';
+import AuthControl from './AuthControl';
 import styles from './top-bar.module.css';
 
-export default function TopBar({ theme }: { theme: ThemePreference }) {
+export default function TopBar({ theme, user }: { theme: ThemePreference; user: Me | null }) {
   return (
     <header className={styles.banner}>
       <Link href="/" className={styles.brand}>
         Learn App
       </Link>
-      <ThemeToggle current={theme} />
+      <div className={styles.controls}>
+        <ThemeToggle current={theme} />
+        <AuthControl user={user} />
+      </div>
     </header>
   );
 }

@@ -1,9 +1,19 @@
 import Link from 'next/link';
 import { fetchCourses } from '../src/lib/api';
+import { withAuthRedirect } from '../src/lib/require-auth';
 import styles from './page.module.css';
 
+// Task E: the catalog redirects an anonymous visitor to /login rather than
+// rendering a signed-out state. This isn't a stricter choice than the API
+// makes — `course:list` (api/src/policy/can.ts) has no anonymous case at
+// all, so GET /api/v1/courses already 403s for every unauthenticated
+// visitor; rendering a partial/empty catalog here would just be hiding that
+// answer behind extra UI. It also sidesteps the leak Task E warns about:
+// an anonymous "browse" view would need its own filtered fetch to avoid
+// showing open-course titles to a visitor who cannot actually open one,
+// and redirect-to-login needs none of that.
 export default async function Home() {
-  const courses = await fetchCourses();
+  const courses = await withAuthRedirect('/', () => fetchCourses());
 
   return (
     <main className={styles.page}>

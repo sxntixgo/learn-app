@@ -3,6 +3,7 @@ import { ReactNode } from 'react';
 import { cookies } from 'next/headers';
 import { IBM_Plex_Mono, Libre_Franklin, Source_Serif_4 } from 'next/font/google';
 import { resolveThemePreference, THEME_COOKIE_NAME, themeDataAttribute } from '../src/lib/theme';
+import { fetchMeOrNull } from '../src/lib/api';
 import Shell from './_shell/Shell';
 import './globals.css';
 
@@ -59,6 +60,13 @@ export default async function RootLayout({
   const cookieStore = await cookies();
   const theme = resolveThemePreference(cookieStore.get(THEME_COOKIE_NAME)?.value);
 
+  // Task D: the shell renders on every page, signed in or not, so it reads
+  // its own session state here rather than each page fetching it — and
+  // through fetchMeOrNull, which turns "no session" into null instead of
+  // throwing (unlike the plain fetchMe pages use when a session IS
+  // required, Task B).
+  const user = await fetchMeOrNull();
+
   return (
     <html
       lang="en"
@@ -66,7 +74,9 @@ export default async function RootLayout({
       className={`${libreFranklin.variable} ${sourceSerif4.variable} ${ibmPlexMono.variable}`}
     >
       <body>
-        <Shell theme={theme}>{children}</Shell>
+        <Shell theme={theme} user={user}>
+          {children}
+        </Shell>
       </body>
     </html>
   );

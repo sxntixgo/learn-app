@@ -2,9 +2,14 @@
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  /* Clearance for the fixed bottom tab bar so it never covers the tail of
-     the page content or the footer beneath it. Matches nav.module.css's
-     ~44px link height plus its own vertical padding, with slack. */
+}
+
+/* Clearance for the fixed bottom tab bar so it never covers the tail of the
+   page content or the footer beneath it. Matches nav.module.css's ~44px
+   link height plus its own vertical padding, with slack. Only reserved when
+   Nav actually renders something (Task D: signed out, Nav renders null and
+   there is nothing to clear space for). */
+.root[data-nav-visible='true'] {
   padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
 }
 

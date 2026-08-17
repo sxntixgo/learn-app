@@ -27,9 +27,19 @@ function apiBase(): string {
 export async function POST(request: Request): Promise<Response> {
   const body = await request.text();
 
+  // The session cookie must be forwarded or the API sees an anonymous actor
+  // and `can(actor, 'repo:import')` refuses — so a signed-in admin's import
+  // would 403 with no obvious cause. Every other path to the API relays the
+  // cookie (see web/src/lib/api.ts); this handler predates that and was
+  // missed, because until Phase 6 an anonymous actor was allowed everything.
+  const cookie = request.headers.get('cookie');
+
   const upstream = await fetch(`${apiBase()}/api/v1/admin/imports`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(cookie ? { cookie } : {}),
+    },
     body,
     cache: 'no-store',
   });

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { fetchActivity, fetchHeatmap } from '../../src/lib/api';
+import { withAuthRedirect } from '../../src/lib/require-auth';
 import { HEATMAP_MAX_WEEKS } from '../../src/lib/heatmap';
 import ActivityFeed from './ActivityFeed';
 import Heatmap from './Heatmap';
@@ -26,7 +27,9 @@ function days(n: number): string {
  * resolved for the heatmap, rather than a second call to /api/v1/me.
  */
 export default async function MePage() {
-  const [heatmap, activity] = await Promise.all([fetchHeatmap(HEATMAP_MAX_WEEKS), fetchActivity()]);
+  const [heatmap, activity] = await withAuthRedirect('/me', () =>
+    Promise.all([fetchHeatmap(HEATMAP_MAX_WEEKS), fetchActivity()]),
+  );
 
   return (
     <main className={styles.page}>

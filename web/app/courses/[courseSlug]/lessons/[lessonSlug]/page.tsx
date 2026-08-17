@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { codeToHtml } from 'shiki';
 import type { Lesson } from '../../../../../src/lib/api';
 import { fetchLesson } from '../../../../../src/lib/api';
+import { withAuthRedirect } from '../../../../../src/lib/require-auth';
 import type { components } from '../../../../../src/lib/api-types';
 import type { AuthorAnnotationInput } from '../../../../../src/lib/annotations';
 import AnnotatableCode from './AnnotatableCode';
@@ -46,7 +47,9 @@ export default async function LessonPage({
   params: Promise<{ courseSlug: string; lessonSlug: string }>;
 }) {
   const { courseSlug, lessonSlug } = await params;
-  const lesson: Lesson | null = await fetchLesson(courseSlug, lessonSlug);
+  const lesson: Lesson | null = await withAuthRedirect(`/courses/${courseSlug}/lessons/${lessonSlug}`, () =>
+    fetchLesson(courseSlug, lessonSlug),
+  );
 
   if (!lesson) {
     notFound();

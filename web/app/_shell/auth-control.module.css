@@ -1,0 +1,68 @@
+/*
+ * Lives inside the top banner (top-bar.module.css) — same banner tokens as
+ * .brand there, not the page-surface ones. 44px targets, no hover-only
+ * affordance (design §14.2's own rule for the nav applies here too).
+ */
+
+.signInLink {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--color-banner-divider);
+  border-radius: 8px;
+  color: var(--color-banner-text);
+  text-decoration: none;
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.signInLink:hover {
+  background: color-mix(in oklch, var(--color-banner-text) 12%, transparent);
+}
+
+.signInLink:focus-visible {
+  outline: 2px solid var(--color-banner-text);
+  outline-offset: 2px;
+}
+
+.control {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.identity {
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 0.85rem;
+  color: var(--color-banner-text);
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signOutButton {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--color-banner-divider);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-banner-text);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.signOutButton:hover {
+  background: color-mix(in oklch, var(--color-banner-text) 12%, transparent);
+}
+
+.signOutButton:focus-visible {
+  outline: 2px solid var(--color-banner-text);
+  outline-offset: 2px;
+}

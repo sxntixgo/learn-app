@@ -44,9 +44,17 @@ const ICONS: Record<string, React.ReactNode> = {
   ),
 };
 
-export default function Nav() {
+export default function Nav({ signedIn }: { signedIn: boolean }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+
+  // Task D: "do not render nav destinations that only work when
+  // authenticated." Every current destination requires a session — Catalog
+  // included, since course:list denies the anonymous actor outright
+  // (api/src/policy/can.ts) — so a signed-out visitor has nothing this nav
+  // could usefully point at. TopBar's Sign-in link is the only navigation
+  // offered instead.
+  if (!signedIn) return null;
 
   return (
     <nav className={styles.nav} data-collapsed={collapsed} aria-label="Primary">

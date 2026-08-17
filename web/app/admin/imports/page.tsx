@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { fetchImportRuns, fetchMe } from '../../../src/lib/api';
+import { withAuthRedirect } from '../../../src/lib/require-auth';
 import ImportForm from './ImportForm';
 import ImportHistory from './ImportHistory';
 import styles from './imports.module.css';
@@ -22,7 +23,7 @@ export const metadata: Metadata = {
  * /me's heatmap/activity feed.
  */
 export default async function AdminImportsPage() {
-  const [me, runs] = await Promise.all([fetchMe(), fetchImportRuns(50)]);
+  const [me, runs] = await withAuthRedirect('/admin/imports', () => Promise.all([fetchMe(), fetchImportRuns(50)]));
 
   return (
     <main className={styles.page}>

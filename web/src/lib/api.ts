@@ -1,5 +1,7 @@
 import { cookies } from 'next/headers';
 import type { components } from './api-types';
+import { AuthRequiredError, classifyStatus } from './api-errors';
+import { relaySetCookies } from './auth-cookies';
 
 // Types come from the generated contract (CLAUDE.md rule 3) — never
 // hand-written. web talks to the API over HTTP only (CLAUDE.md rule 1); it
@@ -23,6 +25,13 @@ export type Me = components['schemas']['Me'];
 export type ImportRunSummary = components['schemas']['ImportRunSummary'];
 export type ImportProgressEvent = components['schemas']['ImportProgressEvent'];
 export type ImportCounts = components['schemas']['ImportCounts'];
+export type AuthUser = components['schemas']['AuthUser'];
+
+// Re-exported so callers (Server Components deciding whether to redirect to
+// /login) never need to import from ./api-errors directly — api.ts is the
+// one seam that talks to the API, and this is the one error it can throw
+// that isn't just "something is broken" (Task B).
+export { AuthRequiredError } from './api-errors';
 
 function apiBase(): string {
   const base = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -54,8 +63,35 @@ async function authHeaders(): Promise<HeadersInit> {
   return header ? { Cookie: header } : {};
 }
 
+/**
+ * The one place every authenticated request to the API goes through
+ * (Task B). Every fetch helper below used to throw a bare `Error` on any
+ * non-OK response — including a 403 from `can()` for a perfectly ordinary
+ * anonymous visitor, which Next has no way to render but as a 500. Routing
+ * every call through here means that bug can only be fixed once: a 401 (no
+ * session) or 403 (can() said no) always becomes an `AuthRequiredError`,
+ * for every caller, rather than depending on each function to have
+ * remembered its own check.
+ *
+ * 404 is deliberately NOT handled here — "not found" and "not allowed to
+ * even ask" are different answers (see courses.ts's 404-vs-403 line, design
+ * §12), and only some callers 404 at all, so each of those decides for
+ * itself via `res.status === 404`, same as `fetchCourse` always did.
+ */
+async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const res = await fetch(`${apiBase()}${path}`, {
+    cache: 'no-store',
+    ...init,
+    headers: { ...(await authHeaders()), ...init.headers },
+  });
+  if (classifyStatus(res.status) === 'auth-required') {
+    throw new AuthRequiredError();
+  }
+  return res;
+}
+
 export async function fetchCourses(): Promise<CourseSummary[]> {
-  const res = await fetch(`${apiBase()}/api/v1/courses`, { cache: 'no-store', headers: await authHeaders() });
+  const res = await apiFetch('/api/v1/courses');
   if (!res.ok) {
     throw new Error(`Failed to fetch courses: ${res.status}`);
   }
@@ -63,10 +99,7 @@ export async function fetchCourses(): Promise<CourseSummary[]> {
 }
 
 export async function fetchCourse(courseSlug: string): Promise<CourseDetail | null> {
-  const res = await fetch(`${apiBase()}/api/v1/courses/${encodeURIComponent(courseSlug)}`, {
-    cache: 'no-store',
-    headers: await authHeaders(),
-  });
+  const res = await apiFetch(`/api/v1/courses/${encodeURIComponent(courseSlug)}`);
   if (res.status === 404) {
     return null;
   }
@@ -133,10 +166,7 @@ export async function setCourseVisibility(courseSlug: string, visibility: Course
  * it is visible without scrolling — see src/lib/heatmap.ts for why.
  */
 export async function fetchHeatmap(weeks: number): Promise<Heatmap> {
-  const res = await fetch(`${apiBase()}/api/v1/me/heatmap?weeks=${encodeURIComponent(String(weeks))}`, {
-    cache: 'no-store',
-    headers: await authHeaders(),
-  });
+  const res = await apiFetch(`/api/v1/me/heatmap?weeks=${encodeURIComponent(String(weeks))}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch heatmap: ${res.status}`);
   }
@@ -144,9 +174,8 @@ export async function fetchHeatmap(weeks: number): Promise<Heatmap> {
 }
 
 export async function fetchLesson(courseSlug: string, lessonSlug: string): Promise<Lesson | null> {
-  const res = await fetch(
-    `${apiBase()}/api/v1/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lessonSlug)}`,
-    { cache: 'no-store', headers: await authHeaders() },
+  const res = await apiFetch(
+    `/api/v1/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lessonSlug)}`,
   );
   if (res.status === 404) {
     return null;
@@ -163,7 +192,7 @@ export async function fetchLesson(courseSlug: string, lessonSlug: string): Promi
  */
 export async function fetchActivity(limit?: number): Promise<ActivityEvent[]> {
   const query = limit !== undefined ? `?limit=${encodeURIComponent(String(limit))}` : '';
-  const res = await fetch(`${apiBase()}/api/v1/me/activity${query}`, { cache: 'no-store', headers: await authHeaders() });
+  const res = await apiFetch(`/api/v1/me/activity${query}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch activity: ${res.status}`);
   }
@@ -172,10 +201,7 @@ export async function fetchActivity(limit?: number): Promise<ActivityEvent[]> {
 
 /** The actor's progress summary for a course: totals, percent, and every lesson's state. */
 export async function fetchCourseProgress(courseSlug: string): Promise<CourseProgressSummary | null> {
-  const res = await fetch(`${apiBase()}/api/v1/courses/${encodeURIComponent(courseSlug)}/progress`, {
-    cache: 'no-store',
-    headers: await authHeaders(),
-  });
+  const res = await apiFetch(`/api/v1/courses/${encodeURIComponent(courseSlug)}/progress`);
   if (res.status === 404) {
     return null;
   }
@@ -187,7 +213,7 @@ export async function fetchCourseProgress(courseSlug: string): Promise<CoursePro
 
 /** The actor's own profile — id, display name, and effective timezone (design §15). */
 export async function fetchMe(): Promise<Me> {
-  const res = await fetch(`${apiBase()}/api/v1/me`, { cache: 'no-store', headers: await authHeaders() });
+  const res = await apiFetch('/api/v1/me');
   if (!res.ok) {
     throw new Error(`Failed to fetch me: ${res.status}`);
   }
@@ -197,11 +223,27 @@ export async function fetchMe(): Promise<Me> {
 /** Import run history, newest first (design plan phase 5's admin screen). */
 export async function fetchImportRuns(limit?: number): Promise<ImportRunSummary[]> {
   const query = limit !== undefined ? `?limit=${encodeURIComponent(String(limit))}` : '';
-  const res = await fetch(`${apiBase()}/api/v1/admin/import-runs${query}`, { cache: 'no-store', headers: await authHeaders() });
+  const res = await apiFetch(`/api/v1/admin/import-runs${query}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch import runs: ${res.status}`);
   }
   return (await res.json()) as ImportRunSummary[];
+}
+
+/**
+ * The actor's own profile, or null if there is no session — used by the
+ * shell (Task D) to decide between "Sign in" and a Sign-out control without
+ * a 403 turning into a page-level redirect: the shell renders on every page,
+ * signed in or not, so it must never throw where a page's own data-loading
+ * would.
+ */
+export async function fetchMeOrNull(): Promise<Me | null> {
+  try {
+    return await fetchMe();
+  } catch (err) {
+    if (err instanceof AuthRequiredError) return null;
+    throw err;
+  }
 }
 
 async function errorMessage(res: Response, fallback: string): Promise<string> {
@@ -260,4 +302,62 @@ export async function submitQuizAttempt(
     throw new Error(await errorMessage(res, `Failed to submit quiz for lesson "${lessonSlug}": ${res.status}`));
   }
   return (await res.json()) as QuizSubmitResult;
+}
+
+// =============================================================================
+// Task C/D: the four routes that create or destroy a session
+// (api/src/routes/auth.ts). Unlike everything above, these are deliberately
+// NOT routed through apiFetch: a 401 from a bad login attempt is the whole
+// point of the login form, not a bug to redirect away from, and it must
+// never surface as an AuthRequiredError. Every response that sets cookies is
+// relayed onto web's own response — see auth-cookies.ts's module comment for
+// why that has to happen explicitly.
+// =============================================================================
+
+export type LoginResult =
+  | { ok: true; user: AuthUser }
+  | { ok: false; message: string; retryAfterSeconds?: number };
+
+/**
+ * Signs in with email + password (Task C). Never throws on an ordinary
+ * credential failure — the login form shows the API's own message (design
+ * §13: identical whether the account doesn't exist or the password is
+ * wrong, so this surfaces it verbatim rather than adding a distinction the
+ * API deliberately does not make).
+ */
+export async function login(email: string, password: string, deviceLabel?: string): Promise<LoginResult> {
+  const res = await fetch(`${apiBase()}/api/v1/auth/login`, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, deviceLabel }),
+  });
+
+  if (res.ok) {
+    await relaySetCookies(res);
+    const body = (await res.json()) as components['schemas']['AuthSessionResponse'];
+    return { ok: true, user: body.user };
+  }
+
+  const message = await errorMessage(res, 'Could not sign in.');
+  if (res.status === 429) {
+    const retryAfter = Number(res.headers.get('Retry-After'));
+    return { ok: false, message, retryAfterSeconds: Number.isFinite(retryAfter) ? retryAfter : undefined };
+  }
+  return { ok: false, message };
+}
+
+/**
+ * Ends the current session (Task D's Sign-out control). Keyed off the
+ * refresh cookie by the API itself, not the actor, so this always succeeds —
+ * signing out is never an error (api/src/routes/auth.ts) — and always clears
+ * web's own cookies to match, even if the API had nothing to revoke.
+ */
+export async function logout(): Promise<void> {
+  const res = await fetch(`${apiBase()}/api/v1/auth/logout`, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: await authHeaders(),
+  });
+  await relaySetCookies(res);
 }

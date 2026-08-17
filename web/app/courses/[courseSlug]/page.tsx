@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { fetchCourse, fetchCourseProgress } from '../../../src/lib/api';
+import { withAuthRedirect } from '../../../src/lib/require-auth';
 import EnrolButton from './EnrolButton';
 import PublishControl from './PublishControl';
 import styles from './course.module.css';
@@ -20,7 +21,9 @@ export default async function CoursePage({
   params: Promise<{ courseSlug: string }>;
 }) {
   const { courseSlug } = await params;
-  const [course, progress] = await Promise.all([fetchCourse(courseSlug), fetchCourseProgress(courseSlug)]);
+  const [course, progress] = await withAuthRedirect(`/courses/${courseSlug}`, () =>
+    Promise.all([fetchCourse(courseSlug), fetchCourseProgress(courseSlug)]),
+  );
 
   if (!course) {
     notFound();

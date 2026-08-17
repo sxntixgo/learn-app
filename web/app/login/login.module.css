@@ -1,0 +1,101 @@
+/*
+ * Login page (Task C). Same card/field/button idiom as the admin import
+ * form (imports.module.css) — a single flow, not a new pattern — and the
+ * same 44px minimum touch target used everywhere in this app (nav.module.css
+ * .link, imports.module.css .input/.submitButton).
+ */
+
+.page {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 2.5rem 1rem 4rem;
+}
+
+.title {
+  font-size: clamp(1.5rem, 4vw + 0.5rem, 2.25rem);
+  margin: 0 0 0.5rem;
+}
+
+.intro {
+  margin: 0 0 1.75rem;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 10px;
+  background: var(--color-surface-raised);
+  padding: 1.25rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.label {
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.input {
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 8px;
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 0.95rem;
+  width: 100%;
+}
+
+.input:disabled {
+  opacity: 0.65;
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 1px;
+}
+
+.submitButton {
+  min-height: 44px;
+  padding: 0.6rem 1.5rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 8px;
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.submitButton:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+}
+
+.submitButton:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.submitButton:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+.error {
+  margin: 0;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--color-accent-yellow);
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}

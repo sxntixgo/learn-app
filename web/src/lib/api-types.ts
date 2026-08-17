@@ -24,6 +24,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in with email and password
+         * @description Verifies the credential and, on success, starts a session: sets the httpOnly access-token and refresh-token cookies (design §13) and records an `auth.login` audit_log row. There is no account oracle (design §13/auth.ts) — an unknown email, a wrong password, and an account with no credential (`password_hash is null`) all produce the identical 401 body, the identical status, and the same Argon2id work. Rate-limited per IP and per account, with doubling backoff (design §13); a locked-out attempt is refused with 429 before the lookup or the hash, so lockout cannot be used as a CPU sink either.
+         */
+        post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate the refresh token and mint a new access token
+         * @description Reads the `learn_rt` cookie, rotates it, and re-reads the caller's roles from the database (design §13: "role is in the token for cheap reads; privileged mutations re-check the database, so a demotion takes effect immediately rather than at next refresh" — refresh is the other place a stale role claim gets a chance to correct itself). Presenting an already-spent refresh token is treated as token theft (design §13 reuse detection): the whole token family is revoked, an `auth.refresh_reuse_detected` audit_log row is written, and both cookies are cleared, killing the session everywhere until the next password login. Every failure — missing cookie, unknown token, expired token, revoked token, or reuse — answers with the identical 401 body, and always clears both cookies, so a client holding a dead token is never left retrying it forever.
+         */
+        post: operations["refreshSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End the current session
+         * @description Revokes the session named by the `learn_rt` cookie (if any) and clears both cookies. Keyed off the refresh cookie rather than the actor so signing out still works once the access token has already expired — exactly when a visitor reaches for this control. Always succeeds, including with no cookie at all: signing out is never an error.
+         */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End every session on every device
+         * @description Revokes every refresh-token family belonging to the caller (design §13's "sign out everywhere" control) and clears the caller's own cookies. Gated by `session:revoke:all`, decided by `can()` like every other route — an unauthenticated caller is refused with 403, not a locally written 401 check (CLAUDE.md rule 2).
+         */
+        post: operations["logoutAll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses": {
         parameters: {
             query?: never;
@@ -833,6 +913,28 @@ export interface components {
             admin: components["schemas"]["SetupAccountResult"];
             student: components["schemas"]["SetupAccountResult"];
         };
+        /** @description An email/password sign-in attempt (design §13). */
+        LoginRequest: {
+            /** @description Case-insensitive; surrounding whitespace is trimmed server-side. */
+            email: string;
+            password: string;
+            /** @description Optional human label for this device/session (design §13: "one per device"). A fresh login with the same label supersedes that device's previous session. */
+            deviceLabel?: string | null;
+        };
+        /** @description The signed-in account, returned by login and refresh. Not the same shape as Me (design §15's learner profile) — this is the session's identity claim, roles included, and email/handle/displayName may be null exactly when the underlying users row has them unset. */
+        AuthUser: {
+            /** Format: uuid */
+            id: string;
+            email: ((string | null) | null) | null;
+            handle: ((string | null) | null) | null;
+            displayName: ((string | null) | null) | null;
+            /** @description The actor's current roles, re-read from the database at login/refresh time (design §5.1: admin is exclusive). */
+            roles: ("student" | "teacher" | "admin")[];
+        };
+        /** @description The body of a successful login or refresh. */
+        AuthSessionResponse: {
+            user: components["schemas"]["AuthUser"];
+        };
     };
     responses: never;
     parameters: never;
@@ -858,6 +960,137 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthStatus"];
+                };
+            };
+        };
+    };
+    login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Signed in. Both session cookies are set. */
+            200: {
+                headers: {
+                    /** @description learn_at (path=/) and learn_rt (path=/api/v1/auth), both httpOnly, Secure, SameSite=Lax. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionResponse"];
+                };
+            };
+            /** @description email and/or password missing, or the password exceeds the length limit. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Invalid email or password. Identical body and status whether the account does not exist, the password is wrong, or the account has no credential at all — see the operation description. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many login attempts for this IP or account. `Retry-After` carries the number of seconds until the next attempt may proceed. */
+            429: {
+                headers: {
+                    /** @description Seconds until the caller may try again. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    refreshSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A fresh session. Both cookies are re-set. */
+            200: {
+                headers: {
+                    /** @description learn_at (path=/) and learn_rt (path=/api/v1/auth), both httpOnly, Secure, SameSite=Lax. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionResponse"];
+                };
+            };
+            /** @description No refresh cookie, or it is unknown, expired, revoked, or reused. Both session cookies are cleared on this response. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out. Both session cookies are cleared. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    logoutAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every session is revoked. The caller's own cookies are cleared. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valid session — refused by can(), same as any other protected route. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };
