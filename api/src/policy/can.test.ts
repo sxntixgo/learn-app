@@ -127,6 +127,32 @@ const MATRIX: readonly MatrixCase[] = [
     resource: ownData,
     expected: [DENY, ALLOW, DENY, DENY, DENY],
   },
+  // Phase 8 (design §9.4). A submission is the student's own work, so all
+  // three cells are SELF — and the teacher cells are DENY here on purpose:
+  // a teacher reaches a submission through `submission:grade`, which is
+  // scoped to courses they OWN. If reading a submission were also allowed
+  // by these actions, every teacher on the instance would be able to read
+  // every student's work, which is the exact opposite of §9.4's
+  // "visible to the student who wrote it and to teachers of the owning
+  // course".
+  {
+    row: 'Enroll, read, track own progress',
+    action: 'lesson:exercise:read',
+    resource: ownData,
+    expected: [DENY, ALLOW, DENY, DENY, DENY],
+  },
+  {
+    row: 'Enroll, read, track own progress',
+    action: 'lesson:exercise:save',
+    resource: ownData,
+    expected: [DENY, ALLOW, DENY, DENY, DENY],
+  },
+  {
+    row: 'Enroll, read, track own progress',
+    action: 'lesson:exercise:submit',
+    resource: ownData,
+    expected: [DENY, ALLOW, DENY, DENY, DENY],
+  },
 
   // ---------------------------------------------------------------------------
   // Row: "Own profile, badges, degrees" — student ✅, teacher —, admin —
@@ -587,6 +613,32 @@ describe('user-scoped actions are about the actor’s OWN data', () => {
     expect(can(student, 'me:activity:read', { userId: OTHER_STUDENT_ID })).toBe(false);
     expect(can(student, 'me:heatmap:read', { userId: OTHER_STUDENT_ID })).toBe(false);
     expect(can(student, 'profile:read', { userId: OTHER_STUDENT_ID })).toBe(false);
+  });
+
+  it('a student cannot read, draft, or submit another student’s exercise submission (§9.4, Gate 9)', () => {
+    // The policy half of "no student can read another student's
+    // submission". The route half is api/src/routes/submissions.test.ts —
+    // both are needed, because a route that never named the subject at all
+    // would pass this test and still leak.
+    expect(can(student, 'lesson:exercise:read', { userId: STUDENT_ID })).toBe(true);
+    expect(can(student, 'lesson:exercise:read', { userId: OTHER_STUDENT_ID })).toBe(false);
+    expect(can(student, 'lesson:exercise:save', { userId: OTHER_STUDENT_ID })).toBe(false);
+    expect(can(student, 'lesson:exercise:submit', { userId: OTHER_STUDENT_ID })).toBe(false);
+    // ...and a route that forgot to say whose submission it is gets no
+    // benefit of the doubt.
+    expect(can(student, 'lesson:exercise:read', {})).toBe(false);
+    expect(can(student, 'lesson:exercise:save', undefined)).toBe(false);
+    expect(can(student, 'lesson:exercise:submit', { slug: 'ex-1' })).toBe(false);
+  });
+
+  it('a teacher does not reach a submission through the student’s own actions (§9.4)', () => {
+    // Reading a submission for grading is `submission:grade`, scoped to a
+    // course the teacher OWNS. If lesson:exercise:read had a teacher cell,
+    // every teacher on the instance would read every student's work.
+    expect(can(teacher, 'lesson:exercise:read', { userId: STUDENT_ID })).toBe(false);
+    expect(can(teacher, 'lesson:exercise:read', { userId: TEACHER_ID })).toBe(false);
+    expect(can(teacher, 'submission:grade', { course: { ownerId: TEACHER_ID } })).toBe(true);
+    expect(can(teacher, 'submission:grade', { course: { ownerId: OTHER_TEACHER_ID } })).toBe(false);
   });
 
   it('and a missing subject denies, so a route cannot forget to name whose data it is', () => {

@@ -10,6 +10,8 @@ import type { ProgressRouteDeps } from './routes/progress.ts';
 import { registerProgressRoutes } from './routes/progress.ts';
 import type { QuizRouteDeps } from './routes/quiz.ts';
 import { registerQuizRoutes } from './routes/quiz.ts';
+import type { SubmissionRouteDeps } from './routes/submissions.ts';
+import { registerSubmissionRoutes } from './routes/submissions.ts';
 import type { MeRouteDeps } from './routes/me.ts';
 import { registerMeRoutes } from './routes/me.ts';
 import type { AdminRouteDeps } from './routes/admin.ts';
@@ -36,7 +38,8 @@ export type BuildServerOptions = CourseRouteDeps &
   MeRouteDeps &
   AdminRouteDeps &
   SetupRouteDeps &
-  AuthRouteDeps & {
+  AuthRouteDeps &
+  SubmissionRouteDeps & {
     /**
      * Whether to believe `X-Forwarded-For`. OFF unless explicitly enabled,
      * because a trusted-by-default proxy header lets any client forge the
@@ -81,6 +84,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   // NULL password_hash that means "cannot authenticate".
   registerSetupRoutes(fastify, { ...options, hashPassword: options.hashPassword ?? hashPassword });
   registerAuthRoutes(fastify, options);
+  registerSubmissionRoutes(fastify, options);
 
   return fastify;
 }

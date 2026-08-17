@@ -4,6 +4,9 @@ import type { Actor, CourseVisibility } from '../policy/can.ts';
 import { can as defaultCan } from '../policy/can.ts';
 import { actorFor } from '../auth/actor.ts';
 import { actorWithFreshRoles } from '../auth/roles.ts';
+// The "as presented" form of a lesson's blocks, shared with the exercise
+// snapshot (design §9.4) so the two can never diverge — see content/present.ts.
+import { presentBlocks } from '../content/present.ts';
 
 export interface CourseRouteDeps {
   // Injectable policy function (CLAUDE.md rule 2), same seam as lessons.ts
@@ -76,52 +79,6 @@ interface CourseLessonRow {
 interface LessonProgressRow {
   state: string;
   last_position: string | null;
-}
-
-/**
- * Strips `correct` from every quiz choice before a lesson's blocks reach an
- * HTTP response (Task A: "the stored block must NOT expose which choice is
- * correct to the browser"). The database keeps the full block — the
- * scoring route (routes/quiz.ts) needs it — this is the one chokepoint that
- * keeps the answer key out of page source; every other reader of
- * `lessons.blocks` in this codebase (the importer, the scoring route)
- * intentionally goes straight to the row and does NOT go through this
- * function.
- *
- * Defensive rather than blocks-schema-typed: `blocks` arrives as `unknown`
- * off a jsonb column, and a block this function doesn't recognise (or a
- * shape that doesn't match what it expects) is returned unchanged rather
- * than throwing — a stripping bug must never become a 500 on every lesson
- * page.
- */
-function stripQuizAnswers(blocks: unknown): unknown {
-  if (!Array.isArray(blocks)) return blocks;
-
-  return blocks.map((block) => {
-    if (typeof block !== 'object' || block === null || (block as { type?: unknown }).type !== 'quiz') {
-      return block;
-    }
-
-    const quiz = block as { questions?: unknown };
-    if (!Array.isArray(quiz.questions)) return block;
-
-    const questions = quiz.questions.map((question) => {
-      if (typeof question !== 'object' || question === null) return question;
-      const { choices, ...restOfQuestion } = question as { choices?: unknown; [key: string]: unknown };
-      if (!Array.isArray(choices)) return question;
-
-      const strippedChoices = choices.map((choice) => {
-        if (typeof choice !== 'object' || choice === null) return choice;
-        const rest: Record<string, unknown> = { ...(choice as Record<string, unknown>) };
-        delete rest.correct;
-        return rest;
-      });
-
-      return { ...restOfQuestion, choices: strippedChoices };
-    });
-
-    return { ...quiz, questions };
-  });
 }
 
 /** The two database facts every visibility-aware policy question needs (design §12, migrations 0007/0008). */
@@ -594,7 +551,7 @@ export function registerCourseRoutes(fastify: FastifyInstance, deps: CourseRoute
         kind: row.kind,
         track: row.track_key,
         estimateMinutes: row.estimate_minutes,
-        blocks: stripQuizAnswers(row.blocks),
+        blocks: presentBlocks(row.blocks),
         prev: prevRow ? { slug: prevRow.slug, title: prevRow.title } : null,
         next: nextRow ? { slug: nextRow.slug, title: nextRow.title } : null,
         progress,

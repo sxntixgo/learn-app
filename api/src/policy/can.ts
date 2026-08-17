@@ -315,6 +315,19 @@ const MATRIX = {
   // new scoring endpoint") is the SAME kind of action as writing progress:
   // about the actor's own record, nothing else. SELF, not a new predicate.
   'lesson:quiz:submit': { row: 'Enroll, read, track own progress', student: SELF },
+  // Phase 8: exercise submissions (design §9.4). Three actions, all SELF,
+  // all about the actor's own work — reading their own submission, saving a
+  // draft of it, and handing it in.
+  //
+  // There is deliberately NO teacher cell on any of them. §9.4: "a
+  // submission and its annotations are visible to the student who wrote it
+  // and to teachers of the OWNING COURSE" — the second half is
+  // `submission:grade` below, which is OWN_COURSE. A teacher cell here
+  // would be a role check, and a role check would hand every teacher on the
+  // instance every student's work.
+  'lesson:exercise:read': { row: 'Enroll, read, track own progress', student: SELF },
+  'lesson:exercise:save': { row: 'Enroll, read, track own progress', student: SELF },
+  'lesson:exercise:submit': { row: 'Enroll, read, track own progress', student: SELF },
 
   // ---- Own profile, badges, degrees ----------------------------------------
   // The learner-facing profile of design §11. §5.1: operator accounts have
