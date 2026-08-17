@@ -32,6 +32,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The runner ships pg_dump 16, and pg_dump refuses to dump a newer
+      # server ("aborting because of server version mismatch"). The service
+      # container is postgres:17, so the backup/restore tests fail in CI while
+      # passing locally. Install the matching client tools from PGDG.
+      - name: Install PostgreSQL 17 client tools
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
