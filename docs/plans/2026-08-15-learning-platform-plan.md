@@ -505,6 +505,58 @@ into pages rendered in an authenticated session. Present since Phase 1; no test 
       **Acceptance:** an integration test asserts every header on a real response. CSP must include an `img-src` policy — the Phase 5 hardening review found that content repos can otherwise make an authenticated reader's browser fetch arbitrary third-party URLs, and that is the correct control for it. Verify the app still functions with the policy on: self-hosted fonts, inline styles from CSS modules, and Shiki output must all survive
       **Model:** `opus` — *(a) security: a header set this is trivially wrong in ways nothing else catches*
 
+### Phase 6 outcome — COMPLETE (built 2026-08-16/17)
+
+**727 tests** (was 286 at the start of the phase), lint and typecheck clean.
+
+Verified independently here:
+
+- **Admin exclusivity enforced by the database** — an exclusion constraint, not a trigger,
+  because a trigger reading `user_roles` lets two concurrent grants pass each other under
+  READ COMMITTED. `student` + `teacher` still allowed
+- **The bootstrap claim is atomic** — concurrent claims yield exactly one admin. The claim
+  turns out to be defended by four overlapping mechanisms; removing enough of them fails 6 tests
+- **NULL `password_hash` means authentication is impossible** — 401 for empty string, wrong
+  password, and another account's valid password
+- **No user enumeration** — identical response for unknown account and wrong password
+- **Refresh reuse detection works** — replaying a spent token 401s and revokes the entire
+  family, so the freshly issued token dies with it
+- **`can()` is a real chokepoint** — neutering it fails **153 tests across 4 files**,
+  including four that go through real HTTP
+- **Hidden courses 404, not 403** — a 403 confirms the course exists
+- **Re-import never changes visibility**, tested in both directions
+- **CSP uses a nonce with no `'unsafe-inline'` for scripts** — verified against served HTML,
+  all 14 Next scripts carry the nonce; zero external origins referenced
+
+**Bugs found and fixed that predate this phase:**
+
+| Bug | Impact |
+|---|---|
+| `GET /api/v1/me` returned 404 before consulting `can()` | Leaked whether a row existed to an actor with no session |
+| `web/src/lib/api.ts` never forwarded the session cookie on SSR fetches | Harmless under a permissive `can()`; under the real matrix every server-rendered request would have resolved as anonymous |
+
+**Known gaps, documented not hidden:**
+
+- The import pipeline upserts by course slug, so a teacher importing a repo whose slug
+  collides with a course they do not own would write to it. `repo:import` cannot see this —
+  slugs are discovered mid-pipeline. Closing it means resolving the target course, then
+  asking `course:sync`
+- A revoked refresh family does not invalidate an already-issued access token, so detected
+  theft has up to a 15-minute tail. §13's stated trade-off, not an oversight
+- 21 matrix cells are encoded and unit-tested but have no route yet (badges, degrees,
+  grading, invites) — deny-by-default until Phases 9–13 build them
+
+### Gate 6 — needs a human, and this is the exposure decision
+
+- [ ] **Open the app in a real browser with the CSP on.** Verified structurally only —
+      no browser in the dev container. Check code blocks keep their colours, hydration
+      works, and the console is free of CSP violations
+- [ ] Confirm `docker compose up` still works with the headers in place
+- [ ] Decide whether to backfill `courses.owner_id` for the existing imported catalog —
+      they are currently unowned, so only an admin may act on them
+- [ ] Existing courses were backfilled to `hidden`. Publish the ones you want visible
+- [ ] **Only after the above: this may go behind public Caddy.**
+
 > **Gate 6 — exposure.** Policy matrix green, admin exclusivity enforced in the database,
 > hardening from Phase 5 reviewed. **Only now may this go behind public Caddy.**
 
