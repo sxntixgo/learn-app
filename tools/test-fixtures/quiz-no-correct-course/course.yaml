@@ -1,0 +1,9 @@
+schema: 1
+slug: quiz-no-correct-course
+title: Quiz No Correct Answer Course
+subtitle: a hand-written fixture proving an unpassable quiz fails validation
+modules:
+  - id: intro
+    title: Introduction
+    lessons:
+      - modules/01-intro/quiz-one.md

@@ -200,6 +200,78 @@ describe('parseLesson', () => {
   // Design §8.1: prose is untrusted output. The full policy is proven in
   // sanitize.test.ts; these are the two things parseLesson itself must never
   // stop doing.
+  describe('quiz blocks (design §6.3/Task A: tagged fenced blocks with YAML)', () => {
+    const validQuizMarkdown = [
+      '# Title',
+      '',
+      '```quiz',
+      'pass: 0.7',
+      'questions:',
+      '  - prompt: Which is a deep module?',
+      '    track: cx',
+      '    choices:',
+      '      - text: A class with one method and a large interface',
+      '      - text: A class with a simple interface hiding real complexity',
+      '        correct: true',
+      '```',
+      '',
+    ].join('\n');
+
+    it('parses a ```quiz fence into a typed quiz block', () => {
+      const { blocks } = parseLesson(validQuizMarkdown);
+      expect(blocks).toEqual([
+        {
+          type: 'quiz',
+          pass: 0.7,
+          questions: [
+            {
+              prompt: 'Which is a deep module?',
+              track: 'cx',
+              choices: [
+                { text: 'A class with one method and a large interface' },
+                { text: 'A class with a simple interface hiding real complexity', correct: true },
+              ],
+            },
+          ],
+        },
+      ]);
+    });
+
+    it('produces output that validates against the blocks schema', () => {
+      const { blocks } = parseLesson(validQuizMarkdown);
+      expect(validateBlocks(blocks)).toEqual({ valid: true, errors: [] });
+    });
+
+    it('preserves document order alongside prose and code', () => {
+      const markdown = ['# Title', '', 'Some prose.', '', validQuizMarkdown.split('\n').slice(2).join('\n')].join(
+        '\n',
+      );
+      const { blocks } = parseLesson(markdown);
+      expect(blocks.map((b) => b.type)).toEqual(['prose', 'quiz']);
+    });
+
+    it('throws a clear error naming the file line for malformed YAML inside the fence', () => {
+      const markdown = [
+        '# Title',
+        '', // line 2
+        '```quiz', // line 3 — fence opens
+        'pass: 0.7', // line 4
+        'questions:', // line 5
+        '  - prompt: Bad indentation ahead', // line 6
+        '   choices:', // line 7 — bad indent, malformed YAML
+        '```',
+        '',
+      ].join('\n');
+
+      expect(() => parseLesson(markdown)).toThrow(/line 7/);
+    });
+
+    it('throws a clear error when the fence content is not a YAML mapping', () => {
+      const markdown = ['# Title', '', '```quiz', '- just', '- a', '- list', '```', ''].join('\n');
+      expect(() => parseLesson(markdown)).toThrow(/quiz/i);
+    });
+  });
+
   describe('prose sanitization', () => {
     function prose(markdown: string): string {
       return parseLesson(markdown)

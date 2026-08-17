@@ -17,6 +17,8 @@ export type ActivityEvent = components['schemas']['ActivityEvent'];
 export type CourseProgressSummary = components['schemas']['CourseProgressSummary'];
 export type LessonProgressDetail = components['schemas']['LessonProgressDetail'];
 export type ProgressState = components['schemas']['ProgressState'];
+export type QuizSubmitRequest = components['schemas']['QuizSubmitRequest'];
+export type QuizSubmitResult = components['schemas']['QuizSubmitResult'];
 export type Me = components['schemas']['Me'];
 export type ImportRunSummary = components['schemas']['ImportRunSummary'];
 export type ImportProgressEvent = components['schemas']['ImportProgressEvent'];
@@ -232,4 +234,30 @@ export async function markLessonComplete(courseSlug: string, lessonSlug: string)
     throw new Error(await errorMessage(res, `Failed to mark lesson "${lessonSlug}" complete: ${res.status}`));
   }
   return (await res.json()) as LessonProgressDetail;
+}
+
+/**
+ * Submits a quiz attempt for scoring (design §9.1: quizzes are
+ * machine-scored server-side; the browser never decides pass/fail). On a
+ * pass, completes the lesson and emits a quiz_passed activity event —
+ * idempotently, so retaking after already passing never double-completes.
+ */
+export async function submitQuizAttempt(
+  courseSlug: string,
+  lessonSlug: string,
+  answers: QuizSubmitRequest['answers'],
+): Promise<QuizSubmitResult> {
+  const res = await fetch(
+    `${apiBase()}/api/v1/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lessonSlug)}/quiz`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      cache: 'no-store',
+      body: JSON.stringify({ answers }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `Failed to submit quiz for lesson "${lessonSlug}": ${res.status}`));
+  }
+  return (await res.json()) as QuizSubmitResult;
 }

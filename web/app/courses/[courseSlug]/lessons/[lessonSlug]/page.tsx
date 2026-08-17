@@ -5,6 +5,7 @@ import type { Lesson } from '../../../../../src/lib/api';
 import { fetchLesson } from '../../../../../src/lib/api';
 import type { components } from '../../../../../src/lib/api-types';
 import MarkCompleteButton from './MarkCompleteButton';
+import Quiz from './Quiz';
 import styles from './lesson.module.css';
 
 type Block = components['schemas']['Block'];
@@ -52,20 +53,35 @@ export default async function LessonPage({
       <article>
         <h1 className={styles.title}>{lesson.title}</h1>
         <div className={styles.body}>
-          {lesson.blocks.map((block, index) =>
-            block.type === 'prose' ? (
+          {lesson.blocks.map((block, index) => {
+            if (block.type === 'prose') {
               // The API hands us HTML it parsed from our own markdown source.
               // Sanitizing untrusted/rendered HTML before it reaches the DOM
               // is Phase 5's job — not built here.
-              <div key={index} className={styles.prose} dangerouslySetInnerHTML={{ __html: block.html }} />
-            ) : (
-              <div
+              return <div key={index} className={styles.prose} dangerouslySetInnerHTML={{ __html: block.html }} />;
+            }
+            if (block.type === 'code') {
+              return (
+                <div
+                  key={index}
+                  className={styles.code}
+                  dangerouslySetInnerHTML={{ __html: highlighted.get(index) ?? '' }}
+                />
+              );
+            }
+            // block.type === 'quiz'. Design §9.1: not markable — the Quiz
+            // component owns scoring and completion for this lesson entirely
+            // through the .../quiz endpoint, never through MarkCompleteButton.
+            return (
+              <Quiz
                 key={index}
-                className={styles.code}
-                dangerouslySetInnerHTML={{ __html: highlighted.get(index) ?? '' }}
+                courseSlug={courseSlug}
+                lessonSlug={lesson.slug}
+                quiz={block}
+                progress={lesson.progress}
               />
-            ),
-          )}
+            );
+          })}
         </div>
 
         <div className={styles.progress}>

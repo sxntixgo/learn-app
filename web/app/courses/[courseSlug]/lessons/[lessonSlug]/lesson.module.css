@@ -146,6 +146,170 @@
 }
 
 /*
+ * The quiz block (Task C, design §9.1/§6.3). A bordered card matching the
+ * completion control's own surface tokens — no new colour. Choice rows are
+ * native radio + label pairs sized to the 44px minimum tap target as a
+ * WHOLE row (not just the small circle), so there is no hover-only
+ * affordance: tapping anywhere in the row selects it, and keyboard/focus
+ * come from the native input for free.
+ */
+.quiz {
+  max-width: var(--measure-prose, 46ch);
+  margin: 1.75rem auto;
+  padding: 1.25rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 8px;
+  background: var(--color-surface-raised);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.quizQuestion {
+  margin: 0;
+  padding: 0;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.quizPrompt {
+  padding: 0;
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--color-text);
+}
+
+.quizChoices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.quizChoice {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 6px;
+  font-size: 0.95rem;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.quizChoice input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-link);
+}
+
+.quizChoice:focus-within {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+.quizChoiceCorrect {
+  border-color: var(--color-link);
+}
+
+.quizChoiceWrong {
+  border-left: 2px solid var(--color-accent-yellow);
+}
+
+.quizFeedbackCorrect {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.quizFeedbackWrong {
+  margin: 0;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--color-accent-yellow);
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.quizControl {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.quizResultPass {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  background: var(--color-page);
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.quizResultFail {
+  margin: 0;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--color-accent-yellow);
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+/* A state, not a form: mirrors .progressDone (same dot, same meaning). */
+.quizPassed {
+  margin: 0;
+  padding: 0.6rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 0.95rem;
+  color: var(--color-text-secondary);
+}
+
+.quizPassed::before {
+  content: '';
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--color-link);
+}
+
+.quizRetakeButton {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.quizRetakeButton:hover:not(:disabled) {
+  background: var(--color-page);
+}
+
+.quizRetakeButton:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quizRetakeButton {
+    transition: none;
+  }
+}
+
+/*
  * Prev/next foot navigation. A two-item flex row that wraps to stacked
  * full-width links at narrow widths (375px) rather than truncating or
  * requiring horizontal scroll — no hover-only affordance, both links are

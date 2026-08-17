@@ -121,6 +121,12 @@ const MATRIX: readonly MatrixCase[] = [
     resource: ownData,
     expected: [DENY, ALLOW, DENY, DENY, DENY],
   },
+  {
+    row: 'Enroll, read, track own progress',
+    action: 'lesson:quiz:submit',
+    resource: ownData,
+    expected: [DENY, ALLOW, DENY, DENY, DENY],
+  },
 
   // ---------------------------------------------------------------------------
   // Row: "Own profile, badges, degrees" — student ✅, teacher —, admin —
@@ -577,6 +583,7 @@ describe('user-scoped actions are about the actor’s OWN data', () => {
     expect(can(student, 'course:progress:read', { userId: STUDENT_ID })).toBe(true);
     expect(can(student, 'course:progress:read', { userId: OTHER_STUDENT_ID })).toBe(false);
     expect(can(student, 'lesson:progress:write', { userId: OTHER_STUDENT_ID })).toBe(false);
+    expect(can(student, 'lesson:quiz:submit', { userId: OTHER_STUDENT_ID })).toBe(false);
     expect(can(student, 'me:activity:read', { userId: OTHER_STUDENT_ID })).toBe(false);
     expect(can(student, 'me:heatmap:read', { userId: OTHER_STUDENT_ID })).toBe(false);
     expect(can(student, 'profile:read', { userId: OTHER_STUDENT_ID })).toBe(false);

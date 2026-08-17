@@ -28,7 +28,7 @@ function loadSchema(filename: string): object {
 // requires a property it doesn't itself declare under `properties` (that
 // lives one level up, on `annotation` itself), which ajv's strict mode
 // otherwise flags as likely a mistake.
-const ajv = new Ajv2020({ allErrors: true, strict: true, strictRequired: false });
+const ajv = new Ajv2020({ allErrors: true, strict: true, strictRequired: false, discriminator: true });
 
 const validateCourseSchema = ajv.compile(loadSchema('course.schema.json'));
 const validateBlocksSchema = ajv.compile(loadSchema('blocks.schema.json'));

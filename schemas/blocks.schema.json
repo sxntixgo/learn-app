@@ -2,19 +2,41 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://learn-app.example/schemas/blocks.schema.json",
   "title": "Lesson block array",
-  "description": "The typed block array a lesson's `blocks` jsonb column must satisfy — design §6.2/§7 ('lessons.blocks is jsonb, validated against the block schema before write'). Phase 2 supports exactly two block types, `prose` and `code`. Do NOT add chart/quiz/rubric/callout/figure here — those belong to later phases per the design's own phasing, and admitting them early would let un-implemented block types silently reach the database.",
+  "description": "The typed block array a lesson's `blocks` jsonb column must satisfy \u2014 design \u00a76.2/\u00a77 ('lessons.blocks is jsonb, validated against the block schema before write'). Phase 2 supported exactly two block types, `prose` and `code`; Phase 7 adds `quiz`, the first tagged-fenced-YAML block type (design \u00a76.3). Do NOT add chart/rubric/callout/figure here \u2014 those belong to later phases per the design's own phasing, and admitting them early would let un-implemented block types silently reach the database.",
   "type": "array",
-  "items": { "$ref": "#/$defs/block" },
+  "items": {
+    "$ref": "#/$defs/block"
+  },
   "$defs": {
     "block": {
-      "oneOf": [{ "$ref": "#/$defs/proseBlock" }, { "$ref": "#/$defs/codeBlock" }]
+      "description": "A discriminated union on `type`. The discriminator matters for error quality (design \u00a78): without it, a malformed quiz reports every failure of every branch \u2014 that prose needs `html`, that code needs `lang` \u2014 and the one useful line is buried in eleven irrelevant ones. With it, only the branch matching `type` reports.",
+      "type": "object",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/proseBlock"
+        },
+        {
+          "$ref": "#/$defs/codeBlock"
+        },
+        {
+          "$ref": "#/$defs/quizBlock"
+        }
+      ],
+      "discriminator": {
+        "propertyName": "type"
+      }
     },
     "proseBlock": {
       "type": "object",
-      "required": ["type", "html"],
+      "required": [
+        "type",
+        "html"
+      ],
       "additionalProperties": false,
       "properties": {
-        "type": { "const": "prose" },
+        "type": {
+          "const": "prose"
+        },
         "html": {
           "description": "Rendered HTML for this prose group, produced by the markdown pipeline at import time.",
           "type": "string"
@@ -23,28 +45,128 @@
     },
     "codeBlock": {
       "type": "object",
-      "required": ["type", "lang", "source"],
+      "required": [
+        "type",
+        "lang",
+        "source"
+      ],
       "additionalProperties": false,
       "properties": {
-        "type": { "const": "code" },
+        "type": {
+          "const": "code"
+        },
         "lang": {
           "description": "Fence info-string language, or null when the fence declared none.",
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "source": {
           "description": "Raw code source, with any [!note ...] annotation marker comments stripped.",
           "type": "string"
         },
         "annotations": {
-          "description": "Author annotations pulled from in-source marker comments (design §6.3). Optional — most code blocks carry none.",
+          "description": "Author annotations pulled from in-source marker comments (design \u00a76.3). Optional \u2014 most code blocks carry none.",
           "type": "array",
-          "items": { "$ref": "#/$defs/annotation" }
+          "items": {
+            "$ref": "#/$defs/annotation"
+          }
+        }
+      }
+    },
+    "quizBlock": {
+      "type": "object",
+      "required": [
+        "type",
+        "pass",
+        "questions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "quiz"
+        },
+        "pass": {
+          "description": "Passing threshold as a fraction of correctly-answered questions, e.g. 0.7 for 70% (design \u00a76.3/\u00a79.1). A quiz lesson completes only by scoring at or above this threshold through the scoring endpoint \u2014 never by direct completion.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "questions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/quizQuestion"
+          }
+        }
+      }
+    },
+    "quizQuestion": {
+      "type": "object",
+      "required": [
+        "prompt",
+        "choices"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "track": {
+          "description": "Optional track id this question belongs to, e.g. \"cx\" \u2014 matches a track's `id` in course.yaml. Carried through to quiz_attempts so per-track scoring (design \u00a79.1/\u00a79.3) is a query, not a reconstruction.",
+          "type": "string",
+          "minLength": 1
+        },
+        "choices": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/quizChoice"
+          },
+          "contains": {
+            "$ref": "#/$defs/quizCorrectChoice"
+          },
+          "minContains": 1,
+          "description": "At least one choice must be marked `correct: true`. A question with none is unpassable, so it fails import rather than being stored silently unpassable (Task A)."
+        }
+      }
+    },
+    "quizChoice": {
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "correct": {
+          "description": "True only on the correct choice(s). ABSENT from every response the browser receives \u2014 routes/courses.ts strips it before a lesson's blocks are serialized, so the stored form (which DOES carry it, for scoring) never reaches client page source.",
+          "type": "boolean"
+        }
+      }
+    },
+    "quizCorrectChoice": {
+      "description": "Matched by quizQuestion.choices' `contains`, purely to require at least one choice with `correct: true` \u2014 not a block type of its own.",
+      "type": "object",
+      "required": [
+        "correct"
+      ],
+      "properties": {
+        "correct": {
+          "const": true
         }
       }
     },
     "annotation": {
       "type": "object",
-      "required": ["body"],
+      "required": [
+        "body"
+      ],
       "additionalProperties": false,
       "properties": {
         "line": {
@@ -55,12 +177,15 @@
         "lines": {
           "description": "An inclusive [start, end] line range (1-indexed) this annotation attaches to, for annotations spanning more than one line.",
           "type": "array",
-          "items": { "type": "integer", "minimum": 1 },
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
           "minItems": 2,
           "maxItems": 2
         },
         "track": {
-          "description": "Optional track id this annotation belongs to, e.g. \"cx\" — matches a track's `id` in course.yaml.",
+          "description": "Optional track id this annotation belongs to, e.g. \"cx\" \u2014 matches a track's `id` in course.yaml.",
           "type": "string",
           "minLength": 1
         },
@@ -69,7 +194,18 @@
           "minLength": 1
         }
       },
-      "oneOf": [{ "required": ["line"] }, { "required": ["lines"] }]
+      "oneOf": [
+        {
+          "required": [
+            "line"
+          ]
+        },
+        {
+          "required": [
+            "lines"
+          ]
+        }
+      ]
     }
   }
 }

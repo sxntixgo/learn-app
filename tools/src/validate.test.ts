@@ -69,6 +69,26 @@ describe('validate CLI', () => {
     }
   });
 
+  it('exits 0 for a fixture course with a quiz block (design §6.3, Task A)', async () => {
+    const { stdout } = await runValidate(path.join(fixturesDir, 'quiz-course'));
+    expect(stdout).toContain('quiz-fixture-course');
+    expect(stdout).toMatch(/1 module/);
+    expect(stdout).toMatch(/1 lesson/);
+  });
+
+  it('exits 1 naming the choices array when a quiz question has no correct answer (Task A)', async () => {
+    try {
+      await runValidate(path.join(fixturesDir, 'quiz-no-correct-course'));
+      expect.unreachable('expected non-zero exit');
+    } catch (err) {
+      const { code, stderr } = err as ExecFileError;
+      expect(code).toBe(1);
+      expect(stderr).toContain('modules/01-intro/quiz-one.md');
+      expect(stderr).toContain('/1/questions/1/choices');
+      expect(stderr).toMatch(/contain/i);
+    }
+  });
+
   it('prints EVERY problem, not just the first, when a course has more than one broken lesson', async () => {
     try {
       await runValidate(path.join(fixturesDir, 'multi-problem-course'));

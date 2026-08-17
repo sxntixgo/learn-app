@@ -149,4 +149,61 @@ describe('validateBlocks', () => {
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.path.startsWith('/1'))).toBe(true);
   });
+
+  describe('quiz blocks (Task A)', () => {
+    function validQuiz() {
+      return {
+        type: 'quiz',
+        pass: 0.7,
+        questions: [
+          {
+            prompt: 'Which is a deep module?',
+            track: 'cx',
+            choices: [{ text: 'shallow' }, { text: 'deep', correct: true }],
+          },
+        ],
+      };
+    }
+
+    it('accepts a valid quiz block', () => {
+      expect(validateBlocks([validQuiz()])).toEqual({ valid: true, errors: [] });
+    });
+
+    it('accepts a quiz question with no track (track is optional)', () => {
+      const quiz = validQuiz();
+      delete (quiz.questions[0] as { track?: string }).track;
+      expect(validateBlocks([quiz])).toEqual({ valid: true, errors: [] });
+    });
+
+    it('rejects a question with no correct choice, with a message naming the offending choices array', () => {
+      const quiz = validQuiz();
+      quiz.questions[0]!.choices = [{ text: 'a' }, { text: 'b' }];
+      const result = validateBlocks([quiz]);
+      expect(result.valid).toBe(false);
+      expect(
+        result.errors.some((e) => e.path === '/0/questions/0/choices' && /contain/i.test(e.message)),
+      ).toBe(true);
+    });
+
+    it('rejects pass outside [0, 1]', () => {
+      const quiz = validQuiz();
+      quiz.pass = 1.5;
+      const result = validateBlocks([quiz]);
+      expect(result.valid).toBe(false);
+    });
+
+    it('rejects a quiz with no questions', () => {
+      const quiz = validQuiz();
+      quiz.questions = [];
+      const result = validateBlocks([quiz]);
+      expect(result.valid).toBe(false);
+    });
+
+    it('rejects a choice with an unknown property', () => {
+      const quiz = validQuiz();
+      (quiz.questions[0]!.choices[1] as { bogus?: string }).bogus = 'nope';
+      const result = validateBlocks([quiz]);
+      expect(result.valid).toBe(false);
+    });
+  });
 });

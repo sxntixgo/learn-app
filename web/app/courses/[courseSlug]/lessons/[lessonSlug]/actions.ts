@@ -8,8 +8,8 @@
  * over HTTP only).
  */
 
-import { markLessonComplete } from '../../../../../src/lib/api';
-import type { LessonProgressDetail } from '../../../../../src/lib/api';
+import { markLessonComplete, submitQuizAttempt } from '../../../../../src/lib/api';
+import type { LessonProgressDetail, QuizSubmitRequest, QuizSubmitResult } from '../../../../../src/lib/api';
 
 export type MarkCompleteResult = { ok: true; progress: LessonProgressDetail } | { ok: false; message: string };
 
@@ -19,5 +19,27 @@ export async function markLessonCompleteAction(courseSlug: string, lessonSlug: s
     return { ok: true, progress };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : 'Could not mark this lesson complete.' };
+  }
+}
+
+/*
+ * Server Action for the quiz control (Task C, design §9.1). Same reason as
+ * markLessonCompleteAction above: this is how the client Quiz component
+ * reaches the API's scoring endpoint without a browser-exposed fetch.
+ * Scoring itself happens entirely server-side, in the API — this action is
+ * a thin relay, not a second place answers get checked.
+ */
+export type SubmitQuizResult = { ok: true; result: QuizSubmitResult } | { ok: false; message: string };
+
+export async function submitQuizAction(
+  courseSlug: string,
+  lessonSlug: string,
+  answers: QuizSubmitRequest['answers'],
+): Promise<SubmitQuizResult> {
+  try {
+    const result = await submitQuizAttempt(courseSlug, lessonSlug, answers);
+    return { ok: true, result };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : 'Could not submit this quiz.' };
   }
 }

@@ -8,6 +8,8 @@ import type { CourseRouteDeps } from './routes/courses.ts';
 import { registerCourseRoutes } from './routes/courses.ts';
 import type { ProgressRouteDeps } from './routes/progress.ts';
 import { registerProgressRoutes } from './routes/progress.ts';
+import type { QuizRouteDeps } from './routes/quiz.ts';
+import { registerQuizRoutes } from './routes/quiz.ts';
 import type { MeRouteDeps } from './routes/me.ts';
 import { registerMeRoutes } from './routes/me.ts';
 import type { AdminRouteDeps } from './routes/admin.ts';
@@ -30,6 +32,7 @@ import { ensureSetupToken } from './auth/setup-token.ts';
 // routes/setup.ts. AuthRouteDeps adds the rate limiter and signing keys.
 export type BuildServerOptions = CourseRouteDeps &
   ProgressRouteDeps &
+  QuizRouteDeps &
   MeRouteDeps &
   AdminRouteDeps &
   SetupRouteDeps &
@@ -70,6 +73,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
 
   registerCourseRoutes(fastify, options);
   registerProgressRoutes(fastify, options);
+  registerQuizRoutes(fastify, options);
   registerMeRoutes(fastify, options);
   registerAdminRoutes(fastify, options);
   // The real Argon2id hasher fills the seam auth/bootstrap.ts left open, so

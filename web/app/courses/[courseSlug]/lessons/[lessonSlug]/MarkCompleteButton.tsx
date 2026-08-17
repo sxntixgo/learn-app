@@ -32,13 +32,17 @@ export default function MarkCompleteButton({ courseSlug, lessonSlug, kind, progr
   const [complete, setComplete] = useState(progress?.state === 'complete');
   const [error, setError] = useState<string | null>(null);
 
+  // Checked BEFORE the kind branch below: once a quiz is passed (Task C —
+  // "a passed quiz shows its state on revisit") or an exercise is
+  // submitted (Phase 8), the lesson IS complete, and the note about how
+  // completion works is no longer the useful thing to show — the state is.
+  if (complete) {
+    return <p className={styles.progressDone}>Completed</p>;
+  }
+
   if (kind !== 'lesson') {
     const reason = kind === 'exercise' ? 'submitting your answer' : 'passing the quiz';
     return <p className={styles.progressNote}>Completion for this {kind} comes from {reason}, not this control.</p>;
-  }
-
-  if (complete) {
-    return <p className={styles.progressDone}>Completed</p>;
   }
 
   function handleClick() {

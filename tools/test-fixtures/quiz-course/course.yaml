@@ -1,0 +1,12 @@
+schema: 1
+slug: quiz-fixture-course
+title: Quiz Fixture Course
+subtitle: a hand-written fixture exercising the quiz block (design §6.3)
+tracks:
+  - { id: cx, name: Complexity, hue: blue }
+tags: [fixture, quiz]
+modules:
+  - id: intro
+    title: Introduction
+    lessons:
+      - modules/01-intro/quiz-one.md

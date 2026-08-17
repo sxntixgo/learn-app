@@ -132,6 +132,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{courseSlug}/lessons/{lessonSlug}/quiz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit and score a quiz attempt
+         * @description Scores `answers` server-side against the lesson's stored quiz block (design §9.1: quizzes are machine-scored, and complete ONLY by passing — never by direct completion, which 409s on POST .../progress for kind "quiz"). Always records a quiz_attempts row, win or lose; retaking is allowed. On a pass, marks the lesson complete and emits a quiz_passed activity event — idempotent, so passing more than once never emits a second event or re-completes an already-complete lesson. Only lessons of kind "quiz" may be scored here; any other kind returns 409.
+         */
+        post: operations["submitQuizAttempt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{courseSlug}/progress": {
         parameters: {
             query?: never;
@@ -333,8 +353,33 @@ export interface components {
             /** @description The raw source code */
             source: string;
         };
-        /** @description A content block, which may be prose or code */
-        Block: components["schemas"]["ProseBlock"] | components["schemas"]["CodeBlock"];
+        /** @description One answer choice for a quiz question, as served to the browser. Deliberately has no `correct` field — the API strips it before a lesson's blocks are serialized (design §9.1: quizzes are machine-scored server-side), so a reader checking page source cannot find the answer key. The stored form (used only by the scoring endpoint, never returned) does carry it. */
+        QuizChoice: {
+            /** @description The choice's display text */
+            text: string;
+        };
+        /** @description One quiz question, as served to the browser. */
+        QuizQuestion: {
+            /** @description The question text */
+            prompt: string;
+            /** @description The key of the track (lens) this question belongs to, or null */
+            track: ((string | null) | null) | null;
+            /** @description The question's answer choices, in order (referenced by index when submitting) */
+            choices: components["schemas"]["QuizChoice"][];
+        };
+        /** @description A quiz block (design §6.3: a tagged fenced block with YAML). `pass` is the passing threshold — the fraction of questions that must be answered correctly. Scoring never happens in this response; submit answers to POST .../quiz instead. */
+        QuizBlock: {
+            /**
+             * @description The block type discriminator (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "quiz";
+            /** @description Passing threshold as a fraction of correctly-answered questions, e.g. 0.7 */
+            pass: number;
+            questions: components["schemas"]["QuizQuestion"][];
+        };
+        /** @description A content block, which may be prose, code, or a quiz */
+        Block: components["schemas"]["ProseBlock"] | components["schemas"]["CodeBlock"] | components["schemas"]["QuizBlock"];
         /** @description A minimal pointer to an adjacent lesson, for prev/next navigation. */
         LessonNavStub: {
             /** @description The adjacent lesson's slug (unique within the course) */
@@ -544,6 +589,50 @@ export interface components {
             percent: number;
             /** @description Every non-archived lesson's individual state, in manifest order. */
             lessons: components["schemas"]["CourseProgressLesson"][];
+        };
+        /** @description One submitted answer, referencing the quiz block by index. */
+        QuizAnswerInput: {
+            /** @description 0-based index into the quiz block's questions array */
+            questionIndex: number;
+            /** @description 0-based index into that question's choices array */
+            choiceIndex: number;
+        };
+        /** @description A quiz submission — one answer per attempted question. Unanswered questions may be omitted. */
+        QuizSubmitRequest: {
+            answers: components["schemas"]["QuizAnswerInput"][];
+        };
+        /** @description One question's scored outcome. `correctChoiceIndex` is safe to return here (unlike on the lesson response) because scoring has already happened — this is feedback on an attempt, not the pre-attempt answer key. */
+        QuizQuestionResult: {
+            questionIndex: number;
+            track: ((string | null) | null) | null;
+            /** @description The choice the actor submitted for this question, or null if unanswered. */
+            choiceIndex: ((number | null) | null) | null;
+            correctChoiceIndex: number;
+            correct: boolean;
+        };
+        /** @description One track's correct/total count within a single attempt (design §9.1/§9.3). */
+        QuizTrackScore: {
+            correct: number;
+            total: number;
+        };
+        /** @description A pointer to the quiz_attempts row this submission wrote. */
+        QuizAttemptRef: {
+            id: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description The scored result of a quiz submission (design §9.1). */
+        QuizSubmitResult: {
+            /** @description Fraction of questions answered correctly, 0-1 */
+            score: number;
+            passed: boolean;
+            /** @description The block's own passing threshold, echoed back for the reader */
+            pass: number;
+            results: components["schemas"]["QuizQuestionResult"][];
+            trackScores: {
+                [key: string]: components["schemas"]["QuizTrackScore"];
+            };
+            attempt: components["schemas"]["QuizAttemptRef"];
         };
         /** @description An error response */
         Error: {
@@ -1018,6 +1107,62 @@ export interface operations {
                 };
             };
             /** @description The lesson's kind cannot be marked complete directly (only kind "lesson" can — exercises and quizzes complete through other mechanisms). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    submitQuizAttempt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The course slug */
+                courseSlug: string;
+                /** @description The lesson slug (unique within the course) */
+                lessonSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuizSubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Scored result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizSubmitResult"];
+                };
+            };
+            /** @description answers is missing or malformed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Course or lesson not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description This lesson is not kind "quiz" */
             409: {
                 headers: {
                     [name: string]: unknown;

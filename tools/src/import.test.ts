@@ -43,8 +43,10 @@ describe.sequential('import CLI', () => {
   });
 
   afterAll(async () => {
-    await pool.query(`delete from import_runs where course_slug in ('fixture-course', 'unknown-track-course')`);
-    await pool.query(`delete from courses where slug in ('fixture-course', 'unknown-track-course')`);
+    await pool.query(
+      `delete from import_runs where course_slug in ('fixture-course', 'unknown-track-course', 'quiz-fixture-course')`,
+    );
+    await pool.query(`delete from courses where slug in ('fixture-course', 'unknown-track-course', 'quiz-fixture-course')`);
     await pool.end();
   });
 
@@ -67,6 +69,29 @@ describe.sequential('import CLI', () => {
 
     expect(code).toBe(0);
     expect(stdout).toMatch(/lessons\s+0 created,\s+0 updated,\s+2 skipped,\s+0 archived/);
+  });
+
+  it('imports a fixture course with a quiz block successfully (design §6.3, Task A)', async () => {
+    const { stdout, code } = await importCli(path.join(fixtures, 'quiz-course'));
+
+    expect(code).toBe(0);
+    expect(stdout).toContain('quiz-fixture-course: import ok');
+    expect(stdout).toMatch(/lessons\s+1 created/);
+
+    const { rows } = await pool.query<{ kind: string; blocks: unknown }>(
+      `select l.kind, l.blocks from lessons l
+         join courses c on c.id = l.course_id where c.slug = 'quiz-fixture-course'`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.kind).toBe('quiz');
+    const blocks = rows[0]!.blocks as Array<{ type: string; pass?: number; questions?: unknown[] }>;
+    const quizBlock = blocks.find((b) => b.type === 'quiz')!;
+    expect(quizBlock.pass).toBe(0.7);
+    expect(quizBlock.questions).toHaveLength(2);
+    // The STORED form keeps `correct` — only the HTTP response strips it
+    // (routes/courses.ts). Proves the importer wrote the whole block, not a
+    // pre-redacted one.
+    expect(JSON.stringify(quizBlock)).toContain('"correct":true');
   });
 
   it('exits 1 naming the lesson whose track is not declared, and imports nothing', async () => {

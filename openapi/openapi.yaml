@@ -294,6 +294,67 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/v1/courses/{courseSlug}/lessons/{lessonSlug}/quiz:
+    post:
+      summary: Submit and score a quiz attempt
+      description: >-
+        Scores `answers` server-side against the lesson's stored quiz
+        block (design §9.1: quizzes are machine-scored, and complete ONLY
+        by passing — never by direct completion, which 409s on
+        POST .../progress for kind "quiz"). Always records a
+        quiz_attempts row, win or lose; retaking is allowed. On a pass,
+        marks the lesson complete and emits a quiz_passed activity event
+        — idempotent, so passing more than once never emits a second
+        event or re-completes an already-complete lesson. Only lessons of
+        kind "quiz" may be scored here; any other kind returns 409.
+      operationId: submitQuizAttempt
+      tags:
+        - progress
+      parameters:
+        - name: courseSlug
+          in: path
+          required: true
+          description: The course slug
+          schema:
+            type: string
+        - name: lessonSlug
+          in: path
+          required: true
+          description: The lesson slug (unique within the course)
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuizSubmitRequest'
+      responses:
+        '200':
+          description: Scored result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizSubmitResult'
+        '400':
+          description: answers is missing or malformed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Course or lesson not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: This lesson is not kind "quiz"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/v1/courses/{courseSlug}/progress:
     get:
       summary: Get the actor's progress summary for a course
@@ -693,16 +754,82 @@ components:
         - type
         - source
 
+    QuizChoice:
+      type: object
+      description: >-
+        One answer choice for a quiz question, as served to the browser.
+        Deliberately has no `correct` field — the API strips it before a
+        lesson's blocks are serialized (design §9.1: quizzes are
+        machine-scored server-side), so a reader checking page source
+        cannot find the answer key. The stored form (used only by the
+        scoring endpoint, never returned) does carry it.
+      properties:
+        text:
+          type: string
+          description: The choice's display text
+      required:
+        - text
+
+    QuizQuestion:
+      type: object
+      description: One quiz question, as served to the browser.
+      properties:
+        prompt:
+          type: string
+          description: The question text
+        track:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: The key of the track (lens) this question belongs to, or null
+        choices:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuizChoice'
+          description: The question's answer choices, in order (referenced by index when submitting)
+      required:
+        - prompt
+        - track
+        - choices
+
+    QuizBlock:
+      type: object
+      description: >-
+        A quiz block (design §6.3: a tagged fenced block with YAML). `pass`
+        is the passing threshold — the fraction of questions that must be
+        answered correctly. Scoring never happens in this response; submit
+        answers to POST .../quiz instead.
+      properties:
+        type:
+          type: string
+          enum:
+            - quiz
+          description: The block type discriminator
+        pass:
+          type: number
+          description: Passing threshold as a fraction of correctly-answered questions, e.g. 0.7
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuizQuestion'
+      required:
+        - type
+        - pass
+        - questions
+
     Block:
       oneOf:
         - $ref: '#/components/schemas/ProseBlock'
         - $ref: '#/components/schemas/CodeBlock'
+        - $ref: '#/components/schemas/QuizBlock'
       discriminator:
         propertyName: type
         mapping:
           prose: '#/components/schemas/ProseBlock'
           code: '#/components/schemas/CodeBlock'
-      description: A content block, which may be prose or code
+          quiz: '#/components/schemas/QuizBlock'
+      description: A content block, which may be prose, code, or a quiz
 
     LessonNavStub:
       type: object
@@ -1194,6 +1321,118 @@ components:
         - completedLessons
         - percent
         - lessons
+
+    QuizAnswerInput:
+      type: object
+      description: One submitted answer, referencing the quiz block by index.
+      properties:
+        questionIndex:
+          type: integer
+          description: 0-based index into the quiz block's questions array
+        choiceIndex:
+          type: integer
+          description: 0-based index into that question's choices array
+      required:
+        - questionIndex
+        - choiceIndex
+
+    QuizSubmitRequest:
+      type: object
+      description: A quiz submission — one answer per attempted question. Unanswered questions may be omitted.
+      properties:
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuizAnswerInput'
+      required:
+        - answers
+
+    QuizQuestionResult:
+      type: object
+      description: >-
+        One question's scored outcome. `correctChoiceIndex` is safe to
+        return here (unlike on the lesson response) because scoring has
+        already happened — this is feedback on an attempt, not the
+        pre-attempt answer key.
+      properties:
+        questionIndex:
+          type: integer
+        track:
+          type:
+            - string
+            - "null"
+          nullable: true
+        choiceIndex:
+          type:
+            - integer
+            - "null"
+          nullable: true
+          description: The choice the actor submitted for this question, or null if unanswered.
+        correctChoiceIndex:
+          type: integer
+        correct:
+          type: boolean
+      required:
+        - questionIndex
+        - track
+        - choiceIndex
+        - correctChoiceIndex
+        - correct
+
+    QuizTrackScore:
+      type: object
+      description: One track's correct/total count within a single attempt (design §9.1/§9.3).
+      properties:
+        correct:
+          type: integer
+        total:
+          type: integer
+      required:
+        - correct
+        - total
+
+    QuizAttemptRef:
+      type: object
+      description: A pointer to the quiz_attempts row this submission wrote.
+      properties:
+        id:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - createdAt
+
+    QuizSubmitResult:
+      type: object
+      description: The scored result of a quiz submission (design §9.1).
+      properties:
+        score:
+          type: number
+          description: Fraction of questions answered correctly, 0-1
+        passed:
+          type: boolean
+        pass:
+          type: number
+          description: The block's own passing threshold, echoed back for the reader
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuizQuestionResult'
+        trackScores:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/QuizTrackScore'
+        attempt:
+          $ref: '#/components/schemas/QuizAttemptRef'
+      required:
+        - score
+        - passed
+        - pass
+        - results
+        - trackScores
+        - attempt
 
     Error:
       type: object
