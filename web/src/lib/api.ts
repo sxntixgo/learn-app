@@ -21,6 +21,8 @@ export type LessonProgressDetail = components['schemas']['LessonProgressDetail']
 export type ProgressState = components['schemas']['ProgressState'];
 export type QuizSubmitRequest = components['schemas']['QuizSubmitRequest'];
 export type QuizSubmitResult = components['schemas']['QuizSubmitResult'];
+export type Submission = components['schemas']['Submission'];
+export type SubmissionAnnotationInput = components['schemas']['SubmissionAnnotationInput'];
 export type Me = components['schemas']['Me'];
 export type ImportRunSummary = components['schemas']['ImportRunSummary'];
 export type ImportProgressEvent = components['schemas']['ImportProgressEvent'];
@@ -302,6 +304,76 @@ export async function submitQuizAttempt(
     throw new Error(await errorMessage(res, `Failed to submit quiz for lesson "${lessonSlug}": ${res.status}`));
   }
   return (await res.json()) as QuizSubmitResult;
+}
+
+/**
+ * The actor's own exercise submission (design §9.4). Like `fetchLesson`,
+ * routed through `apiFetch` so a missing/insufficient session redirects to
+ * sign-in (Task B) rather than surfacing as an error the lesson page has no
+ * way to render. 404 means "not started yet" — a real, common state, not a
+ * failure — and becomes `null`, exactly as `fetchCourse` and `fetchLesson`
+ * already treat their own 404s.
+ */
+export async function fetchSubmission(courseSlug: string, lessonSlug: string): Promise<Submission | null> {
+  const res = await apiFetch(
+    `/api/v1/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lessonSlug)}/submission`,
+  );
+  if (res.status === 404) {
+    return null;
+  }
+  if (!res.ok) {
+    throw new Error(`Failed to fetch submission for lesson "${lessonSlug}": ${res.status}`);
+  }
+  return (await res.json()) as Submission;
+}
+
+/**
+ * Saves a draft of the actor's exercise submission (design §9.4). Replaces
+ * the annotation set wholesale — the caller sends every annotation it wants
+ * kept, every save. Not routed through `apiFetch`: like `markLessonComplete`
+ * and `submitQuizAttempt`, a refusal here (400 bad anchor, 409 already
+ * submitted/returned) is an ordinary outcome the caller (ExercisePanel) shows
+ * as a message, not a redirect-worthy auth failure.
+ */
+export async function saveSubmissionDraft(
+  courseSlug: string,
+  lessonSlug: string,
+  annotations: SubmissionAnnotationInput[],
+): Promise<Submission> {
+  const res = await fetch(
+    `${apiBase()}/api/v1/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lessonSlug)}/submission`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      cache: 'no-store',
+      body: JSON.stringify({ annotations }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `Failed to save submission draft for lesson "${lessonSlug}": ${res.status}`));
+  }
+  return (await res.json()) as Submission;
+}
+
+/**
+ * Submits the actor's exercise (design §9.1/§9.4). Completes the lesson and
+ * freezes the snapshot the reader renders from thereafter. Idempotent on the
+ * API side — a retried submit returns the same submission rather than
+ * erroring — so this never needs to guard against a double click itself.
+ */
+export async function submitSubmission(courseSlug: string, lessonSlug: string): Promise<Submission> {
+  const res = await fetch(
+    `${apiBase()}/api/v1/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lessonSlug)}/submission/submit`,
+    {
+      method: 'POST',
+      headers: await authHeaders(),
+      cache: 'no-store',
+    },
+  );
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `Failed to submit lesson "${lessonSlug}": ${res.status}`));
+  }
+  return (await res.json()) as Submission;
 }
 
 // =============================================================================

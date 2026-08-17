@@ -1,12 +1,13 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { codeToHtml } from 'shiki';
-import type { Lesson } from '../../../../../src/lib/api';
-import { fetchLesson } from '../../../../../src/lib/api';
+import type { Lesson, Submission } from '../../../../../src/lib/api';
+import { fetchLesson, fetchSubmission } from '../../../../../src/lib/api';
 import { withAuthRedirect } from '../../../../../src/lib/require-auth';
 import type { components } from '../../../../../src/lib/api-types';
 import type { AuthorAnnotationInput } from '../../../../../src/lib/annotations';
 import AnnotatableCode from './AnnotatableCode';
+import ExercisePanel from './ExercisePanel';
 import MarkCompleteButton from './MarkCompleteButton';
 import Quiz from './Quiz';
 import styles from './lesson.module.css';
@@ -55,7 +56,22 @@ export default async function LessonPage({
     notFound();
   }
 
-  const codeIndexes = lesson.blocks
+  // Design §9.4: "submissions snapshot the block content as presented ...
+  // never the live lesson." The moment a submission exists — draft,
+  // submitted, or returned — its snapshot is what gets rendered, not
+  // `lesson.blocks`, so an edit to the lesson afterward can never change
+  // what this page shows for a submission that already anchors annotations
+  // to the version that existed when it was taken. Only a student who has
+  // never started this exercise sees the live lesson at all.
+  const submission: Submission | null =
+    lesson.kind === 'exercise'
+      ? await withAuthRedirect(`/courses/${courseSlug}/lessons/${lessonSlug}`, () =>
+          fetchSubmission(courseSlug, lesson.slug),
+        )
+      : null;
+  const blocks: Block[] = submission ? submission.snapshot : lesson.blocks;
+
+  const codeIndexes = blocks
     .map((block, index) => ({ block, index }))
     .filter((entry): entry is { block: CodeBlock; index: number } => entry.block.type === 'code');
 
@@ -67,50 +83,56 @@ export default async function LessonPage({
     <main className={styles.page}>
       <article>
         <h1 className={styles.title}>{lesson.title}</h1>
-        <div className={styles.body}>
-          {lesson.blocks.map((block, index) => {
-            if (block.type === 'prose') {
-              // The API hands us HTML it parsed from our own markdown source.
-              // Sanitizing untrusted/rendered HTML before it reaches the DOM
-              // is Phase 5's job — not built here.
-              return <div key={index} className={styles.prose} dangerouslySetInnerHTML={{ __html: block.html }} />;
-            }
-            if (block.type === 'code') {
-              /*
-               * Design §9.4: the same block, two modes. A lesson shows the
-               * author's annotations read-only; an exercise accepts the
-               * student's own. Highlighting still happens above, at render
-               * time (CLAUDE.md rule 4) — AnnotatableCode only splits that
-               * HTML into per-line anchors.
-               *
-               * Persistence is the next task: onChange is deliberately not
-               * wired to anything yet.
-               */
+        {lesson.kind === 'exercise' ? (
+          <ExercisePanel
+            courseSlug={courseSlug}
+            lessonSlug={lesson.slug}
+            blocks={blocks}
+            highlighted={Object.fromEntries(highlighted)}
+            initialSubmission={submission}
+            progress={lesson.progress}
+          />
+        ) : (
+          <div className={styles.body}>
+            {blocks.map((block, index) => {
+              if (block.type === 'prose') {
+                // The API hands us HTML it parsed from our own markdown source.
+                // Sanitizing untrusted/rendered HTML before it reaches the DOM
+                // is Phase 5's job — not built here.
+                return <div key={index} className={styles.prose} dangerouslySetInnerHTML={{ __html: block.html }} />;
+              }
+              if (block.type === 'code') {
+                // Design §9.4: the same block, two modes. A lesson (kind
+                // "lesson") shows the author's annotations read-only; an
+                // exercise's own code blocks render through ExercisePanel
+                // above instead, so this branch only ever runs in "read"
+                // mode here.
+                return (
+                  <div key={index} className={styles.code}>
+                    <AnnotatableCode
+                      html={highlighted.get(index) ?? ''}
+                      lang={block.lang ?? undefined}
+                      mode="read"
+                      authorAnnotations={(block as AnnotatedCodeBlock).annotations}
+                    />
+                  </div>
+                );
+              }
+              // block.type === 'quiz'. Design §9.1: not markable — the Quiz
+              // component owns scoring and completion for this lesson entirely
+              // through the .../quiz endpoint, never through MarkCompleteButton.
               return (
-                <div key={index} className={styles.code}>
-                  <AnnotatableCode
-                    html={highlighted.get(index) ?? ''}
-                    lang={block.lang ?? undefined}
-                    mode={lesson.kind === 'exercise' ? 'annotate' : 'read'}
-                    authorAnnotations={(block as AnnotatedCodeBlock).annotations}
-                  />
-                </div>
+                <Quiz
+                  key={index}
+                  courseSlug={courseSlug}
+                  lessonSlug={lesson.slug}
+                  quiz={block}
+                  progress={lesson.progress}
+                />
               );
-            }
-            // block.type === 'quiz'. Design §9.1: not markable — the Quiz
-            // component owns scoring and completion for this lesson entirely
-            // through the .../quiz endpoint, never through MarkCompleteButton.
-            return (
-              <Quiz
-                key={index}
-                courseSlug={courseSlug}
-                lessonSlug={lesson.slug}
-                quiz={block}
-                progress={lesson.progress}
-              />
-            );
-          })}
-        </div>
+            })}
+          </div>
+        )}
 
         <div className={styles.progress}>
           <MarkCompleteButton

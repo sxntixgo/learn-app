@@ -10,6 +10,7 @@ import {
   describeRange,
   formatRangeLabel,
   fromAuthorAnnotations,
+  fromSubmissionAnnotations,
   groupAnnotationsByEndLine,
   isValidAnchor,
   normalizeRange,
@@ -19,8 +20,10 @@ import {
   selectLine,
   sortAnnotations,
   splitHighlightedLines,
+  toSubmissionAnnotationInputs,
   updateAnnotation,
   type Annotation,
+  type SubmissionAnnotationWire,
 } from './annotations';
 
 function student(id: string, start: number, end: number, body = 'note', createdAt?: string): Annotation {
@@ -348,5 +351,85 @@ describe('selection maths', () => {
     expect(clampLine(0, 10)).toBe(1);
     expect(clampLine(11, 10)).toBe(10);
     expect(clampLine(5, 10)).toBe(5);
+  });
+});
+
+describe('toSubmissionAnnotationInputs', () => {
+  it('converts student annotations to the PUT body shape, tagged with the given block index', () => {
+    const list = [student('a', 3, 3, 'hi'), student('b', 5, 7, 'there')];
+    expect(toSubmissionAnnotationInputs(list, 2)).toEqual([
+      { blockIndex: 2, startLine: 3, endLine: 3, body: 'hi' },
+      { blockIndex: 2, startLine: 5, endLine: 7, body: 'there' },
+    ]);
+  });
+
+  it('carries track through only when present', () => {
+    const withTrack: Annotation = { id: 'a', range: { start: 1, end: 1 }, body: 'x', origin: 'student', track: 'cx' };
+    expect(toSubmissionAnnotationInputs([withTrack], 0)).toEqual([
+      { blockIndex: 0, startLine: 1, endLine: 1, body: 'x', track: 'cx' },
+    ]);
+  });
+
+  it('drops author annotations — only student work is ever saved', () => {
+    const author: Annotation = { id: 'author-0', range: { start: 1, end: 1 }, body: 'theirs', origin: 'author' };
+    expect(toSubmissionAnnotationInputs([author, student('a', 2, 2)], 0)).toEqual([
+      { blockIndex: 0, startLine: 2, endLine: 2, body: 'note' },
+    ]);
+  });
+});
+
+describe('fromSubmissionAnnotations', () => {
+  const wire: SubmissionAnnotationWire[] = [
+    {
+      id: 'ann-1',
+      blockIndex: 0,
+      startLine: 2,
+      endLine: 2,
+      body: 'first block',
+      track: null,
+      parentId: null,
+      authorId: 'u1',
+      createdAt: '2026-01-01T00:00:00Z',
+    },
+    {
+      id: 'ann-2',
+      blockIndex: 1,
+      startLine: 4,
+      endLine: 5,
+      body: 'second block',
+      track: 'cx',
+      parentId: null,
+      authorId: 'u1',
+      createdAt: '2026-01-02T00:00:00Z',
+    },
+  ];
+
+  it('keeps only the annotations for the requested block, converted to the internal shape', () => {
+    expect(fromSubmissionAnnotations(wire, 1)).toEqual([
+      {
+        id: 'ann-2',
+        range: { start: 4, end: 5 },
+        body: 'second block',
+        origin: 'student',
+        track: 'cx',
+        createdAt: '2026-01-02T00:00:00Z',
+      },
+    ]);
+  });
+
+  it('returns an empty array for a block with no annotations', () => {
+    expect(fromSubmissionAnnotations(wire, 9)).toEqual([]);
+  });
+
+  it('omits track when the wire value is null', () => {
+    expect(fromSubmissionAnnotations(wire, 0)).toEqual([
+      {
+        id: 'ann-1',
+        range: { start: 2, end: 2 },
+        body: 'first block',
+        origin: 'student',
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
   });
 });

@@ -91,6 +91,16 @@ export interface AnnotatableCodeProps {
   initialAnnotations?: readonly Annotation[];
   /** Fired with the student's annotations whenever they change. Persistence is the caller's job. */
   onChange?: (annotations: Annotation[]) => void;
+  /**
+   * Locks a `mode="annotate"` block into read behaviour once a submission is
+   * no longer editable (design §9.1: "a submitted exercise offers no further
+   * editing"). The API refuses a draft write against a submitted/returned
+   * submission anyway (409); this is what keeps the UI from ever inviting
+   * that request — no composer, no Edit/Delete on the student's own cards,
+   * same as a lesson's read-only author annotations. `mode` still decides
+   * the header wording's baseline; `readOnly` overrides the *behaviour*.
+   */
+  readOnly?: boolean;
 }
 
 type Composer = { kind: 'create'; range: LineRange } | { kind: 'edit'; id: string };
@@ -102,7 +112,12 @@ export default function AnnotatableCode({
   authorAnnotations,
   initialAnnotations,
   onChange,
+  readOnly = false,
 }: AnnotatableCodeProps) {
+  // The mode that actually governs behaviour below: a submitted exercise
+  // passes mode="annotate" (so the header still reads as an exercise) with
+  // readOnly=true, and every interactive branch checks THIS, not `mode`.
+  const effectiveMode = readOnly ? 'read' : mode;
   const domId = useId();
   const { style, lines } = useMemo(() => splitHighlightedLines(html), [html]);
   const lineCount = lines.length;
@@ -134,7 +149,7 @@ export default function AnnotatableCode({
   // A read-only block with no annotations is just a code block: no per-line
   // controls, no readout, nothing to tab through. Only blocks that actually
   // carry (or accept) annotations pay the interaction cost.
-  const interactive = mode === 'annotate' || anchored.length > 0 || orphaned.length > 0;
+  const interactive = effectiveMode === 'annotate' || anchored.length > 0 || orphaned.length > 0;
 
   const onChangeRef = useRef(onChange);
   useEffect(() => {
@@ -205,14 +220,14 @@ export default function AnnotatableCode({
         select(line);
         return;
       }
-      if (mode === 'annotate') {
+      if (effectiveMode === 'annotate') {
         openComposer({ start: line, end: line });
         return;
       }
       const firstCard = cardsByLine.get(line)?.[0];
       if (firstCard) cardRefs.current.get(firstCard.id)?.focus();
     },
-    [selection, mode, select, openComposer, cardsByLine]
+    [selection, effectiveMode, select, openComposer, cardsByLine]
   );
 
   function onListKeyDown(event: KeyboardEvent<HTMLOListElement>) {
@@ -389,7 +404,7 @@ export default function AnnotatableCode({
        */
       style={style as CSSProperties}
       aria-labelledby={headerId}
-      data-mode={mode}
+      data-mode={effectiveMode}
     >
       <header className={styles.header}>
         <h3 className={styles.headerTitle} id={headerId}>
@@ -398,9 +413,11 @@ export default function AnnotatableCode({
         </h3>
         {interactive ? (
           <p className={styles.headerHint}>
-            {mode === 'annotate'
-              ? 'Select a line, then add a note. Arrow keys move; Shift+Arrow selects a range.'
-              : `${anchored.length} annotation${anchored.length === 1 ? '' : 's'}. Select a line to hear what is on it.`}
+            {readOnly
+              ? `Submitted — ${anchored.length} annotation${anchored.length === 1 ? '' : 's'}. Select a line to hear what is on it.`
+              : effectiveMode === 'annotate'
+                ? 'Select a line, then add a note. Arrow keys move; Shift+Arrow selects a range.'
+                : `${anchored.length} annotation${anchored.length === 1 ? '' : 's'}. Select a line to hear what is on it.`}
           </p>
         ) : null}
       </header>
@@ -504,7 +521,7 @@ export default function AnnotatableCode({
                           {annotation.track ? <span className={styles.cardTrack}>{annotation.track}</span> : null}
                         </p>
                         <p className={styles.cardBody}>{annotation.body}</p>
-                        {annotation.origin === 'student' ? (
+                        {annotation.origin === 'student' && !readOnly ? (
                           <p className={styles.cardActions}>
                             <button type="button" className={styles.button} onClick={() => startEdit(annotation)}>
                               Edit<span className={styles.srOnly}> annotation on {describeRange(annotation.range)}</span>
@@ -533,7 +550,7 @@ export default function AnnotatableCode({
         </ol>
       </div>
 
-      {mode === 'annotate' ? (
+      {effectiveMode === 'annotate' ? (
         /*
          * The action bar is sticky to the bottom of the block, so on a phone
          * it is still there after scrolling forty lines of code — the

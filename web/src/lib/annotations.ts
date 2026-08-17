@@ -358,3 +358,79 @@ export function adjustRangeEnd(range: LineRange, delta: number, lineCount: numbe
 export function clampLine(line: number, lineCount: number): number {
   return Math.min(Math.max(1, line), Math.max(1, lineCount));
 }
+
+// -----------------------------------------------------------------------------
+// The wire boundary (design §9.4, Phase 8). A submission holds annotations for
+// every annotatable code block in the lesson at once, keyed by `blockIndex` —
+// but each AnnotatableCode instance only knows its OWN annotations, not which
+// block it is. The caller (ExercisePanel) supplies that index; these two
+// functions are the pure, testable translation in each direction, kept out of
+// the component so the shape of a PUT body is never assembled inline in JSX.
+// -----------------------------------------------------------------------------
+
+/** One annotation as PUT .../submission's body wants it (submissions.ts's `AnnotationInput`). */
+export interface SubmissionAnnotationInput {
+  blockIndex: number;
+  startLine: number;
+  endLine: number;
+  body: string;
+  track?: string;
+}
+
+/** One annotation as GET/PUT/.../submit return it (submissions.ts's `serialize`). */
+export interface SubmissionAnnotationWire {
+  id: string;
+  blockIndex: number;
+  startLine: number;
+  endLine: number;
+  body: string;
+  track: string | null;
+  parentId: string | null;
+  authorId: string;
+  createdAt: string;
+}
+
+/**
+ * This block's STUDENT annotations, as the draft-save request wants them.
+ * Author annotations never round-trip through here — they come from content,
+ * not from a save — so only `origin === 'student'` survives the filter.
+ */
+export function toSubmissionAnnotationInputs(
+  annotations: readonly Annotation[],
+  blockIndex: number
+): SubmissionAnnotationInput[] {
+  return annotations
+    .filter((a) => a.origin === 'student')
+    .map((a) => ({
+      blockIndex,
+      startLine: a.range.start,
+      endLine: a.range.end,
+      body: a.body,
+      ...(a.track ? { track: a.track } : {}),
+    }));
+}
+
+/**
+ * This block's slice of a submission's stored annotations, converted back to
+ * the internal shape. Every annotation a submission carries is the student's
+ * own (Phase 8 has no route for a teacher to write one), so `origin` is
+ * always `'student'` here — never `'author'`, which is reserved for the
+ * content repo's `[!note]` markers.
+ */
+export function fromSubmissionAnnotations(
+  wire: readonly SubmissionAnnotationWire[],
+  blockIndex: number
+): Annotation[] {
+  return sortAnnotations(
+    wire
+      .filter((a) => a.blockIndex === blockIndex)
+      .map((a) => ({
+        id: a.id,
+        range: { start: a.startLine, end: a.endLine },
+        body: a.body,
+        origin: 'student' as const,
+        ...(a.track ? { track: a.track } : {}),
+        createdAt: a.createdAt,
+      }))
+  );
+}

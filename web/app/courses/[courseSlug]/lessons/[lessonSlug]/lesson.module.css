@@ -146,6 +146,34 @@
 }
 
 /*
+ * The exercise submission control (Phase 8, design §9.1/§9.4). Sits right
+ * under the exercise's own blocks, in the same prose measure as `.progress`
+ * below it — no card chrome of its own, since it isn't a separate feature,
+ * just the save/submit state of the blocks above it.
+ */
+.exercise {
+  max-width: var(--measure-prose, 46ch);
+  margin: 1.75rem auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+/*
+ * Always rendered, never blank (a student must never have to guess whether
+ * their work is stored) — a fixed min-height keeps the submit control from
+ * shifting position as the message's length changes between states.
+ */
+.exerciseSaveStatus {
+  margin: 0;
+  min-height: 1.3em;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+/*
  * The quiz block (Task C, design §9.1/§6.3). A bordered card matching the
  * completion control's own surface tokens — no new colour. Choice rows are
  * native radio + label pairs sized to the 44px minimum tap target as a

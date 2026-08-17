@@ -502,6 +502,192 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/v1/courses/{courseSlug}/lessons/{lessonSlug}/submission:
+    get:
+      summary: Get the actor's own exercise submission
+      description: >-
+        Returns the actor's submission for this exercise lesson — draft,
+        submitted, or returned — including its frozen snapshot (design
+        §9.4: "submissions snapshot the block content as presented") and
+        the actor's own annotations against it. Scoped to the actor's own
+        submission only; there is no way to name another user's through
+        this route (a teacher's view of a student's submission is
+        `submission:grade`, a later phase). 404 when the actor has not
+        started this exercise yet, same as when the course or lesson does
+        not exist — "not started" is not an error state, but there is
+        nothing to return.
+      operationId: getSubmission
+      tags:
+        - submissions
+      parameters:
+        - name: courseSlug
+          in: path
+          required: true
+          description: The course slug
+          schema:
+            type: string
+        - name: lessonSlug
+          in: path
+          required: true
+          description: The lesson slug (unique within the course)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The actor's submission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '403':
+          description: The policy denied this request (e.g. no session)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: >-
+            Course not found, lesson not found, or the actor has not yet
+            started this exercise
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Save a draft of the actor's exercise submission
+      description: >-
+        Replaces the actor's draft annotations wholesale (not an append —
+        the caller sends the full current set every time). On the first
+        save, freezes a snapshot of the lesson's blocks as currently
+        presented (design §9.4) and every later save — including this
+        one, if it is not the first — validates annotation anchors against
+        THAT STORED SNAPSHOT, never against the live lesson, so editing
+        the lesson afterward cannot silently move where an annotation
+        points. An anchor that does not fit the snapshot is refused (400),
+        never clamped. A submission that is already `submitted` or
+        `returned` refuses further draft writes (409) — that work is
+        finished. Only lessons of kind "exercise" accept submissions; any
+        other kind returns 409.
+      operationId: saveSubmissionDraft
+      tags:
+        - submissions
+      parameters:
+        - name: courseSlug
+          in: path
+          required: true
+          description: The course slug
+          schema:
+            type: string
+        - name: lessonSlug
+          in: path
+          required: true
+          description: The lesson slug (unique within the course)
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmissionDraftRequest'
+      responses:
+        '200':
+          description: The saved draft
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '400':
+          description: >-
+            annotations is missing or malformed, or an annotation's anchor
+            does not fit the snapshot (an out-of-range line, or a block
+            that is not an annotatable code block)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The policy denied this request (e.g. no session)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Course or lesson not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: >-
+            This lesson is not kind "exercise", or the submission has
+            already been submitted or returned and can no longer be
+            edited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/courses/{courseSlug}/lessons/{lessonSlug}/submission/submit:
+    post:
+      summary: Submit the actor's exercise
+      description: >-
+        Hands in the current draft. Takes no body — drafts are written
+        through PUT .../submission, and keeping the two apart is what
+        makes submitting idempotent: retrying this call after a successful
+        submit returns the same submission unchanged rather than erroring
+        or emitting a second event. Submitting an exercise that was never
+        opened as a draft is legitimate (an exercise may be answered with
+        no annotations at all) and still freezes a snapshot. Design §9.1:
+        the lesson completes on submit, not on teacher return — a private
+        course of one has no grader — and this emits exactly one
+        `exercise_submitted` activity event. Only lessons of kind
+        "exercise" may be submitted here; any other kind returns 409.
+      operationId: submitSubmission
+      tags:
+        - submissions
+      parameters:
+        - name: courseSlug
+          in: path
+          required: true
+          description: The course slug
+          schema:
+            type: string
+        - name: lessonSlug
+          in: path
+          required: true
+          description: The lesson slug (unique within the course)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: >-
+            The submitted submission. Returned unchanged, with the same
+            status code, on a retried submit of an already-submitted or
+            already-returned submission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        '403':
+          description: The policy denied this request (e.g. no session)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Course or lesson not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: This lesson is not kind "exercise"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/v1/courses/{courseSlug}/progress:
     get:
       summary: Get the actor's progress summary for a course
@@ -1614,6 +1800,167 @@ components:
         - results
         - trackScores
         - attempt
+
+    SubmissionStatus:
+      type: string
+      enum:
+        - draft
+        - submitted
+        - returned
+      description: >-
+        A submission's lifecycle state (design §9.1/§9.4). `draft` accepts
+        further PUT saves; `submitted` and `returned` are finished work and
+        refuse them (409). Only `submitted` and `returned` have completed
+        the lesson.
+
+    SubmissionAnnotationInput:
+      type: object
+      description: >-
+        One annotation as the client sends it when saving a draft
+        (PUT .../submission). Anchors are 1-indexed and inclusive, and are
+        validated against the submission's stored snapshot, never the live
+        lesson (design §9.4) — an anchor that does not fit is refused
+        (400), never clamped.
+      properties:
+        blockIndex:
+          type: integer
+          minimum: 0
+          description: 0-based index into the submission's snapshot blocks array.
+        startLine:
+          type: integer
+          minimum: 1
+        endLine:
+          type: integer
+          minimum: 1
+          description: Must be >= startLine.
+        body:
+          type: string
+          minLength: 1
+        track:
+          type: string
+          minLength: 1
+          description: Optional track id, matching a track's id in course.yaml.
+      required:
+        - blockIndex
+        - startLine
+        - endLine
+        - body
+
+    SubmissionDraftRequest:
+      type: object
+      description: >-
+        The full current set of the actor's draft annotations. A save
+        replaces the set wholesale (not an append) — the caller sends
+        every annotation it wants kept, every time.
+      properties:
+        annotations:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubmissionAnnotationInput'
+      required:
+        - annotations
+
+    SubmissionAnnotation:
+      type: object
+      description: >-
+        One annotation as stored and served back. Ids are server-assigned.
+        `parentId` threads a reply to another annotation (design §9.4);
+        Phase 8 writes only top-level student annotations, so this is null
+        on everything this phase creates.
+      properties:
+        id:
+          type: string
+        blockIndex:
+          type: integer
+        startLine:
+          type: integer
+        endLine:
+          type: integer
+        body:
+          type: string
+        track:
+          type:
+            - string
+            - "null"
+          nullable: true
+        parentId:
+          type:
+            - string
+            - "null"
+          nullable: true
+        authorId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - blockIndex
+        - startLine
+        - endLine
+        - body
+        - track
+        - parentId
+        - authorId
+        - createdAt
+
+    Submission:
+      type: object
+      description: >-
+        An exercise submission (design §9.4). `snapshot` is the lesson's
+        blocks AS PRESENTED when the submission was first saved or
+        submitted, frozen for the submission's entire life — the reader
+        renders from this, never from the live lesson, so editing the
+        lesson afterward cannot change what a past submission shows.
+        `annotations` anchor to this snapshot, not to the live lesson.
+      properties:
+        id:
+          type: string
+        lessonSlug:
+          type: string
+        status:
+          $ref: '#/components/schemas/SubmissionStatus'
+        snapshot:
+          type: array
+          items:
+            $ref: '#/components/schemas/Block'
+          description: The lesson's blocks as presented when first saved, frozen for the life of the submission.
+        snapshotHash:
+          type: string
+          description: A content hash of the snapshot, for cheap equality checks.
+        annotations:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubmissionAnnotation'
+        submittedAt:
+          type:
+            - string
+            - "null"
+          nullable: true
+          format: date-time
+        returnedAt:
+          type:
+            - string
+            - "null"
+          nullable: true
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - lessonSlug
+        - status
+        - snapshot
+        - snapshotHash
+        - annotations
+        - submittedAt
+        - returnedAt
+        - createdAt
+        - updatedAt
 
     Error:
       type: object

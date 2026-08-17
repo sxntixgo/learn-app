@@ -232,6 +232,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/{courseSlug}/lessons/{lessonSlug}/submission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the actor's own exercise submission
+         * @description Returns the actor's submission for this exercise lesson — draft, submitted, or returned — including its frozen snapshot (design §9.4: "submissions snapshot the block content as presented") and the actor's own annotations against it. Scoped to the actor's own submission only; there is no way to name another user's through this route (a teacher's view of a student's submission is `submission:grade`, a later phase). 404 when the actor has not started this exercise yet, same as when the course or lesson does not exist — "not started" is not an error state, but there is nothing to return.
+         */
+        get: operations["getSubmission"];
+        /**
+         * Save a draft of the actor's exercise submission
+         * @description Replaces the actor's draft annotations wholesale (not an append — the caller sends the full current set every time). On the first save, freezes a snapshot of the lesson's blocks as currently presented (design §9.4) and every later save — including this one, if it is not the first — validates annotation anchors against THAT STORED SNAPSHOT, never against the live lesson, so editing the lesson afterward cannot silently move where an annotation points. An anchor that does not fit the snapshot is refused (400), never clamped. A submission that is already `submitted` or `returned` refuses further draft writes (409) — that work is finished. Only lessons of kind "exercise" accept submissions; any other kind returns 409.
+         */
+        put: operations["saveSubmissionDraft"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{courseSlug}/lessons/{lessonSlug}/submission/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit the actor's exercise
+         * @description Hands in the current draft. Takes no body — drafts are written through PUT .../submission, and keeping the two apart is what makes submitting idempotent: retrying this call after a successful submit returns the same submission unchanged rather than erroring or emitting a second event. Submitting an exercise that was never opened as a draft is legitimate (an exercise may be answered with no annotations at all) and still freezes a snapshot. Design §9.1: the lesson completes on submit, not on teacher return — a private course of one has no grader — and this emits exactly one `exercise_submitted` activity event. Only lessons of kind "exercise" may be submitted here; any other kind returns 409.
+         */
+        post: operations["submitSubmission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{courseSlug}/progress": {
         parameters: {
             query?: never;
@@ -725,6 +769,58 @@ export interface components {
                 [key: string]: components["schemas"]["QuizTrackScore"];
             };
             attempt: components["schemas"]["QuizAttemptRef"];
+        };
+        /**
+         * @description A submission's lifecycle state (design §9.1/§9.4). `draft` accepts further PUT saves; `submitted` and `returned` are finished work and refuse them (409). Only `submitted` and `returned` have completed the lesson.
+         * @enum {string}
+         */
+        SubmissionStatus: "draft" | "submitted" | "returned";
+        /** @description One annotation as the client sends it when saving a draft (PUT .../submission). Anchors are 1-indexed and inclusive, and are validated against the submission's stored snapshot, never the live lesson (design §9.4) — an anchor that does not fit is refused (400), never clamped. */
+        SubmissionAnnotationInput: {
+            /** @description 0-based index into the submission's snapshot blocks array. */
+            blockIndex: number;
+            startLine: number;
+            /** @description Must be >= startLine. */
+            endLine: number;
+            body: string;
+            /** @description Optional track id, matching a track's id in course.yaml. */
+            track?: string;
+        };
+        /** @description The full current set of the actor's draft annotations. A save replaces the set wholesale (not an append) — the caller sends every annotation it wants kept, every time. */
+        SubmissionDraftRequest: {
+            annotations: components["schemas"]["SubmissionAnnotationInput"][];
+        };
+        /** @description One annotation as stored and served back. Ids are server-assigned. `parentId` threads a reply to another annotation (design §9.4); Phase 8 writes only top-level student annotations, so this is null on everything this phase creates. */
+        SubmissionAnnotation: {
+            id: string;
+            blockIndex: number;
+            startLine: number;
+            endLine: number;
+            body: string;
+            track: ((string | null) | null) | null;
+            parentId: ((string | null) | null) | null;
+            authorId: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description An exercise submission (design §9.4). `snapshot` is the lesson's blocks AS PRESENTED when the submission was first saved or submitted, frozen for the submission's entire life — the reader renders from this, never from the live lesson, so editing the lesson afterward cannot change what a past submission shows. `annotations` anchor to this snapshot, not to the live lesson. */
+        Submission: {
+            id: string;
+            lessonSlug: string;
+            status: components["schemas"]["SubmissionStatus"];
+            /** @description The lesson's blocks as presented when first saved, frozen for the life of the submission. */
+            snapshot: components["schemas"]["Block"][];
+            /** @description A content hash of the snapshot, for cheap equality checks. */
+            snapshotHash: string;
+            annotations: components["schemas"]["SubmissionAnnotation"][];
+            /** Format: date-time */
+            submittedAt: ((string | null) | null) | null;
+            /** Format: date-time */
+            returnedAt: ((string | null) | null) | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
         };
         /** @description An error response */
         Error: {
@@ -1408,6 +1504,166 @@ export interface operations {
                 };
             };
             /** @description This lesson is not kind "quiz" */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The course slug */
+                courseSlug: string;
+                /** @description The lesson slug (unique within the course) */
+                lessonSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The actor's submission */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Submission"];
+                };
+            };
+            /** @description The policy denied this request (e.g. no session) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Course not found, lesson not found, or the actor has not yet started this exercise */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    saveSubmissionDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The course slug */
+                courseSlug: string;
+                /** @description The lesson slug (unique within the course) */
+                lessonSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmissionDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description The saved draft */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Submission"];
+                };
+            };
+            /** @description annotations is missing or malformed, or an annotation's anchor does not fit the snapshot (an out-of-range line, or a block that is not an annotatable code block) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The policy denied this request (e.g. no session) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Course or lesson not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description This lesson is not kind "exercise", or the submission has already been submitted or returned and can no longer be edited */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    submitSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The course slug */
+                courseSlug: string;
+                /** @description The lesson slug (unique within the course) */
+                lessonSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The submitted submission. Returned unchanged, with the same status code, on a retried submit of an already-submitted or already-returned submission */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Submission"];
+                };
+            };
+            /** @description The policy denied this request (e.g. no session) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Course or lesson not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description This lesson is not kind "exercise" */
             409: {
                 headers: {
                     [name: string]: unknown;

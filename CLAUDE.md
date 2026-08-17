@@ -35,6 +35,14 @@ for the design and `docs/plans/2026-08-15-learning-platform-plan.md` for the pha
      `courses.owner_id`) and/or `{ userId }`. Omitting it denies — that is deliberate.
 3. **`openapi/openapi.yaml` is the contract.** Client types are generated from it, never
    hand-written.
+   - **Declare the path BEFORE implementing the route, not after.** This has drifted three
+     times — `annotations` on `CodeBlock` (live since Phase 2, undeclared), the four
+     `/auth/*` endpoints (live since Phase 6, so the contract claimed this API had no
+     authentication), and the submission routes. Each time the web side worked around it
+     with a local type, which is the symptom to watch for: if you are hand-writing a
+     response type, the contract is wrong.
+   - `gen:api:check` catches a *stale generated file*, not a *missing path*. Nothing
+     automatically detects a route that was never declared, so it is on you.
 4. **Syntax highlighting happens at render time**, never at import time.
 5. **Content is stored as a typed block array**, not as HTML or a rehype AST.
 6. Postgres is the only stateful service.
