@@ -583,6 +583,22 @@ it, and an untested restore is not a backup. This lands before real progress dat
       everything
       **Model:** `haiku`
 
+### Phase 6b outcome — COMPLETE (built 2026-08-17)
+
+**735 tests.** Verified with an independent round trip of the real dev database:
+
+- Backup of `learn_dev` → 887.6 KB custom-format dump, restored into a fresh database
+- Row counts and content checksums matched across all 8 tables
+- **The guarantees survive, not just the rows** — after restore, the `activity_events`
+  append-only trigger still refuses `UPDATE`, the `user_roles` exclusion constraint still
+  rejects admin+student, and the `tracks.hue` CHECK still rejects an invalid hue. A restore
+  that silently dropped triggers would pass a row-count check and fail this one
+- The non-empty guard refuses without `--force` and touches nothing
+- Retention only ever deletes files matching its own `learn-app-YYYYMMDD-HHMMSS.dump`
+  pattern; a decoy file in the same directory was left untouched
+- Connection strings are redacted in output; the password reaches `pg_dump` via
+  `PGPASSWORD` in the child environment, never argv
+
 > **Gate 6b.** Run a restore on the WSL host and confirm the app comes up against the
 > restored database.
 

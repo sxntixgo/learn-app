@@ -64,4 +64,55 @@ To run the full stack with Docker Compose:
    cat docker/Caddyfile.example
    ```
 
-**Security Note**: This application has no authentication yet (see [docs/plans/2026-08-15-learning-platform-plan.md](./docs/plans/2026-08-15-learning-platform-plan.md) Phase 6). Do not expose publicly — use only in private networks or behind trusted access controls until authentication is implemented.
+## Backups
+
+Postgres is the only stateful service (`CLAUDE.md`). Content, progress, avatars,
+credentials — everything the app knows lives in the database, so a `pg_dump` of it
+is genuinely a backup of the whole instance, not just "the data we remembered to
+include." There is no separate file store to back up alongside it.
+
+**Taking a backup:**
+
+```bash
+npm run backup                        # writes to ./backups/, keeps the newest 7
+npm run backup -- --out /mnt/backups --keep 30
+```
+
+This runs `pg_dump -Fc` (Postgres's custom format — compressed, and restorable
+selectively with `pg_restore`, unlike a plain `.sql` dump) against `DATABASE_URL`
+and writes a timestamped file: `backups/learn-app-YYYYMMDD-HHMMSS.dump`. After
+writing the new dump it prunes `--out` down to the newest `--keep` files (default
+7) — and only ever deletes files matching its own `learn-app-<timestamp>.dump`
+naming pattern, never anything else that happens to be in that directory.
+
+**Restoring — READ THIS FIRST: restore is destructive and irreversible.**
+`pg_restore` overwrites whatever is in the target database. Point it at the wrong
+`DATABASE_URL` and you have destroyed real data, not a copy of it.
+
+```bash
+npm run restore -- ./backups/learn-app-20260815-030000.dump --into <database-url>
+```
+
+By default, restore **refuses to run against a database that already has any
+tables** — that guard is the point, not a formality, and it exists specifically so
+a mistyped connection string fails loudly instead of quietly clobbering live data.
+To intentionally overwrite an existing database (disaster recovery, rebuilding a
+scratch environment from a production dump), pass `--force` explicitly:
+
+```bash
+npm run restore -- ./backups/learn-app-20260815-030000.dump --into <database-url> --force
+```
+
+`tools/src/restore.test.ts` is the proof this loop actually works, not just that
+the scripts run without error: it populates a scratch database across `users`,
+`courses`, `modules`, `lessons`, `lesson_progress`, `activity_events`,
+`enrollments`, and `user_roles`, backs it up, restores the dump into a second
+fresh database, and asserts row counts *and* a content checksum match per table.
+It also confirms the restore doesn't just copy rows but preserves real schema
+behavior — `activity_events`'s append-only trigger and `user_roles`'s
+admin-exclusivity constraint both still reject the operations they're supposed to
+reject after a round trip through backup and restore.
+
+An untested restore is not a backup, it's a hope — restore this into a scratch
+database occasionally and confirm the app actually comes up against it, not just
+that `pg_restore` exited zero.

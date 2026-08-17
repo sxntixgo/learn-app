@@ -11,6 +11,8 @@
     "build": "tsc",
     "migrate": "node ./src/migrate.ts",
     "seed": "node ./src/seed.ts",
+    "backup": "node ./src/backup.ts",
+    "restore": "node ./src/restore.ts",
     "import": "node ./src/import.ts"
   },
   "dependencies": {

@@ -18,6 +18,8 @@
     "format": "prettier --write .",
     "migrate": "node tools/src/migrate.ts",
     "seed": "node tools/src/seed.ts",
+    "backup": "node tools/src/backup.ts",
+    "restore": "node tools/src/restore.ts",
     "validate": "node tools/src/validate.ts",
     "import": "node tools/src/import.ts",
     "scaffold": "node tools/src/scaffold.ts",
