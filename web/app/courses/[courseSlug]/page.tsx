@@ -2,6 +2,8 @@ import type { CSSProperties } from 'react';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { fetchCourse, fetchCourseProgress } from '../../../src/lib/api';
+import EnrolButton from './EnrolButton';
+import PublishControl from './PublishControl';
 import styles from './course.module.css';
 
 // Track hues are structural only (design §14.1) — a chip border here, a
@@ -32,11 +34,29 @@ export default async function CoursePage({
   // hue — a lesson only carries the key, not the hue itself.
   const trackHues = new Map(course.tracks.map((t) => [t.key, t.hue]));
 
+  // Task E: visibility is shown to whoever can already see this page at
+  // all — a non-owner only ever reaches here for open/restricted (design
+  // §12), so the badge is informational for them too, not owner-exclusive.
+  // 'open' is the unremarkable default state and stays unbadged.
+  const visibilityLabel: Record<string, string> = { restricted: 'Restricted', hidden: 'Hidden — draft' };
+
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>{course.title}</h1>
+      <div className={styles.titleRow}>
+        <h1 className={styles.title}>{course.title}</h1>
+        {course.visibility !== 'open' ? (
+          <span className={styles.visibilityBadge} data-visibility={course.visibility}>
+            {visibilityLabel[course.visibility]}
+          </span>
+        ) : null}
+      </div>
       {course.subtitle ? <p className={styles.subtitle}>{course.subtitle}</p> : null}
       {course.description ? <p className={styles.description}>{course.description}</p> : null}
+
+      <div className={styles.actions}>
+        <EnrolButton courseSlug={course.slug} enrolled={course.enrolled} />
+        {course.canPublish ? <PublishControl courseSlug={course.slug} visibility={course.visibility} /> : null}
+      </div>
 
       {progress && progress.totalLessons > 0 ? (
         <div className={styles.progressSummary}>

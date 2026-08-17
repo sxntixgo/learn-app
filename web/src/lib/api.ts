@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers';
 import type { components } from './api-types';
 
 // Types come from the generated contract (CLAUDE.md rule 3) — never
@@ -6,6 +7,9 @@ import type { components } from './api-types';
 
 export type CourseSummary = components['schemas']['CourseSummary'];
 export type CourseDetail = components['schemas']['CourseDetail'];
+export type CourseManage = components['schemas']['CourseManage'];
+export type CourseVisibility = components['schemas']['CourseVisibility'];
+export type Enrolment = components['schemas']['Enrolment'];
 export type Lesson = components['schemas']['Lesson'];
 export type Heatmap = components['schemas']['Heatmap'];
 export type HeatmapDay = components['schemas']['HeatmapDay'];
@@ -26,8 +30,30 @@ function apiBase(): string {
   return base;
 }
 
+/**
+ * Forwards the visitor's own session cookie to the API on a server-side
+ * request. Every function in this module runs on the Next.js server (never
+ * in the browser — see the client components that only ever import TYPES
+ * from here), so `fetch` here is a server-to-server call that does NOT
+ * automatically carry the browser's cookies the way a same-origin browser
+ * fetch would. Without this, api/src/auth/actor.ts resolves every request
+ * from web as the ANONYMOUS actor — which Phase 1-5 never noticed because
+ * `can()` allowed everything, and Phase 6's real matrix denies most of it.
+ * `next/headers`'s `cookies()` only works inside a request scope (a Server
+ * Component render, a Server Action, a Route Handler); every caller below
+ * is exactly one of those.
+ */
+async function authHeaders(): Promise<HeadersInit> {
+  const store = await cookies();
+  const header = store
+    .getAll()
+    .map((c) => `${c.name}=${c.value}`)
+    .join('; ');
+  return header ? { Cookie: header } : {};
+}
+
 export async function fetchCourses(): Promise<CourseSummary[]> {
-  const res = await fetch(`${apiBase()}/api/v1/courses`, { cache: 'no-store' });
+  const res = await fetch(`${apiBase()}/api/v1/courses`, { cache: 'no-store', headers: await authHeaders() });
   if (!res.ok) {
     throw new Error(`Failed to fetch courses: ${res.status}`);
   }
@@ -37,6 +63,7 @@ export async function fetchCourses(): Promise<CourseSummary[]> {
 export async function fetchCourse(courseSlug: string): Promise<CourseDetail | null> {
   const res = await fetch(`${apiBase()}/api/v1/courses/${encodeURIComponent(courseSlug)}`, {
     cache: 'no-store',
+    headers: await authHeaders(),
   });
   if (res.status === 404) {
     return null;
@@ -48,6 +75,56 @@ export async function fetchCourse(courseSlug: string): Promise<CourseDetail | nu
 }
 
 /**
+ * Self-enrols the actor in a course (design §12). Returns null on a 403/404
+ * — "not eligible right now" and "not found" are both states the caller
+ * (the enrol button's Server Action) turns into a quiet, specific message
+ * rather than a thrown error, since neither is exceptional from a reader's
+ * point of view.
+ */
+export async function enrolInCourse(courseSlug: string): Promise<Enrolment> {
+  const res = await fetch(`${apiBase()}/api/v1/courses/${encodeURIComponent(courseSlug)}/enrolments`, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: await authHeaders(),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `Failed to enrol in course "${courseSlug}": ${res.status}`));
+  }
+  return (await res.json()) as Enrolment;
+}
+
+/** Un-enrols the actor from a course (design §12) — a soft withdrawal, not a hard delete. */
+export async function unenrolFromCourse(courseSlug: string): Promise<Enrolment> {
+  const res = await fetch(`${apiBase()}/api/v1/courses/${encodeURIComponent(courseSlug)}/enrolments`, {
+    method: 'DELETE',
+    cache: 'no-store',
+    headers: await authHeaders(),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `Failed to un-enrol from course "${courseSlug}": ${res.status}`));
+  }
+  return (await res.json()) as Enrolment;
+}
+
+/**
+ * Publishes/sets a course's visibility (Task C, design §12) — the owner's
+ * or an admin's publish control. `can()` decides server-side; this is a
+ * plain PATCH, not a re-implementation of that decision.
+ */
+export async function setCourseVisibility(courseSlug: string, visibility: CourseVisibility): Promise<CourseManage> {
+  const res = await fetch(`${apiBase()}/api/v1/courses/${encodeURIComponent(courseSlug)}`, {
+    method: 'PATCH',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ visibility }),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `Failed to update visibility for course "${courseSlug}": ${res.status}`));
+  }
+  return (await res.json()) as CourseManage;
+}
+
+/**
  * The actor's activity heatmap. `weeks` is a trailing window ending today;
  * the API clamps it to [1, 53] and zero-fills every day in between, so the UI
  * never infers a gap. We ask for the full year and let CSS decide how much of
@@ -56,6 +133,7 @@ export async function fetchCourse(courseSlug: string): Promise<CourseDetail | nu
 export async function fetchHeatmap(weeks: number): Promise<Heatmap> {
   const res = await fetch(`${apiBase()}/api/v1/me/heatmap?weeks=${encodeURIComponent(String(weeks))}`, {
     cache: 'no-store',
+    headers: await authHeaders(),
   });
   if (!res.ok) {
     throw new Error(`Failed to fetch heatmap: ${res.status}`);
@@ -66,7 +144,7 @@ export async function fetchHeatmap(weeks: number): Promise<Heatmap> {
 export async function fetchLesson(courseSlug: string, lessonSlug: string): Promise<Lesson | null> {
   const res = await fetch(
     `${apiBase()}/api/v1/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lessonSlug)}`,
-    { cache: 'no-store' },
+    { cache: 'no-store', headers: await authHeaders() },
   );
   if (res.status === 404) {
     return null;
@@ -83,7 +161,7 @@ export async function fetchLesson(courseSlug: string, lessonSlug: string): Promi
  */
 export async function fetchActivity(limit?: number): Promise<ActivityEvent[]> {
   const query = limit !== undefined ? `?limit=${encodeURIComponent(String(limit))}` : '';
-  const res = await fetch(`${apiBase()}/api/v1/me/activity${query}`, { cache: 'no-store' });
+  const res = await fetch(`${apiBase()}/api/v1/me/activity${query}`, { cache: 'no-store', headers: await authHeaders() });
   if (!res.ok) {
     throw new Error(`Failed to fetch activity: ${res.status}`);
   }
@@ -94,6 +172,7 @@ export async function fetchActivity(limit?: number): Promise<ActivityEvent[]> {
 export async function fetchCourseProgress(courseSlug: string): Promise<CourseProgressSummary | null> {
   const res = await fetch(`${apiBase()}/api/v1/courses/${encodeURIComponent(courseSlug)}/progress`, {
     cache: 'no-store',
+    headers: await authHeaders(),
   });
   if (res.status === 404) {
     return null;
@@ -106,7 +185,7 @@ export async function fetchCourseProgress(courseSlug: string): Promise<CoursePro
 
 /** The actor's own profile — id, display name, and effective timezone (design §15). */
 export async function fetchMe(): Promise<Me> {
-  const res = await fetch(`${apiBase()}/api/v1/me`, { cache: 'no-store' });
+  const res = await fetch(`${apiBase()}/api/v1/me`, { cache: 'no-store', headers: await authHeaders() });
   if (!res.ok) {
     throw new Error(`Failed to fetch me: ${res.status}`);
   }
@@ -116,7 +195,7 @@ export async function fetchMe(): Promise<Me> {
 /** Import run history, newest first (design plan phase 5's admin screen). */
 export async function fetchImportRuns(limit?: number): Promise<ImportRunSummary[]> {
   const query = limit !== undefined ? `?limit=${encodeURIComponent(String(limit))}` : '';
-  const res = await fetch(`${apiBase()}/api/v1/admin/import-runs${query}`, { cache: 'no-store' });
+  const res = await fetch(`${apiBase()}/api/v1/admin/import-runs${query}`, { cache: 'no-store', headers: await authHeaders() });
   if (!res.ok) {
     throw new Error(`Failed to fetch import runs: ${res.status}`);
   }
@@ -144,7 +223,7 @@ export async function markLessonComplete(courseSlug: string, lessonSlug: string)
     `${apiBase()}/api/v1/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lessonSlug)}/progress`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       cache: 'no-store',
       body: JSON.stringify({ state: 'complete' }),
     },

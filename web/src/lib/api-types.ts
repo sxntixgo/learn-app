@@ -61,6 +61,54 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /**
+         * Publish/set a course's visibility, or transfer its ownership
+         * @description Accepts `visibility` and/or `ownerId`. `visibility` is gated by `course:visibility:set` (design §12: the owning teacher, or an admin override); `ownerId` is gated by `course:ownership:transfer` (admin only). Either field may be omitted, but at least one is required. Neither write happens unless its own permission check passes — a request naming both fields where the actor may only change one is refused entirely, before anything is written.
+         */
+        patch: operations["patchCourse"];
+        trace?: never;
+    };
+    "/api/v1/courses/{courseSlug}/manage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The course's settings view (owner/admin only)
+         * @description Gated by `course:manage:read`, unconditional on visibility — this is how a teacher-only owner (no student role) reads their own course, and how an admin reaches any course regardless of visibility. A denial is always reported as 404, never 403: this endpoint has nothing to disclose to anyone it is not the settings screen for.
+         */
+        get: operations["getCourseManage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courses/{courseSlug}/enrolments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Self-enrol in a course
+         * @description Gated by `course:enrol` (design §12): allowed in an `open` course, or in any course the actor owns (the self-enrollment design §5 describes for a teacher's own course, published or not). `restricted` refuses self-enrolment for anyone but the owner — Phase 13's course invites are not built yet. Idempotent: enrolling twice leaves exactly one row, `status = 'active'`.
+         */
+        post: operations["createEnrolment"];
+        /**
+         * Un-enrol from a course
+         * @description Soft delete: the enrollment row's `status` flips to `withdrawn` rather than being removed (design §7: user tables are source of truth, nothing under `users` is recoverable). Re-enrolling flips it back to `active` on the same row. A harmless no-op if the actor was never enrolled.
+         */
+        delete: operations["deleteEnrolment"];
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -361,6 +409,11 @@ export interface components {
             /** @description The module's non-archived lessons, in manifest order */
             lessons: components["schemas"]["LessonSummary"][];
         };
+        /**
+         * @description design §12. `open` — listed, any student may self-enrol. `restricted` — listed, self-enrolment needs a teacher's invite. `hidden` — absent from the catalog; a direct fetch 404s for anyone but the owner or an admin. New courses land `hidden`; re-import never changes it.
+         * @enum {string}
+         */
+        CourseVisibility: "open" | "restricted" | "hidden";
         /** @description A course as it appears in the catalog listing. */
         CourseSummary: {
             /** @description The course's globally-unique slug */
@@ -377,6 +430,7 @@ export interface components {
             moduleCount: number;
             /** @description The count of the course's non-archived lessons */
             lessonCount: number;
+            visibility: components["schemas"]["CourseVisibility"];
         };
         /** @description A course's full table of contents. */
         CourseDetail: {
@@ -394,6 +448,38 @@ export interface components {
             tracks: components["schemas"]["Track"][];
             /** @description The course's non-archived modules, in manifest order */
             modules: components["schemas"]["CourseModule"][];
+            visibility: components["schemas"]["CourseVisibility"];
+            /** @description Whether the current actor holds an active enrollment in this course. */
+            enrolled: boolean;
+            /** @description Whether the current actor may change this course's visibility (course:visibility:set) — drives the web publish control (design plan phase 6 web). Server-computed; the client never re-derives ownership. */
+            canPublish: boolean;
+        };
+        /** @description A course's settings view (GET/PATCH .../manage and .../courses/{slug}), gated by course:manage:read — the owner's/admin's screen, unconditional on visibility. */
+        CourseManage: {
+            /** @description The course's globally-unique slug */
+            slug: string;
+            /** @description The course's title */
+            title?: string;
+            subtitle?: ((string | null) | null) | null;
+            description?: ((string | null) | null) | null;
+            /** @description courses.owner_id (migration 0007). Null means no teacher owns it. */
+            ownerId?: ((string | null) | null) | null;
+            visibility: components["schemas"]["CourseVisibility"];
+        };
+        /** @description At least one of `visibility`/`ownerId` is required. `visibility` is gated by course:visibility:set; `ownerId` (a user id, or null to unassign) is gated by course:ownership:transfer (admin only). */
+        CoursePatchRequest: {
+            visibility?: components["schemas"]["CourseVisibility"];
+            /** @description A user id to make the course's owner, or null to unassign. */
+            ownerId?: ((string | null) | null) | null;
+        };
+        /** @description The actor's enrollment state for one course, after a POST/DELETE. */
+        Enrolment: {
+            enrolled: boolean;
+            /**
+             * Format: date-time
+             * @description Present on a successful POST; omitted on DELETE.
+             */
+            enrolledAt?: string;
         };
         /**
          * @description The state a lesson_progress row can be written with.
@@ -714,6 +800,174 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CourseDetail"];
+                };
+            };
+            /** @description Course not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchCourse: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The course slug */
+                courseSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoursePatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseManage"];
+                };
+            };
+            /** @description Neither field was provided, or a field's value is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The actor may not make this change */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Course not found — also returned for a hidden course the actor cannot discover, rather than 403 (design §12: a 403 would confirm the course exists). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getCourseManage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The course slug */
+                courseSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Course settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseManage"];
+                };
+            };
+            /** @description Not found, or not visible to this actor as a manager */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createEnrolment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The course slug */
+                courseSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Enrolled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Enrolment"];
+                };
+            };
+            /** @description Refused — not eligible (wrong visibility, or an admin, who can never enrol) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Course not found, or hidden and undiscoverable to this actor */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteEnrolment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The course slug */
+                courseSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not enrolled (either just withdrawn, or already wasn't) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Enrolment"];
+                };
+            };
+            /** @description Refused by the current policy check */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             /** @description Course not found */

@@ -47,10 +47,17 @@ const SUBJECTS: Record<SubjectName, Actor> = {
 // Course-scoped cells all use ONE course, owned by `teacher`. That is what
 // makes `teacherOwner` and `teacherOther` differ by ownership alone.
 
-/** A course owned by the `teacherOwner` subject. */
-const ownedCourse = (): unknown => ({ course: { ownerId: TEACHER_ID } });
+/**
+ * A course owned by the `teacherOwner` subject, `open` (migration 0008) —
+ * `open` so the pre-existing course:read/lesson:read/course:enrol rows below
+ * keep meaning "any authenticated student may read/enrol", independent of
+ * the visibility predicates the "course visibility (§12)" describe block
+ * exercises directly further down. Every other action ignores `visibility`
+ * entirely, so adding it here does not change any of THEIR cells.
+ */
+const ownedCourse = (): unknown => ({ course: { ownerId: TEACHER_ID, visibility: 'open' } });
 /** A course with no owner — an imported/curriculum course (migration 0007). */
-const unownedCourse = (): unknown => ({ course: { ownerId: null } });
+const unownedCourse = (): unknown => ({ course: { ownerId: null, visibility: 'open' } });
 /** The actor's own user-scoped data (own progress, own profile). */
 const ownData = (actor: Actor): unknown => ({ userId: actor.id });
 /** No resource at all — the honest shape for instance-wide actions. */
@@ -457,6 +464,16 @@ describe('a missing ownership context denies — it never defaults to allow', ()
     expect(can(student, 'lesson:read', {})).toBe(false);
     expect(can(student, 'course:enrol', { course: null })).toBe(false);
   });
+
+  it('and, for a non-owner, a course with no (or an unrecognised) visibility denies too', () => {
+    // §12 read literally: `open`/`restricted` allow, everything else —
+    // including "the caller forgot to select the column" — does not. This is
+    // the visibility half of property 2, alongside the ownerId half above.
+    expect(can(student, 'course:read', { course: { ownerId: TEACHER_ID } })).toBe(false);
+    expect(can(student, 'lesson:read', { course: { ownerId: TEACHER_ID } })).toBe(false);
+    expect(can(student, 'course:enrol', { course: { ownerId: TEACHER_ID } })).toBe(false);
+    expect(can(student, 'course:read', { course: { ownerId: TEACHER_ID, visibility: 'nonsense' } })).toBe(false);
+  });
 });
 
 describe('an unowned course (courses.owner_id is null) is admin-only', () => {
@@ -481,6 +498,77 @@ describe('an unowned course (courses.owner_id is null) is admin-only', () => {
     expect(can(admin, 'submission:grade', { course: { ownerId: null } })).toBe(false);
     expect(can(admin, 'invite:course:create', { course: { ownerId: null } })).toBe(false);
     expect(can(admin, 'course:badge:create', { course: { ownerId: null } })).toBe(false);
+  });
+});
+
+// =============================================================================
+// Course visibility (§12, migration 0008) — the cells the header comment's
+// "VISIBILITY, ADDED HERE" section describes: `course:read` / `lesson:read` /
+// `course:enrol` gain a visibility predicate ON TOP of the role check, and
+// ownership bypasses it entirely. `student` here is deliberately built with
+// BOTH roles for the owner cases — §5's "a teacher holding both roles can
+// author a course only they can read... self-enroll" is a dual-role claim,
+// not a teacher-role claim, so a subject with `roles: ['teacher']` alone
+// (this file's `teacher`/`otherTeacher`) is never the right actor to prove
+// it with; that would silently test OWN_COURSE instead of the visibility
+// bypass.
+// =============================================================================
+describe('course visibility (§12)', () => {
+  const OWNER_STUDENT_ID = TEACHER_ID;
+  /** Holds BOTH roles — the realistic shape of a teacher who reads their own course. */
+  const ownerStudent: Actor = { id: OWNER_STUDENT_ID, roles: ['teacher', 'student'] };
+  /** A student with no stake in the course at all. */
+  const outsider = student;
+
+  const courseWith = (visibility: string | undefined): unknown => ({
+    course: {
+      ownerId: OWNER_STUDENT_ID,
+      ...(visibility === undefined ? {} : { visibility }),
+    },
+  });
+
+  for (const action of ['course:read', 'lesson:read'] as const) {
+    describe(action, () => {
+      it('open: any authenticated student reads it, owner or not', () => {
+        expect(can(outsider, action, courseWith('open'))).toBe(true);
+        expect(can(ownerStudent, action, courseWith('open'))).toBe(true);
+      });
+
+      it('restricted: still readable (listed) by any authenticated student', () => {
+        expect(can(outsider, action, courseWith('restricted'))).toBe(true);
+        expect(can(ownerStudent, action, courseWith('restricted'))).toBe(true);
+      });
+
+      it('hidden: denied for a non-owner, allowed for the owner', () => {
+        expect(can(outsider, action, courseWith('hidden'))).toBe(false);
+        expect(can(ownerStudent, action, courseWith('hidden'))).toBe(true);
+      });
+    });
+  }
+
+  describe('course:enrol', () => {
+    it('open: any authenticated student may self-enrol', () => {
+      expect(can(outsider, 'course:enrol', courseWith('open'))).toBe(true);
+      expect(can(ownerStudent, 'course:enrol', courseWith('open'))).toBe(true);
+    });
+
+    it('restricted: listed, but self-enrolling without an invite is refused — even though it reads fine', () => {
+      expect(can(outsider, 'course:enrol', courseWith('restricted'))).toBe(false);
+      // The owner is the one documented exception (§5's self-enrollment).
+      expect(can(ownerStudent, 'course:enrol', courseWith('restricted'))).toBe(true);
+    });
+
+    it('hidden: refused for a non-owner; the owner still self-enrols (§5)', () => {
+      expect(can(outsider, 'course:enrol', courseWith('hidden'))).toBe(false);
+      expect(can(ownerStudent, 'course:enrol', courseWith('hidden'))).toBe(true);
+    });
+  });
+
+  it('a teacher-only owner (no student role) gets none of this — they read via course:manage:read instead', () => {
+    const teacherOnlyOwner: Actor = { id: OWNER_STUDENT_ID, roles: ['teacher'] };
+    expect(can(teacherOnlyOwner, 'course:read', courseWith('open'))).toBe(false);
+    expect(can(teacherOnlyOwner, 'course:enrol', courseWith('open'))).toBe(false);
+    expect(can(teacherOnlyOwner, 'course:manage:read', { course: { ownerId: OWNER_STUDENT_ID } })).toBe(true);
   });
 });
 

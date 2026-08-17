@@ -271,6 +271,71 @@ describe.sequential('importCourse', () => {
     expect(row.rows[0].imported_commit).toBeNull();
   });
 
+  // ---------------------------------------------------------------------------
+  // Design §12 / migration 0008: "Visibility lives in the database, never in
+  // course.yaml, and re-import never touches it... New courses land hidden."
+  // upsertCourse (import.ts) never mentions the `visibility` column on either
+  // its INSERT (so the column's own `default 'hidden'` decides) or its
+  // UPDATE (so there is nothing to re-derive from git on a sync) — these
+  // tests are the acceptance criterion for both halves of that sentence.
+  // ---------------------------------------------------------------------------
+
+  it('a freshly imported course lands hidden — importing a repo can never expose anything', async () => {
+    const slug = `${SLUG_PREFIX}-lands-hidden`;
+    const dir = await writeCourse(path.join(tmp, 'lands-hidden'), {
+      slug,
+      modules: [{ id: 'm', title: 'M', lessons: [lesson('m/a.md', 'A')] }],
+    });
+
+    await importDir(dir);
+
+    const row = await pool.query<{ visibility: string }>(`select visibility from courses where slug = $1`, [slug]);
+    expect(row.rows[0]?.visibility).toBe('hidden');
+  });
+
+  it('re-import NEVER changes visibility: open survives a sync, and so does hidden', async () => {
+    const slug = `${SLUG_PREFIX}-visibility-survives`;
+    const dir = await writeCourse(path.join(tmp, 'visibility-survives'), {
+      slug,
+      modules: [{ id: 'm', title: 'M', lessons: [lesson('m/a.md', 'A')] }],
+    });
+
+    await importDir(dir);
+    expect((await pool.query(`select visibility from courses where slug = $1`, [slug])).rows[0]?.visibility).toBe(
+      'hidden',
+    );
+
+    // An admin publishes it — exactly what api/src/routes/courses.ts's PATCH
+    // route does, but this test writes the column directly so it stays a
+    // pure import.ts test rather than pulling in the HTTP layer.
+    await pool.query(`update courses set visibility = 'open' where slug = $1`, [slug]);
+
+    // A routine content sync — editing the lesson body is enough to prove
+    // this isn't a no-op skip that happens to leave the column untouched.
+    await writeCourse(dir, {
+      slug,
+      modules: [{ id: 'm', title: 'M', lessons: [lesson('m/a.md', 'A', 'Updated prose.')] }],
+    });
+    await importDir(dir);
+
+    expect((await pool.query(`select visibility from courses where slug = $1`, [slug])).rows[0]?.visibility).toBe(
+      'open',
+    );
+
+    // Now the owner takes it back down — re-import must leave THAT alone too.
+    await pool.query(`update courses set visibility = 'hidden' where slug = $1`, [slug]);
+
+    await writeCourse(dir, {
+      slug,
+      modules: [{ id: 'm', title: 'M', lessons: [lesson('m/a.md', 'A', 'Updated again.')] }],
+    });
+    await importDir(dir);
+
+    expect((await pool.query(`select visibility from courses where slug = $1`, [slug])).rows[0]?.visibility).toBe(
+      'hidden',
+    );
+  });
+
   it('is a no-op on re-import: every lesson id AND updated_at is unchanged', async () => {
     const slug = `${SLUG_PREFIX}-noop`;
     const dir = await writeCourse(path.join(tmp, 'noop'), {

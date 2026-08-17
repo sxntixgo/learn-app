@@ -26,6 +26,16 @@ export default async function Home() {
                   <span>
                     {course.lessonCount} lesson{course.lessonCount === 1 ? '' : 's'}
                   </span>
+                  {/* Task E: shown to whoever can already see the card at
+                      all — a course only appears here (design §12) when it
+                      is open/restricted, or when the viewer owns/administers
+                      it, so 'open' stays unbadged as the unremarkable
+                      default and the other two are informative either way. */}
+                  {course.visibility !== 'open' ? (
+                    <span className={styles.visibilityBadge} data-visibility={course.visibility}>
+                      {course.visibility === 'hidden' ? 'Hidden — draft' : 'Restricted'}
+                    </span>
+                  ) : null}
                   {course.tags.map((tag) => (
                     <span key={tag} className={styles.tag}>
                       {tag}

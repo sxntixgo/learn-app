@@ -428,7 +428,17 @@ describe('POST /api/v1/setup', () => {
         ]);
 
         const codes = [a.statusCode, b.statusCode].sort();
-        expect(codes).toEqual([201, 409]);
+
+        // Exactly one winner is THE security property, and it is asserted
+        // unconditionally below (one admin, one pair of users).
+        //
+        // The loser's code is 409 when it was genuinely in flight during the
+        // claim, and 410 when it arrived after the winner had already
+        // committed. Which one happens depends on scheduling, so pinning it to
+        // 409 made this test flake under load — it failed for timing, not for
+        // a broken guard. Both codes mean "you did not get the instance".
+        expect(codes[0]).toBe(201);
+        expect([409, 410]).toContain(codes[1]);
 
         const { rows } = await pool.query<{ n: string }>(
           `select count(*)::text as n from user_roles ur

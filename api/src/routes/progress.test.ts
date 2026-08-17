@@ -83,8 +83,14 @@ describe('progress routes', () => {
     await applyMigrations();
     setPool(pool);
 
+    // visibility: 'open' explicitly (migration 0008 defaults new courses to
+    // 'hidden' — design §12) — this fixture's one plain GET .../lessons/:slug
+    // call (line ~223, checking progress round-trips through the lesson
+    // endpoint) needs the course readable by DEV_ACTOR, an unowned course's
+    // non-owner. Progress writes themselves are not visibility-gated at all
+    // (design §12 only requires authentication to read a lesson).
     const course = await pool.query<{ id: string }>(
-      `insert into courses (slug, title) values ($1, $2) returning id`,
+      `insert into courses (slug, title, visibility) values ($1, $2, 'open') returning id`,
       [COURSE_SLUG, 'Progress Route Test Course'],
     );
     courseId = course.rows[0]!.id;

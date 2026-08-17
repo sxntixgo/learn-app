@@ -40,13 +40,26 @@
 //    an Actor carrying both is collapsed to admin-only here, so a stale
 //    token or a restored backup cannot union the two role sets together.
 //
-// WHAT IS DELIBERATELY NOT HERE YET
-// ---------------------------------
-// Course VISIBILITY (§12: open / restricted / hidden) and ENROLLMENT. Neither
-// has a table yet. `course:read` / `lesson:read` / `course:enrol` therefore
-// check the role and require a course context, and will gain the visibility
-// and enrollment predicates in the same change that adds those columns —
-// which is a change to this file only, exactly as the seam intends.
+// VISIBILITY (§12), ADDED HERE, EXACTLY AS THE SEAM INTENDED
+// ------------------------------------------------------------------
+// Migration 0008 adds `courses.visibility` (open / restricted / hidden,
+// defaulting to hidden) and 0009 adds `enrollments`. This is the "same
+// change that adds those columns" the previous version of this comment
+// promised: `course:read` / `lesson:read` / `course:enrol` now read
+// `resource.course.visibility` alongside `ownerId`, below. No route changed
+// shape to get this — they already passed a `course` context, and now pass
+// one more fact on it, which is the whole point of the seam (CLAUDE.md rule
+// 2's third bullet).
+//
+// THE OWNERSHIP BYPASS. §5: a teacher "can author a course only they can
+// read — register a repo, let the course land hidden, self-enroll." That
+// sentence is the reason STUDENT_VISIBLE_OR_OWN and STUDENT_ENROLLABLE below
+// both check ownership FIRST and visibility second: the owner reads and
+// enrols in their own course regardless of its visibility, provided they
+// also hold the student role (§5: "a teacher holding BOTH roles"). A
+// teacher-only owner (no student role) does not get this — they read their
+// course's settings through `course:manage:read` instead, which is
+// unconditional on ownership and does not care about visibility at all.
 // =============================================================================
 
 export type Role = 'student' | 'teacher' | 'admin';
@@ -94,10 +107,27 @@ export function isAnonymous(actor: Actor): boolean {
 // and absent denies.
 // -----------------------------------------------------------------------------
 
+/** `courses.visibility` (migration 0008). */
+export type CourseVisibility = 'open' | 'restricted' | 'hidden';
+
+const COURSE_VISIBILITIES: ReadonlySet<CourseVisibility> = new Set<CourseVisibility>([
+  'open',
+  'restricted',
+  'hidden',
+]);
+
 /** The ownership fact for a course-scoped decision. `ownerId: null` = unowned. */
 export interface CourseContext {
   /** `courses.owner_id` (migration 0007). Null means no teacher owns it. */
   ownerId: string | null;
+  /**
+   * `courses.visibility` (migration 0008). Optional because most
+   * course-scoped actions (sync, badges, grading, invites, manage) do not
+   * depend on it — only the visibility-aware decisions below read it, and
+   * they treat an absent/invalid value as "the caller forgot", not as
+   * `open`. See courseContextOf.
+   */
+  visibility?: CourseVisibility | null;
 }
 
 /**
@@ -130,8 +160,13 @@ function courseContextOf(resource: unknown): CourseContext | null {
   if (typeof course !== 'object' || course === null) return null;
   if (!('ownerId' in course)) return null;
   const ownerId = (course as { ownerId: unknown }).ownerId;
-  if (ownerId === null) return { ownerId: null };
-  if (typeof ownerId === 'string' && ownerId !== '') return { ownerId };
+  const visibilityRaw = (course as { visibility?: unknown }).visibility;
+  const visibility =
+    typeof visibilityRaw === 'string' && COURSE_VISIBILITIES.has(visibilityRaw as CourseVisibility)
+      ? (visibilityRaw as CourseVisibility)
+      : null;
+  if (ownerId === null) return { ownerId: null, visibility };
+  if (typeof ownerId === 'string' && ownerId !== '') return { ownerId, visibility };
   return null;
 }
 
@@ -191,14 +226,44 @@ const UNOWNED_COURSE: Decision = (_actor, resource) => {
   return course !== null && course.ownerId === null;
 };
 
+/**
+ * §12: a course is readable by a browsing student when it is LISTED (open
+ * or restricted — hidden is "absent from the catalog") OR the actor owns
+ * it. The ownership check comes first and does not consult visibility at
+ * all: this is what lets a teacher-who-is-also-a-student read their own
+ * course the moment it lands `hidden` at import, per §5's "let the course
+ * land hidden, self-enroll". A missing/unrecognised visibility denies for a
+ * non-owner — the same "caller forgot" failure mode as a missing ownerId
+ * (property 2), not a silent "treat it as open".
+ */
+const STUDENT_VISIBLE_OR_OWN: Decision = (actor, resource) => {
+  const course = courseContextOf(resource);
+  if (course === null) return false;
+  if (course.ownerId !== null && course.ownerId === actor.id) return true;
+  return course.visibility === 'open' || course.visibility === 'restricted';
+};
+
+/**
+ * §12: a student may self-enrol in an `open` course, or in a course they
+ * own (again, ownership checked first, independent of visibility — the
+ * self-enrollment §5 describes for a teacher's own hidden course). A
+ * `restricted` course is listed but requires a teacher's invite (Phase 13,
+ * not built), so it denies here for anyone but the owner; the route
+ * distinguishes "needs an invite" from "does not exist" by reading
+ * `visibility` itself; see api/src/routes/courses.ts.
+ */
+const STUDENT_ENROLLABLE: Decision = (actor, resource) => {
+  const course = courseContextOf(resource);
+  if (course === null) return false;
+  if (course.ownerId !== null && course.ownerId === actor.id) return true;
+  return course.visibility === 'open';
+};
+
 /** §12: a teacher may issue a platform invite only out of a non-zero budget. */
 const FROM_BUDGET: Decision = (_actor, resource) => {
   const remaining = budgetRemainingOf(resource);
   return remaining !== null && remaining > 0;
 };
-
-/** A course context is required even where the role alone decides the rest. */
-const ON_ANY_COURSE = ANY_COURSE;
 
 interface ActionPolicy {
   /** The §5 row this action implements, so the table and the code stay legible together. */
@@ -241,9 +306,9 @@ const MATRIX = {
   // how a teacher reads. A teacher-only account authoring a course sees the
   // course SETTINGS (course:manage:read), not the lessons.
   'course:list': { row: 'Enroll, read, track own progress', student: ALLOW },
-  'course:read': { row: 'Enroll, read, track own progress', student: ON_ANY_COURSE },
-  'lesson:read': { row: 'Enroll, read, track own progress', student: ON_ANY_COURSE },
-  'course:enrol': { row: 'Enroll, read, track own progress', student: ON_ANY_COURSE },
+  'course:read': { row: 'Enroll, read, track own progress', student: STUDENT_VISIBLE_OR_OWN },
+  'lesson:read': { row: 'Enroll, read, track own progress', student: STUDENT_VISIBLE_OR_OWN },
+  'course:enrol': { row: 'Enroll, read, track own progress', student: STUDENT_ENROLLABLE },
   'lesson:progress:write': { row: 'Enroll, read, track own progress', student: SELF },
   'course:progress:read': { row: 'Enroll, read, track own progress', student: SELF },
 

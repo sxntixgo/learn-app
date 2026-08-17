@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { buildServer } from '../index.ts';
 import { setPool, closePool } from '../db.ts';
-import { DEV_ACTOR } from '../policy/can.ts';
+import { DEV_ACTOR, ANONYMOUS_ACTOR } from '../policy/can.ts';
 import type { Actor } from '../policy/can.ts';
 
 // Phase 6 note: these servers are built with an explicit `actor`. Until now
@@ -128,10 +128,16 @@ describe('courses routes', () => {
     await applyMigrations();
     setPool(pool);
 
+    // visibility: 'open' explicitly — this fixture exists to exercise
+    // archived-module/lesson visibility, prev/next, and progress, none of
+    // which are about course visibility (§12). Leaving it at the column's
+    // real default ('hidden', migration 0008) would 404 every test below
+    // for DEV_ACTOR, an unowned-course non-owner. The dedicated visibility
+    // behavior gets its own fixtures further down.
     const course = await pool.query<{ id: string }>(
-      `insert into courses (slug, title, subtitle, description, tags)
-       values ($1, $2, $3, $4, $5)
-       on conflict (slug) do update set slug = excluded.slug
+      `insert into courses (slug, title, subtitle, description, tags, visibility)
+       values ($1, $2, $3, $4, $5, 'open')
+       on conflict (slug) do update set slug = excluded.slug, visibility = 'open'
        returning id`,
       [COURSE_SLUG, 'Courses Route Test Course', 'A subtitle', 'A description', ['tag-a', 'tag-b']],
     );
@@ -211,17 +217,26 @@ describe('courses routes', () => {
       await fastify.close();
     });
 
-    it('calls can() with a "course:list" action — the seam guard', async () => {
+    it('calls can() with a "course:list" action as the floor check, then "course:read" per row for the §12 filter', async () => {
       const canSpy = vi.fn().mockReturnValue(true);
       const fastify = await buildServer({ can: canSpy, actor: DEV_ACTOR });
 
       const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses' });
 
       expect(response.statusCode).toBe(200);
-      expect(canSpy).toHaveBeenCalledTimes(1);
+      // The FIRST call is always the whole-list floor check, before a single
+      // row is even queried — this is what lets a denied actor never reach
+      // the database at all.
       const [actorArg, actionArg] = canSpy.mock.calls[0] as [unknown, unknown, unknown];
       expect(actionArg).toBe('course:list');
       expect(actorArg).toBeTruthy();
+      // Every call after the first is the per-row §12 visibility filter
+      // (course:read), one per course currently in the table.
+      const rowChecks = canSpy.mock.calls.slice(1);
+      expect(rowChecks.length).toBeGreaterThan(0);
+      for (const call of rowChecks) {
+        expect(call[1]).toBe('course:read');
+      }
 
       await fastify.close();
     });
@@ -283,7 +298,11 @@ describe('courses routes', () => {
       const response = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${COURSE_SLUG}` });
 
       expect(response.statusCode).toBe(200);
-      expect(canSpy).toHaveBeenCalledTimes(1);
+      // The FIRST call is always the discoverability check (course:read,
+      // short-circuiting before course:manage:read since canSpy allows it).
+      // A second call, course:visibility:set, computes the response's
+      // `canPublish` flag (Task C/E) — the seam this test is about is the
+      // first call, so that is the one asserted in full.
       const [actorArg, actionArg, resourceArg] = canSpy.mock.calls[0] as [unknown, unknown, unknown];
       expect(actionArg).toBe('course:read');
       expect(actorArg).toBeTruthy();
@@ -534,6 +553,559 @@ describe('courses routes', () => {
       expect([course.statusCode, lesson.statusCode, list.statusCode]).toEqual([403, 403, 403]);
 
       await fastify.close();
+    });
+  });
+
+  // ===========================================================================
+  // Task A-D: course visibility (design §12), catalog filtering, publish/
+  // ownership, and enrolment. Four fixture courses, one owner, real can().
+  //
+  //   vis-open       unowned, open        — any student reads + self-enrols
+  //   vis-restricted unowned, restricted  — listed, self-enrol refused
+  //   vis-hidden     unowned, hidden      — absent everywhere except admin
+  //   vis-owned-hidden owned, hidden      — absent except its owner + admin
+  //
+  // OUTSIDER is DEV_ACTOR (plain student, owns nothing here). OWNER_STUDENT
+  // holds BOTH roles on the SAME id that owns vis-owned-hidden — the dual-role
+  // shape design §5 actually describes ("a teacher holding both roles can
+  // author a course only they can read... self-enroll"), not a teacher-only
+  // actor, which is deliberately covered separately (it gets none of this).
+  // ===========================================================================
+  describe('course visibility, publishing, and enrolment (design §12, Phase 6)', () => {
+    const OUTSIDER = DEV_ACTOR;
+    const ADMIN: Actor = { id: '99999999-9999-9999-9999-999999999999', roles: ['admin'] };
+
+    const OPEN_SLUG = 'vis-open-course';
+    const RESTRICTED_SLUG = 'vis-restricted-course';
+    const HIDDEN_SLUG = 'vis-hidden-course';
+    const OWNED_HIDDEN_SLUG = 'vis-owned-hidden-course';
+    const OWNED_HIDDEN_LESSON_SLUG = 'vis-owned-hidden-lesson-1';
+
+    let ownerId: string;
+    let ownerStudent: Actor;
+    let ownedHiddenCourseId: string;
+
+    async function insertVisCourse(slug: string, visibility: string, owner: string | null): Promise<string> {
+      const { rows } = await pool.query<{ id: string }>(
+        `insert into courses (slug, title, visibility, owner_id)
+         values ($1, $2, $3, $4)
+         on conflict (slug) do update set visibility = excluded.visibility, owner_id = excluded.owner_id
+         returning id`,
+        [slug, slug, visibility, owner],
+      );
+      return rows[0]!.id;
+    }
+
+    beforeAll(async () => {
+      const owner = await pool.query<{ id: string }>(
+        `insert into users (display_name) values ($1) returning id`,
+        [`Vis Owner ${Date.now()}`],
+      );
+      ownerId = owner.rows[0]!.id;
+      ownerStudent = { id: ownerId, roles: ['teacher', 'student'] };
+
+      // Real DB roles for ownerId only — the PATCH route re-checks the
+      // database (design §13, actorWithFreshRoles), so a PATCH test that
+      // wants the REAL can() to authorize ownerStudent needs a real row
+      // here, not just an in-memory Actor. Cascades away with the user row
+      // in afterAll.
+      await pool.query(`insert into user_roles (user_id, role) values ($1, 'teacher') on conflict do nothing`, [
+        ownerId,
+      ]);
+      await pool.query(`insert into user_roles (user_id, role) values ($1, 'student') on conflict do nothing`, [
+        ownerId,
+      ]);
+
+      await insertVisCourse(OPEN_SLUG, 'open', null);
+      await insertVisCourse(RESTRICTED_SLUG, 'restricted', null);
+      await insertVisCourse(HIDDEN_SLUG, 'hidden', null);
+      ownedHiddenCourseId = await insertVisCourse(OWNED_HIDDEN_SLUG, 'hidden', ownerId);
+
+      const mod = await pool.query<{ id: string }>(
+        `insert into modules (course_id, key, title, position) values ($1, 'm', 'M', 0)
+         on conflict (course_id, key) do update set title = excluded.title
+         returning id`,
+        [ownedHiddenCourseId],
+      );
+      await pool.query(
+        `insert into lessons
+           (course_id, module_id, lesson_key, slug, title, kind, position, source_path, content_hash, blocks)
+         values ($1, $2, 'l1', $3, 'Hidden Lesson', 'lesson', 0, 'l1.md', 'hash-hidden-1', $4::jsonb)
+         on conflict (module_id, lesson_key) do update set title = excluded.title`,
+        [ownedHiddenCourseId, mod.rows[0]!.id, OWNED_HIDDEN_LESSON_SLUG, JSON.stringify(BLOCKS)],
+      );
+    });
+
+    afterAll(async () => {
+      await pool.query('delete from courses where slug = any($1)', [
+        [OPEN_SLUG, RESTRICTED_SLUG, HIDDEN_SLUG, OWNED_HIDDEN_SLUG],
+      ]);
+      await pool.query('delete from users where id = $1', [ownerId]);
+    });
+
+    // -------------------------------------------------------------------
+    // GET /api/v1/courses — the catalog filter, one cell per actor
+    // -------------------------------------------------------------------
+    describe('GET /api/v1/courses filters by visibility and actor', () => {
+      it('anonymous: refused outright — course:list has no anonymous/admin cell, only student', async () => {
+        const fastify = await buildServer({ actor: ANONYMOUS_ACTOR });
+        const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses' });
+        expect(response.statusCode).toBe(403);
+        await fastify.close();
+      });
+
+      it('a student: sees open + restricted, never hidden (owned or not)', async () => {
+        const fastify = await buildServer({ actor: OUTSIDER });
+        const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses' });
+        expect(response.statusCode).toBe(200);
+        const slugs = (JSON.parse(response.payload) as Array<{ slug: string }>).map((c) => c.slug);
+        expect(slugs).toContain(OPEN_SLUG);
+        expect(slugs).toContain(RESTRICTED_SLUG);
+        expect(slugs).not.toContain(HIDDEN_SLUG);
+        expect(slugs).not.toContain(OWNED_HIDDEN_SLUG);
+        await fastify.close();
+      });
+
+      it('the owner: additionally sees their own hidden course, but still not someone else’s', async () => {
+        const fastify = await buildServer({ actor: ownerStudent });
+        const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses' });
+        expect(response.statusCode).toBe(200);
+        const slugs = (JSON.parse(response.payload) as Array<{ slug: string }>).map((c) => c.slug);
+        expect(slugs).toContain(OPEN_SLUG);
+        expect(slugs).toContain(RESTRICTED_SLUG);
+        expect(slugs).toContain(OWNED_HIDDEN_SLUG);
+        expect(slugs).not.toContain(HIDDEN_SLUG);
+        await fastify.close();
+      });
+
+      it('admin: refused at the catalog floor too — §5.1, admin cannot enrol, and browsing IS the enrol surface', async () => {
+        // This is not a gap: an admin's "sees everything" is the DETAIL route
+        // below (course:manage:read, unconditional on visibility), which
+        // has no course:list-shaped floor at all. See can.test.ts's
+        // "admin is exclusive of student and teacher" describe block.
+        const fastify = await buildServer({ actor: ADMIN });
+        const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses' });
+        expect(response.statusCode).toBe(403);
+        await fastify.close();
+      });
+
+      it('every returned summary carries its visibility (Task E: shown to the owner)', async () => {
+        const fastify = await buildServer({ actor: ownerStudent });
+        const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses' });
+        const body = JSON.parse(response.payload) as Array<{ slug: string; visibility: string }>;
+        expect(body.find((c) => c.slug === OPEN_SLUG)?.visibility).toBe('open');
+        expect(body.find((c) => c.slug === OWNED_HIDDEN_SLUG)?.visibility).toBe('hidden');
+        await fastify.close();
+      });
+    });
+
+    // -------------------------------------------------------------------
+    // GET /api/v1/courses/:slug — the 404-vs-403 line
+    // -------------------------------------------------------------------
+    describe('GET /api/v1/courses/:slug — 404 (not 403) is what hides a course', () => {
+      it('open: readable by a student, refused (403, not 404) for anonymous — it is publicly LISTED', async () => {
+        const asStudent = await buildServer({ actor: OUTSIDER });
+        const studentRes = await asStudent.inject({ method: 'GET', url: `/api/v1/courses/${OPEN_SLUG}` });
+        expect(studentRes.statusCode).toBe(200);
+        await asStudent.close();
+
+        const asAnon = await buildServer({ actor: ANONYMOUS_ACTOR });
+        const anonRes = await asAnon.inject({ method: 'GET', url: `/api/v1/courses/${OPEN_SLUG}` });
+        expect(anonRes.statusCode).toBe(403);
+        await asAnon.close();
+      });
+
+      it('restricted: still readable (listed) by any student — only enrolment is gated', async () => {
+        const fastify = await buildServer({ actor: OUTSIDER });
+        const response = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${RESTRICTED_SLUG}` });
+        expect(response.statusCode).toBe(200);
+        await fastify.close();
+      });
+
+      it('hidden, unowned: 404 for a student — indistinguishable from a course that does not exist', async () => {
+        const fastify = await buildServer({ actor: OUTSIDER });
+        const response = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${HIDDEN_SLUG}` });
+        expect(response.statusCode).toBe(404);
+        await fastify.close();
+      });
+
+      it('hidden, owned: 404 for an outsider, 200 for the owner', async () => {
+        const asOutsider = await buildServer({ actor: OUTSIDER });
+        const outsiderRes = await asOutsider.inject({ method: 'GET', url: `/api/v1/courses/${OWNED_HIDDEN_SLUG}` });
+        expect(outsiderRes.statusCode).toBe(404);
+        await asOutsider.close();
+
+        const asOwner = await buildServer({ actor: ownerStudent });
+        const ownerRes = await asOwner.inject({ method: 'GET', url: `/api/v1/courses/${OWNED_HIDDEN_SLUG}` });
+        expect(ownerRes.statusCode).toBe(200);
+        const body = JSON.parse(ownerRes.payload) as { visibility: string; canPublish: boolean };
+        expect(body.visibility).toBe('hidden');
+        expect(body.canPublish).toBe(true);
+        await asOwner.close();
+      });
+
+      it('admin sees every course’s detail regardless of visibility — the "sees everything" cell', async () => {
+        const fastify = await buildServer({ actor: ADMIN });
+        for (const slug of [OPEN_SLUG, RESTRICTED_SLUG, HIDDEN_SLUG, OWNED_HIDDEN_SLUG]) {
+          const response = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${slug}` });
+          expect([slug, response.statusCode]).toEqual([slug, 200]);
+        }
+        await fastify.close();
+      });
+
+      it('canPublish is false for an outsider, true for the owner', async () => {
+        const fastify = await buildServer({ actor: OUTSIDER });
+        const response = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${OPEN_SLUG}` });
+        expect((JSON.parse(response.payload) as { canPublish: boolean }).canPublish).toBe(false);
+        await fastify.close();
+      });
+    });
+
+    // -------------------------------------------------------------------
+    // GET /api/v1/courses/:slug/lessons/:slug — same 404 line, plus: admin
+    // can see a hidden course exists (200 at the course level) but still
+    // cannot read a lesson's content (§5.1 — admin holds no progress).
+    // -------------------------------------------------------------------
+    describe('GET .../lessons/:slug on a hidden course', () => {
+      it('outsider: 404, before even a lesson lookup happens', async () => {
+        const fastify = await buildServer({ actor: OUTSIDER });
+        const response = await fastify.inject({
+          method: 'GET',
+          url: `/api/v1/courses/${OWNED_HIDDEN_SLUG}/lessons/${OWNED_HIDDEN_LESSON_SLUG}`,
+        });
+        expect(response.statusCode).toBe(404);
+        await fastify.close();
+      });
+
+      it('owner: reads it — the self-enrollment reading design §5 describes', async () => {
+        const fastify = await buildServer({ actor: ownerStudent });
+        const response = await fastify.inject({
+          method: 'GET',
+          url: `/api/v1/courses/${OWNED_HIDDEN_SLUG}/lessons/${OWNED_HIDDEN_LESSON_SLUG}`,
+        });
+        expect(response.statusCode).toBe(200);
+        await fastify.close();
+      });
+
+      it('admin: the course is discoverable (not 404) but the lesson content itself is still refused (403)', async () => {
+        const fastify = await buildServer({ actor: ADMIN });
+        const response = await fastify.inject({
+          method: 'GET',
+          url: `/api/v1/courses/${OWNED_HIDDEN_SLUG}/lessons/${OWNED_HIDDEN_LESSON_SLUG}`,
+        });
+        // Not 404 (admin can see this course exists) and not 200 (admin
+        // does not get to read lesson content — lesson:read has no admin
+        // cell in policy/can.ts, by design).
+        expect(response.statusCode).toBe(403);
+        await fastify.close();
+      });
+    });
+
+    // -------------------------------------------------------------------
+    // GET /api/v1/courses/:slug/manage — the owner's settings screen
+    // -------------------------------------------------------------------
+    describe('GET /api/v1/courses/:slug/manage', () => {
+      it('a TEACHER-ONLY actor (no student role) still reaches it — this is how they read their own course', async () => {
+        const teacherOnly: Actor = { id: ownerId, roles: ['teacher'] };
+        const fastify = await buildServer({ actor: teacherOnly });
+        const response = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${OWNED_HIDDEN_SLUG}/manage` });
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.payload) as { visibility: string; ownerId: string };
+        expect(body.visibility).toBe('hidden');
+        expect(body.ownerId).toBe(ownerId);
+        await fastify.close();
+      });
+
+      it('an outsider gets 404, never 403 — this endpoint has nothing to disclose to them', async () => {
+        const fastify = await buildServer({ actor: OUTSIDER });
+        const response = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${OWNED_HIDDEN_SLUG}/manage` });
+        expect(response.statusCode).toBe(404);
+        await fastify.close();
+      });
+
+      it('admin reaches any course’s manage screen, owned or not', async () => {
+        const fastify = await buildServer({ actor: ADMIN });
+        const response = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${HIDDEN_SLUG}/manage` });
+        expect(response.statusCode).toBe(200);
+        await fastify.close();
+      });
+    });
+
+    // -------------------------------------------------------------------
+    // PATCH /api/v1/courses/:slug — publish / ownership transfer (Task C)
+    // -------------------------------------------------------------------
+    describe('PATCH /api/v1/courses/:slug', () => {
+      it('calls can() with course:visibility:set and {course:{ownerId}} — never its own role check', async () => {
+        const canSpy = vi.fn().mockReturnValue(true);
+        const fastify = await buildServer({ can: canSpy, actor: ownerStudent });
+
+        const response = await fastify.inject({
+          method: 'PATCH',
+          url: `/api/v1/courses/${OWNED_HIDDEN_SLUG}`,
+          payload: { visibility: 'open' },
+        });
+
+        expect(response.statusCode).toBe(200);
+        const call = canSpy.mock.calls.find((c) => c[1] === 'course:visibility:set');
+        expect(call).toBeDefined();
+        expect(call![2]).toMatchObject({ course: { ownerId } });
+
+        await fastify.close();
+      });
+
+      it('calls can() with course:ownership:transfer when ownerId is in the body', async () => {
+        const canSpy = vi.fn().mockReturnValue(true);
+        const fastify = await buildServer({ can: canSpy, actor: ADMIN });
+
+        const response = await fastify.inject({
+          method: 'PATCH',
+          url: `/api/v1/courses/${OPEN_SLUG}`,
+          payload: { ownerId: ownerId },
+        });
+
+        expect(response.statusCode).toBe(200);
+        const call = canSpy.mock.calls.find((c) => c[1] === 'course:ownership:transfer');
+        expect(call).toBeDefined();
+        expect(call![2]).toMatchObject({ course: { ownerId: null } });
+
+        // Revert — this route call really did write owner_id.
+        await pool.query('update courses set owner_id = null where slug = $1', [OPEN_SLUG]);
+        await fastify.close();
+      });
+
+      it('403s when the injected policy denies — and writes nothing', async () => {
+        const fastify = await buildServer({ can: () => false, actor: ownerStudent });
+        const response = await fastify.inject({
+          method: 'PATCH',
+          url: `/api/v1/courses/${OPEN_SLUG}`,
+          payload: { visibility: 'hidden' },
+        });
+        expect(response.statusCode).toBe(403);
+
+        const row = await pool.query<{ visibility: string }>('select visibility from courses where slug = $1', [
+          OPEN_SLUG,
+        ]);
+        expect(row.rows[0]!.visibility).toBe('open');
+        await fastify.close();
+      });
+
+      it('400s on an unrecognised visibility value', async () => {
+        const fastify = await buildServer({ can: () => true, actor: ownerStudent });
+        const response = await fastify.inject({
+          method: 'PATCH',
+          url: `/api/v1/courses/${OPEN_SLUG}`,
+          payload: { visibility: 'public' },
+        });
+        expect(response.statusCode).toBe(400);
+        await fastify.close();
+      });
+
+      it('400s on an empty body', async () => {
+        const fastify = await buildServer({ can: () => true, actor: ownerStudent });
+        const response = await fastify.inject({ method: 'PATCH', url: `/api/v1/courses/${OPEN_SLUG}`, payload: {} });
+        expect(response.statusCode).toBe(400);
+        await fastify.close();
+      });
+
+      it('404s on a hidden course an outsider cannot discover, rather than 403', async () => {
+        const fastify = await buildServer({ actor: OUTSIDER });
+        const response = await fastify.inject({
+          method: 'PATCH',
+          url: `/api/v1/courses/${HIDDEN_SLUG}`,
+          payload: { visibility: 'open' },
+        });
+        expect(response.statusCode).toBe(404);
+        await fastify.close();
+      });
+
+      it('under the REAL policy: the owner (fresh DB roles) publishes their own hidden course', async () => {
+        // No `can` override here — this exercises actorWithFreshRoles end to
+        // end (design §13), reading the user_roles rows inserted in
+        // beforeAll, and the real course:visibility:set/OWN_COURSE decision.
+        const fastify = await buildServer({ actor: { id: ownerId, roles: [] } });
+
+        const response = await fastify.inject({
+          method: 'PATCH',
+          url: `/api/v1/courses/${OWNED_HIDDEN_SLUG}`,
+          payload: { visibility: 'restricted' },
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(JSON.parse(response.payload)).toMatchObject({ visibility: 'restricted' });
+
+        const row = await pool.query<{ visibility: string }>('select visibility from courses where slug = $1', [
+          OWNED_HIDDEN_SLUG,
+        ]);
+        expect(row.rows[0]!.visibility).toBe('restricted');
+
+        // Restore for any test after this one in the file.
+        await pool.query(`update courses set visibility = 'hidden' where slug = $1`, [OWNED_HIDDEN_SLUG]);
+        await fastify.close();
+      });
+    });
+
+    // -------------------------------------------------------------------
+    // POST/DELETE /api/v1/courses/:slug/enrolments (Task D)
+    // -------------------------------------------------------------------
+    describe('POST /api/v1/courses/:slug/enrolments', () => {
+      afterAll(async () => {
+        await pool.query('delete from enrollments where user_id = any($1)', [[OUTSIDER.id, ownerId]]);
+      });
+
+      it('a student self-enrols in an open course', async () => {
+        const fastify = await buildServer({ actor: OUTSIDER });
+        const response = await fastify.inject({ method: 'POST', url: `/api/v1/courses/${OPEN_SLUG}/enrolments` });
+        expect(response.statusCode).toBe(200);
+        expect(JSON.parse(response.payload)).toMatchObject({ enrolled: true });
+
+        const row = await pool.query('select status from enrollments where user_id = $1 and course_id = $2', [
+          OUTSIDER.id,
+          (await pool.query('select id from courses where slug = $1', [OPEN_SLUG])).rows[0].id,
+        ]);
+        expect(row.rows[0]!.status).toBe('active');
+        await fastify.close();
+      });
+
+      it('is idempotent: enrolling twice leaves exactly one row', async () => {
+        const fastify = await buildServer({ actor: OUTSIDER });
+        await fastify.inject({ method: 'POST', url: `/api/v1/courses/${OPEN_SLUG}/enrolments` });
+        const response = await fastify.inject({ method: 'POST', url: `/api/v1/courses/${OPEN_SLUG}/enrolments` });
+        expect(response.statusCode).toBe(200);
+
+        const courseId = (await pool.query('select id from courses where slug = $1', [OPEN_SLUG])).rows[0].id;
+        const rows = await pool.query('select * from enrollments where user_id = $1 and course_id = $2', [
+          OUTSIDER.id,
+          courseId,
+        ]);
+        expect(rows.rowCount).toBe(1);
+        await fastify.close();
+      });
+
+      it('a restricted course refuses self-enrolment for anyone but the owner', async () => {
+        const fastify = await buildServer({ actor: OUTSIDER });
+        const response = await fastify.inject({
+          method: 'POST',
+          url: `/api/v1/courses/${RESTRICTED_SLUG}/enrolments`,
+        });
+        expect(response.statusCode).toBe(403);
+        expect((JSON.parse(response.payload) as { message: string }).message).toMatch(/invite/i);
+        await fastify.close();
+      });
+
+      it('the owner self-enrols in their OWN hidden course — the design §5 scenario', async () => {
+        const fastify = await buildServer({ actor: ownerStudent });
+        const response = await fastify.inject({
+          method: 'POST',
+          url: `/api/v1/courses/${OWNED_HIDDEN_SLUG}/enrolments`,
+        });
+        expect(response.statusCode).toBe(200);
+        expect(JSON.parse(response.payload)).toMatchObject({ enrolled: true });
+        await fastify.close();
+      });
+
+      it('an outsider cannot even discover a hidden course to try enrolling — 404, not 403', async () => {
+        const fastify = await buildServer({ actor: OUTSIDER });
+        const response = await fastify.inject({
+          method: 'POST',
+          url: `/api/v1/courses/${OWNED_HIDDEN_SLUG}/enrolments`,
+        });
+        expect(response.statusCode).toBe(404);
+        await fastify.close();
+      });
+
+      it('an admin is refused — §5.1: admin cannot enrol, ever, even in an open course', async () => {
+        const fastify = await buildServer({ actor: ADMIN });
+        const response = await fastify.inject({ method: 'POST', url: `/api/v1/courses/${OPEN_SLUG}/enrolments` });
+        expect(response.statusCode).toBe(403);
+        await fastify.close();
+      });
+
+      it('404s for an unknown course slug', async () => {
+        const fastify = await buildServer({ actor: OUTSIDER });
+        const response = await fastify.inject({ method: 'POST', url: '/api/v1/courses/no-such-course-xyz/enrolments' });
+        expect(response.statusCode).toBe(404);
+        await fastify.close();
+      });
+    });
+
+    describe('DELETE /api/v1/courses/:slug/enrolments', () => {
+      afterAll(async () => {
+        await pool.query('delete from enrollments where user_id = $1', [OUTSIDER.id]);
+      });
+
+      it('un-enrols (soft: status flips to withdrawn, the row survives)', async () => {
+        const fastify = await buildServer({ actor: OUTSIDER });
+        await fastify.inject({ method: 'POST', url: `/api/v1/courses/${OPEN_SLUG}/enrolments` });
+
+        const response = await fastify.inject({
+          method: 'DELETE',
+          url: `/api/v1/courses/${OPEN_SLUG}/enrolments`,
+        });
+        expect(response.statusCode).toBe(200);
+        expect(JSON.parse(response.payload)).toMatchObject({ enrolled: false });
+
+        const courseId = (await pool.query('select id from courses where slug = $1', [OPEN_SLUG])).rows[0].id;
+        const row = await pool.query('select status from enrollments where user_id = $1 and course_id = $2', [
+          OUTSIDER.id,
+          courseId,
+        ]);
+        expect(row.rows[0]!.status).toBe('withdrawn');
+        await fastify.close();
+      });
+
+      it('re-enrolling after withdrawing flips the same row back to active', async () => {
+        const fastify = await buildServer({ actor: OUTSIDER });
+        await fastify.inject({ method: 'POST', url: `/api/v1/courses/${OPEN_SLUG}/enrolments` });
+        await fastify.inject({ method: 'DELETE', url: `/api/v1/courses/${OPEN_SLUG}/enrolments` });
+        await fastify.inject({ method: 'POST', url: `/api/v1/courses/${OPEN_SLUG}/enrolments` });
+
+        const courseId = (await pool.query('select id from courses where slug = $1', [OPEN_SLUG])).rows[0].id;
+        const rows = await pool.query('select status from enrollments where user_id = $1 and course_id = $2', [
+          OUTSIDER.id,
+          courseId,
+        ]);
+        expect(rows.rowCount).toBe(1);
+        expect(rows.rows[0]!.status).toBe('active');
+        await fastify.close();
+      });
+
+      it('is a harmless no-op when the actor was never enrolled (but is still eligible to enrol)', async () => {
+        // OPEN_SLUG, not RESTRICTED_SLUG: the DELETE handler reuses
+        // course:enrol as its gate (documented KNOWN GAP in courses.ts), so
+        // it only reaches the "was there a row" no-op question for a course
+        // the actor could actually enrol in.
+        const fastify = await buildServer({ actor: OUTSIDER });
+        const response = await fastify.inject({
+          method: 'DELETE',
+          url: `/api/v1/courses/${OPEN_SLUG}/enrolments`,
+        });
+        expect(response.statusCode).toBe(200);
+        expect(JSON.parse(response.payload)).toMatchObject({ enrolled: false });
+        await fastify.close();
+      });
+    });
+
+    // -------------------------------------------------------------------
+    // The catalog respects enrolment (Task D)
+    // -------------------------------------------------------------------
+    describe('the catalog reflects enrolment', () => {
+      afterAll(async () => {
+        await pool.query('delete from enrollments where user_id = $1', [OUTSIDER.id]);
+      });
+
+      it('GET /courses/:slug reports enrolled: false, then true after enrolling', async () => {
+        const fastify = await buildServer({ actor: OUTSIDER });
+
+        const before = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${OPEN_SLUG}` });
+        expect((JSON.parse(before.payload) as { enrolled: boolean }).enrolled).toBe(false);
+
+        await fastify.inject({ method: 'POST', url: `/api/v1/courses/${OPEN_SLUG}/enrolments` });
+
+        const after = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${OPEN_SLUG}` });
+        expect((JSON.parse(after.payload) as { enrolled: boolean }).enrolled).toBe(true);
+
+        await fastify.close();
+      });
     });
   });
 });

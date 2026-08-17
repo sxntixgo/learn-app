@@ -65,6 +65,28 @@
   padding: 0.15rem 0.6rem;
 }
 
+/* Visibility badge (design §12, Task E) — same shape as the course detail
+ * page's own .visibilityBadge (course.module.css); duplicated rather than
+ * shared because these two CSS Modules are already independent per-route
+ * stylesheets, same as every other repeated shape in this codebase. */
+.visibilityBadge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid var(--color-border-hairline);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-secondary);
+}
+
+.visibilityBadge[data-visibility='hidden'] {
+  border-color: var(--color-accent-yellow);
+  color: var(--color-text);
+  font-weight: 700;
+}
+
 .empty {
   color: var(--color-text-secondary);
 }

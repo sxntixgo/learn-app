@@ -10,9 +10,41 @@
   padding: 2rem 1.25rem 4rem;
 }
 
+.titleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin: 0 0 0.35rem;
+}
+
 .title {
   font-size: clamp(1.5rem, 4vw + 0.5rem, 2.25rem);
-  margin: 0 0 0.35rem;
+  margin: 0;
+}
+
+/*
+ * Visibility badge (design §12, Task E) — same pill shape as the admin
+ * import history's statusPill. 'open' never renders one at all (the
+ * unremarkable default); 'restricted' is neutral, 'hidden' borrows the
+ * single yellow accent used elsewhere for "needs attention" states.
+ */
+.visibilityBadge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid var(--color-border-hairline);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-secondary);
+}
+
+.visibilityBadge[data-visibility='hidden'] {
+  border-color: var(--color-accent-yellow);
+  color: var(--color-text);
+  font-weight: 700;
 }
 
 .subtitle {
@@ -24,6 +56,157 @@
 .description {
   margin: 0 0 1.5rem;
   line-height: 1.6;
+}
+
+/*
+ * Enrol button + (owner/admin only) publish control (Task E). Stack at
+ * every width — no breakpoints, same posture as the rest of this page.
+ */
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1rem;
+  margin: 0 0 1.75rem;
+}
+
+.enrolControl {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.enrolButton,
+.leaveButton {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.6rem 1.25rem;
+  border-radius: 8px;
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.enrolButton {
+  border: 1px solid var(--color-link);
+  background: var(--color-link);
+  color: var(--color-page);
+}
+
+.enrolButton:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.leaveButton {
+  border: 1px solid var(--color-border-hairline);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.leaveButton:hover:not(:disabled) {
+  background: var(--color-page);
+}
+
+.enrolButton:disabled,
+.leaveButton:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.enrolButton:focus-visible,
+.leaveButton:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+.enrolError,
+.publishError {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text);
+  border-left: 2px solid var(--color-accent-yellow);
+  padding-left: 0.6rem;
+}
+
+.publishControl {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 10px;
+  background: var(--color-surface-raised);
+  width: 100%;
+  max-width: 40ch;
+}
+
+.publishLabel {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-text-secondary);
+}
+
+.publishRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.publishSelect {
+  flex: 1 1 auto;
+  min-height: 44px;
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 8px;
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 0.9rem;
+}
+
+.publishButton {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 8px;
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.publishButton:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+}
+
+.publishButton:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.publishSelect:focus-visible,
+.publishButton:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enrolButton,
+  .leaveButton,
+  .publishButton {
+    transition: none;
+  }
 }
 
 /* Course progress summary (design plan phase 3 web §14: quiet, no new colour). */
