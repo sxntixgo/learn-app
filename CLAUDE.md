@@ -24,8 +24,15 @@ for the design and `docs/plans/2026-08-15-learning-platform-plan.md` for the pha
 
 1. **`web` never receives `DATABASE_URL`.** It talks to the API over HTTP only.
 2. **Every API handler takes an `actor` and calls `can(actor, action, resource)`.**
-   Until Phase 6 `actor` is a hardcoded dev user and `can()` returns true. A handler that
-   skips this is a bug, not a shortcut — it is what lets auth be deferred safely.
+   As of Phase 6 both halves are real: `actor` comes from the access-token cookie (anonymous
+   when there is none), and `can()` is the whole §5 matrix. A handler that skips this is a
+   bug, not a shortcut. Three rules follow from it:
+   - **Never write `if (!request.user) return 401` in a route.** Refusing an unauthenticated
+     request is `can()`'s job; a local check moves the decision out of the tested module.
+   - **The action vocabulary is closed** (`Action` in `api/src/policy/can.ts`). A new action
+     needs a row in `MATRIX` and a case in the matrix test, or it is denied for everyone.
+   - **Course- and user-scoped actions need context**: pass `{ course: { ownerId } }` (from
+     `courses.owner_id`) and/or `{ userId }`. Omitting it denies — that is deliberate.
 3. **`openapi/openapi.yaml` is the contract.** Client types are generated from it, never
    hand-written.
 4. **Syntax highlighting happens at render time**, never at import time.

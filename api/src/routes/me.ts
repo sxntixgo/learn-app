@@ -89,7 +89,7 @@ export function registerMeRoutes(fastify: FastifyInstance, deps: MeRouteDeps = {
     // authorization outcome, decided by an accident of query results
     // instead of by can(). The row is not needed to answer "may you read
     // your own profile", so it is fetched only once that is settled.
-    if (!can(actor, 'me:read', { id: actor.id })) {
+    if (!can(actor, 'me:read', { userId: actor.id })) {
       return reply.code(403).send({ message: 'Forbidden' });
     }
 
@@ -118,7 +118,7 @@ export function registerMeRoutes(fastify: FastifyInstance, deps: MeRouteDeps = {
       });
     }
 
-    if (!can(actor, 'me:update', { timezone })) {
+    if (!can(actor, 'me:update', { userId: actor.id, timezone })) {
       return reply.code(403).send({ message: 'Forbidden' });
     }
 
@@ -139,7 +139,10 @@ export function registerMeRoutes(fastify: FastifyInstance, deps: MeRouteDeps = {
     // the anonymous actor when there is no valid session, never a bypass.
     const actor = actorFor(request, deps);
 
-    if (!can(actor, 'me:activity:read')) {
+    // Named subject on every user-scoped action (policy/can.ts): the feed
+    // below is filtered to `actor.id`, and saying so is what lets can()
+    // refuse a future caller that reads somebody else's.
+    if (!can(actor, 'me:activity:read', { userId: actor.id })) {
       return reply.code(403).send({ message: 'Forbidden' });
     }
 
@@ -175,7 +178,7 @@ export function registerMeRoutes(fastify: FastifyInstance, deps: MeRouteDeps = {
     // the anonymous actor when there is no valid session, never a bypass.
     const actor = actorFor(request, deps);
 
-    if (!can(actor, 'me:heatmap:read')) {
+    if (!can(actor, 'me:heatmap:read', { userId: actor.id })) {
       return reply.code(403).send({ message: 'Forbidden' });
     }
 

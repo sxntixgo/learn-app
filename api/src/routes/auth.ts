@@ -244,7 +244,7 @@ export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRouteDeps
 
     // Through the policy seam like every other route: an anonymous actor is
     // refused by can(), not by a check written here.
-    if (!can(actor, 'session:revoke:all')) {
+    if (!can(actor, 'session:revoke:all', { userId: actor.id })) {
       return reply.code(403).send({ message: 'Forbidden' });
     }
 

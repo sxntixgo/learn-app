@@ -162,4 +162,64 @@ describe('migrate', () => {
       ).rejects.toMatchObject({ code: '23505' /* unique_violation */ });
     });
   });
+
+  // ===========================================================================
+  // 0007_course_ownership — design §5: "course ownership scopes a teacher's
+  // authority". The policy module (api/src/policy/can.ts) reads
+  // `courses.owner_id` for every "own courses" cell of the §5 matrix, so the
+  // column's nullability and its delete behaviour ARE authorization
+  // behaviour, not schema trivia.
+  // ===========================================================================
+  describe('0007_course_ownership', () => {
+    /** A throwaway users row to own a course with. */
+    async function createUser(label: string): Promise<string> {
+      const { rows } = await pool.query<{ id: string }>(
+        `insert into users (display_name) values ($1) returning id`,
+        [`${label}-${Date.now()}-${Math.random()}`],
+      );
+      return rows[0]!.id;
+    }
+
+    it('gives courses a nullable owner_id: an imported course starts unowned', async () => {
+      await resetDatabase();
+      await runMigrations(connectionString!);
+      const { courseId } = await createCourseAndModule();
+
+      const { rows } = await pool.query<{ owner_id: string | null }>('select owner_id from courses where id = $1', [
+        courseId,
+      ]);
+      expect(rows[0]!.owner_id).toBeNull();
+    });
+
+    it('refuses an owner_id that is not a real user', async () => {
+      await resetDatabase();
+      await runMigrations(connectionString!);
+      const { courseId } = await createCourseAndModule();
+
+      await expect(
+        pool.query('update courses set owner_id = $2 where id = $1', [
+          courseId,
+          '00000000-0000-0000-0000-0000000000ff',
+        ]),
+      ).rejects.toMatchObject({ code: '23503' /* foreign_key_violation */ });
+    });
+
+    it('un-owns the course when its owner is deleted — never deletes the course', async () => {
+      await resetDatabase();
+      await runMigrations(connectionString!);
+      const { courseId } = await createCourseAndModule();
+      const ownerId = await createUser('course-owner');
+
+      await pool.query('update courses set owner_id = $2 where id = $1', [courseId, ownerId]);
+      await pool.query('delete from users where id = $1', [ownerId]);
+
+      const { rows } = await pool.query<{ owner_id: string | null }>('select owner_id from courses where id = $1', [
+        courseId,
+      ]);
+      expect(rows).toHaveLength(1);
+      // Now unowned, which can() reads as "admin only" — a deleted teacher
+      // must not leave their courses editable by whoever gets the next uuid.
+      expect(rows[0]!.owner_id).toBeNull();
+    });
+  });
 });

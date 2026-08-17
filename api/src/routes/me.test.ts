@@ -78,13 +78,19 @@ describe('me routes', () => {
       `insert into users (display_name, timezone) values ($1, null) returning id`,
       [`Me Route Test User ${RUN_ID}`],
     );
-    actor = { id: user.rows[0]!.id, roles: ['admin'] };
+    // STUDENT, not admin. These fixtures own lesson_progress and
+    // activity_events rows, and design §5.1 is explicit that operator
+    // accounts have "no enrollments, no progress, no badges" — so an admin
+    // fixture with an activity history is a state the platform must not
+    // have. It read as harmless only while `can()` returned true for
+    // everything; the §5 matrix in policy/can.ts now says so out loud.
+    actor = { id: user.rows[0]!.id, roles: ['student'] };
 
     const defaultUser = await pool.query<{ id: string }>(
       `insert into users (display_name, timezone) values ($1, null) returning id`,
       [`Me Route Test Default-TZ User ${RUN_ID}`],
     );
-    defaultTzActor = { id: defaultUser.rows[0]!.id, roles: ['admin'] };
+    defaultTzActor = { id: defaultUser.rows[0]!.id, roles: ['student'] };
 
     const course = await pool.query<{ id: string }>(`insert into courses (slug, title) values ($1, $2) returning id`, [
       COURSE_SLUG,
@@ -328,7 +334,7 @@ describe('me routes', () => {
         `insert into users (display_name, timezone) values ($1, 'America/Denver') returning id`,
         [`Me Route Heatmap User ${RUN_ID}`],
       );
-      const heatmapActor: Actor = { id: user.rows[0]!.id, roles: ['admin'] };
+      const heatmapActor: Actor = { id: user.rows[0]!.id, roles: ['student'] };
 
       const client = await pool.connect();
       let occurredAt: Date;
@@ -389,7 +395,7 @@ describe('me routes', () => {
         `insert into users (display_name, timezone) values ($1, null) returning id`,
         [`Me Route TZ-Proof User ${RUN_ID}`],
       );
-      const proofActor: Actor = { id: user.rows[0]!.id, roles: ['admin'] };
+      const proofActor: Actor = { id: user.rows[0]!.id, roles: ['student'] };
 
       // A fixed instant near "now" so it reliably falls inside a wide
       // weeks= window regardless of when the suite runs.

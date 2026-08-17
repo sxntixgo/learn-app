@@ -6,6 +6,7 @@ import pg from 'pg';
 import { buildServer } from '../index.ts';
 import { setPool, closePool } from '../db.ts';
 import { DEV_ACTOR } from '../policy/can.ts';
+import type { Actor } from '../policy/can.ts';
 
 // Phase 6 note: these servers are built with an explicit `actor`. Until now
 // the route modules defaulted to DEV_ACTOR when none was injected; they now
@@ -371,6 +372,60 @@ describe('progress routes', () => {
       const response = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${COURSE_SLUG}/progress` });
 
       expect(response.statusCode).toBe(403);
+      await fastify.close();
+    });
+  });
+
+  // ===========================================================================
+  // The route half of the chokepoint.
+  //
+  // §5 grants a student "track OWN progress", and policy/can.ts enforces the
+  // "own" by comparing `resource.userId` to the actor — denying when it is
+  // absent. These assert that both progress routes name the subject, so the
+  // ownership rule is reachable rather than theoretical.
+  // ===========================================================================
+  describe('the subject the progress routes hand can()', () => {
+    it('names the actor as the subject of a progress write', async () => {
+      const canSpy = vi.fn().mockReturnValue(true);
+      const fastify = await buildServer({ can: canSpy, actor: DEV_ACTOR });
+
+      await fastify.inject({
+        method: 'POST',
+        url: `/api/v1/courses/${COURSE_SLUG}/lessons/${LESSON_SLUG}/progress`,
+        payload: {},
+      });
+
+      const [, , resourceArg] = canSpy.mock.calls[0] as [unknown, unknown, unknown];
+      expect(resourceArg).toMatchObject({ userId: DEV_ACTOR.id });
+
+      await fastify.close();
+    });
+
+    it('names the actor as the subject of a course progress read', async () => {
+      const canSpy = vi.fn().mockReturnValue(true);
+      const fastify = await buildServer({ can: canSpy, actor: DEV_ACTOR });
+
+      await fastify.inject({ method: 'GET', url: `/api/v1/courses/${COURSE_SLUG}/progress` });
+
+      const [, , resourceArg] = canSpy.mock.calls[0] as [unknown, unknown, unknown];
+      expect(resourceArg).toMatchObject({ userId: DEV_ACTOR.id });
+
+      await fastify.close();
+    });
+
+    it('under the REAL policy, an admin actor cannot write progress (§5.1: no progress)', async () => {
+      const admin: Actor = { id: DEV_ACTOR.id, roles: ['admin'] };
+      const fastify = await buildServer({ actor: admin });
+
+      const write = await fastify.inject({
+        method: 'POST',
+        url: `/api/v1/courses/${COURSE_SLUG}/lessons/${LESSON_SLUG}/progress`,
+        payload: { state: 'complete' },
+      });
+      const read = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${COURSE_SLUG}/progress` });
+
+      expect([write.statusCode, read.statusCode]).toEqual([403, 403]);
+
       await fastify.close();
     });
   });

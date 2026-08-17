@@ -91,7 +91,11 @@ export function registerProgressRoutes(fastify: FastifyInstance, deps: ProgressR
         return reply.code(404).send({ message: `Lesson not found: ${lessonSlug}` });
       }
 
-      if (!can(actor, 'lesson:progress:write', lessonRow)) {
+      // `userId` is the ownership context for a user-scoped action: §5 grants
+      // a student "track OWN progress", so can() compares this against the
+      // actor and denies when it is absent or somebody else's. Every write
+      // below keys off `actor.id` too, so the two can never disagree.
+      if (!can(actor, 'lesson:progress:write', { slug: lessonRow.slug, userId: actor.id })) {
         return reply.code(403).send({ message: 'Forbidden' });
       }
 
@@ -191,7 +195,12 @@ export function registerProgressRoutes(fastify: FastifyInstance, deps: ProgressR
       return reply.code(404).send({ message: `Course not found: ${courseSlug}` });
     }
 
-    if (!can(actor, 'course:progress:read', { slug: courseSlug })) {
+    // This route reports the ACTOR's own progress (the query below filters
+    // `lp.user_id = actor.id`), so the subject is the actor. Another
+    // student's progress is not reachable from here at all; a teacher reads
+    // their own course's roster through `course:students:progress:read`,
+    // which is a different action with an ownership check of its own.
+    if (!can(actor, 'course:progress:read', { slug: courseSlug, userId: actor.id })) {
       return reply.code(403).send({ message: 'Forbidden' });
     }
 

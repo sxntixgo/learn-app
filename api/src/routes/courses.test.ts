@@ -6,6 +6,7 @@ import pg from 'pg';
 import { buildServer } from '../index.ts';
 import { setPool, closePool } from '../db.ts';
 import { DEV_ACTOR } from '../policy/can.ts';
+import type { Actor } from '../policy/can.ts';
 
 // Phase 6 note: these servers are built with an explicit `actor`. Until now
 // the route modules defaulted to DEV_ACTOR when none was injected; they now
@@ -448,6 +449,89 @@ describe('courses routes', () => {
       });
 
       expect(response.statusCode).toBe(403);
+
+      await fastify.close();
+    });
+  });
+
+  // ===========================================================================
+  // The route half of the chokepoint.
+  //
+  // policy/can.ts denies any course-scoped decision made without an ownership
+  // context, which is only a safety property if the routes actually SUPPLY
+  // one. These assert the wiring: the resource handed to can() carries
+  // `course.ownerId` straight from `courses.owner_id` (migration 0007), so a
+  // future ownership rule cannot be silently defeated by a route that forgot
+  // to select the column.
+  // ===========================================================================
+  describe('the ownership context the routes hand can()', () => {
+    it('GET /courses/:slug passes the course owner', async () => {
+      const canSpy = vi.fn().mockReturnValue(true);
+      const fastify = await buildServer({ can: canSpy, actor: DEV_ACTOR });
+
+      await fastify.inject({ method: 'GET', url: `/api/v1/courses/${COURSE_SLUG}` });
+
+      const [, , resourceArg] = canSpy.mock.calls[0] as [unknown, unknown, unknown];
+      // Imported by the fixture, so unowned — and `null` is a real answer
+      // here, distinct from the key being absent, which can() reads as "the
+      // caller forgot" and denies.
+      expect(resourceArg).toMatchObject({ slug: COURSE_SLUG, course: { ownerId: null } });
+
+      await fastify.close();
+    });
+
+    it('GET /courses/:slug/lessons/:slug passes the OWNING COURSE of the lesson', async () => {
+      const canSpy = vi.fn().mockReturnValue(true);
+      const fastify = await buildServer({ can: canSpy, actor: DEV_ACTOR });
+
+      await fastify.inject({ method: 'GET', url: `/api/v1/courses/${COURSE_SLUG}/lessons/mod-a-lesson-1` });
+
+      const [, , resourceArg] = canSpy.mock.calls[0] as [unknown, unknown, unknown];
+      expect(resourceArg).toMatchObject({ slug: 'mod-a-lesson-1', course: { ownerId: null } });
+
+      await fastify.close();
+    });
+
+    it('reflects a real owner_id, not a hardcoded null', async () => {
+      const owner = await pool.query<{ id: string }>(
+        `insert into users (display_name) values ($1) returning id`,
+        [`Courses Route Test Owner ${Date.now()}`],
+      );
+      const ownerId = owner.rows[0]!.id;
+      await pool.query('update courses set owner_id = $2 where slug = $1', [COURSE_SLUG, ownerId]);
+
+      try {
+        const canSpy = vi.fn().mockReturnValue(true);
+        const fastify = await buildServer({ can: canSpy, actor: DEV_ACTOR });
+
+        await fastify.inject({ method: 'GET', url: `/api/v1/courses/${COURSE_SLUG}` });
+
+        const [, , resourceArg] = canSpy.mock.calls[0] as [unknown, unknown, unknown];
+        expect(resourceArg).toMatchObject({ course: { ownerId } });
+
+        await fastify.close();
+      } finally {
+        await pool.query('update courses set owner_id = null where slug = $1', [COURSE_SLUG]);
+        await pool.query('delete from users where id = $1', [ownerId]);
+      }
+    });
+
+    it('under the REAL policy, reading is a student power — a teacher-only actor is refused', async () => {
+      // Design §5: a teacher "can author a course only they can read —
+      // register a repo, let the course land hidden, self-enroll". The
+      // self-enrollment is how a teacher reads; the teacher role alone does
+      // not open the lesson.
+      const teacher: Actor = { id: DEV_ACTOR.id, roles: ['teacher'] };
+      const fastify = await buildServer({ actor: teacher });
+
+      const course = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${COURSE_SLUG}` });
+      const lesson = await fastify.inject({
+        method: 'GET',
+        url: `/api/v1/courses/${COURSE_SLUG}/lessons/mod-a-lesson-1`,
+      });
+      const list = await fastify.inject({ method: 'GET', url: '/api/v1/courses' });
+
+      expect([course.statusCode, lesson.statusCode, list.statusCode]).toEqual([403, 403, 403]);
 
       await fastify.close();
     });

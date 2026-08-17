@@ -30,6 +30,10 @@ interface CourseRow {
   subtitle: string | null;
   description: string | null;
   tags: string[];
+  // Migration 0007. Selected on every route that asks a course-scoped policy
+  // question, because `can()` cannot query for it and treats a missing
+  // ownership context as a denial (policy/can.ts, property 2).
+  owner_id: string | null;
 }
 
 interface TrackRow {
@@ -113,7 +117,7 @@ export function registerCourseRoutes(fastify: FastifyInstance, deps: CourseRoute
     const { courseSlug } = request.params;
 
     const courseResult = await getPool().query<CourseRow>(
-      'select id, slug, title, subtitle, description, tags from courses where slug = $1',
+      'select id, slug, title, subtitle, description, tags, owner_id from courses where slug = $1',
       [courseSlug],
     );
     const courseRow = courseResult.rows[0];
@@ -178,7 +182,10 @@ export function registerCourseRoutes(fastify: FastifyInstance, deps: CourseRoute
       modules,
     };
 
-    if (!can(actor, 'course:read', course)) {
+    // The policy resource is the ownership context, not the response body:
+    // `can()` reads `course.ownerId` and nothing else about a course. The
+    // slug rides along so a denial is legible in a log.
+    if (!can(actor, 'course:read', { slug: courseRow.slug, course: { ownerId: courseRow.owner_id } })) {
       return reply.code(403).send({ message: 'Forbidden' });
     }
 
@@ -194,9 +201,10 @@ export function registerCourseRoutes(fastify: FastifyInstance, deps: CourseRoute
 
       const { courseSlug, lessonSlug } = request.params;
 
-      const courseResult = await getPool().query<{ id: string }>('select id from courses where slug = $1', [
-        courseSlug,
-      ]);
+      const courseResult = await getPool().query<{ id: string; owner_id: string | null }>(
+        'select id, owner_id from courses where slug = $1',
+        [courseSlug],
+      );
       const courseRow = courseResult.rows[0];
       if (!courseRow) {
         return reply.code(404).send({ message: `Course not found: ${courseSlug}` });
@@ -250,7 +258,10 @@ export function registerCourseRoutes(fastify: FastifyInstance, deps: CourseRoute
         progress,
       };
 
-      if (!can(actor, 'lesson:read', lesson)) {
+      // Lesson content is course-scoped: the course this lesson belongs to is
+      // what visibility and enrollment will be decided against, so its
+      // ownership context is what `can()` is handed.
+      if (!can(actor, 'lesson:read', { slug: row.slug, course: { ownerId: courseRow.owner_id } })) {
         return reply.code(403).send({ message: 'Forbidden' });
       }
 
