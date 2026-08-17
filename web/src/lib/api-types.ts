@@ -341,6 +341,16 @@ export interface components {
             /** @description The HTML-rendered content of the prose block */
             html: string;
         };
+        /** @description A note attached to a source line or inclusive line range. Author annotations are authored in the content repo as in-source marker comments and stripped from the stored source at import; student annotations are created against an exercise. Exactly one of `line` or `lines` is present. */
+        CodeAnnotation: {
+            /** @description The single 1-indexed source line this attaches to. */
+            line?: number;
+            /** @description An inclusive [start, end] 1-indexed range. */
+            lines?: number[];
+            /** @description Optional track id, matching a track's id in course.yaml. */
+            track?: string;
+            body: string;
+        };
         /** @description A code block with syntax highlighting metadata */
         CodeBlock: {
             /**
@@ -352,6 +362,8 @@ export interface components {
             lang?: ((string | null) | null) | null;
             /** @description The raw source code */
             source: string;
+            /** @description Annotations attached to lines of this block. Present on lessons whose content carries author notes, and on exercises. */
+            annotations?: components["schemas"]["CodeAnnotation"][];
         };
         /** @description One answer choice for a quiz question, as served to the browser. Deliberately has no `correct` field — the API strips it before a lesson's blocks are serialized (design §9.1: quizzes are machine-scored server-side), so a reader checking page source cannot find the answer key. The stored form (used only by the scoring endpoint, never returned) does carry it. */
         QuizChoice: {

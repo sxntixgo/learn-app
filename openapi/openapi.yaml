@@ -732,6 +732,33 @@ components:
         - type
         - html
 
+    CodeAnnotation:
+      type: object
+      description: >-
+        A note attached to a source line or inclusive line range. Author
+        annotations are authored in the content repo as in-source marker
+        comments and stripped from the stored source at import; student
+        annotations are created against an exercise. Exactly one of `line`
+        or `lines` is present.
+      required: [body]
+      properties:
+        line:
+          type: integer
+          minimum: 1
+          description: The single 1-indexed source line this attaches to.
+        lines:
+          type: array
+          items: { type: integer, minimum: 1 }
+          minItems: 2
+          maxItems: 2
+          description: An inclusive [start, end] 1-indexed range.
+        track:
+          type: string
+          minLength: 1
+          description: Optional track id, matching a track's id in course.yaml.
+        body:
+          type: string
+          minLength: 1
     CodeBlock:
       type: object
       description: A code block with syntax highlighting metadata
@@ -750,6 +777,13 @@ components:
         source:
           type: string
           description: The raw source code
+        annotations:
+          type: array
+          description: >-
+            Annotations attached to lines of this block. Present on lessons whose
+            content carries author notes, and on exercises.
+          items:
+            $ref: '#/components/schemas/CodeAnnotation'
       required:
         - type
         - source

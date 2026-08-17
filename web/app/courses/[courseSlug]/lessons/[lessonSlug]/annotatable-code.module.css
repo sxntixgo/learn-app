@@ -1,0 +1,497 @@
+/*
+ * Annotatable code block (design §9.4, §14.1/§14.2). Layout and structure
+ * only — every colour, space, radius, border weight and font comes from a
+ * token (§14.2: tokens are the only source of those values).
+ *
+ * Three structural decisions are load-bearing; changing them breaks
+ * something that is not obvious from the rule you are editing.
+ *
+ * 1. **`shiki` sits on each line ROW, not on this block.** globals.css
+ *    styles `.shiki` and `.shiki span` — that is what picks the light or
+ *    dark half of shiki's dual-theme output. Scoping it to the row keeps
+ *    those rules over the code text where they belong and off the header,
+ *    the action bar and the annotation cards, which are prose and UI, not
+ *    code. The few properties `.shiki` sets that make no sense on a row
+ *    (its own padding, border, radius, overflow) are neutralised once, in
+ *    `div.lineRow` — element-qualified so it outranks `.shiki` regardless of
+ *    which stylesheet the bundler emits first.
+ *
+ * 2. **One horizontal scroller for the whole block** (`.scroller`), never
+ *    one per line: per-line scrollers desynchronise and long lines stop
+ *    lining up. The gutter and the annotation cards are `position: sticky;
+ *    left: 0` inside it so neither slides out of view while the code scrolls
+ *    sideways — which is why `.lineItem` and `.lineRow` are `max-content`
+ *    wide: a sticky element can only travel within its containing block, so
+ *    that block has to span the full scroll width.
+ *
+ * 3. **Card width comes from a container query** (`100cqi` = this block's own
+ *    visible width), because inside a horizontal scroller a percentage would
+ *    resolve against the scrolled width and produce a card as wide as the
+ *    longest line. `max-width` above it is the fallback for a browser
+ *    without container queries.
+ */
+
+section.block {
+  container-type: inline-size;
+  margin: 0;
+  padding: 0;
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-page);
+  /* The block is the positioning context for the sticky action bar. */
+  position: relative;
+}
+
+/* ---------- header ---------- */
+
+.block .header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--border-hairline) solid var(--color-border-hairline);
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.block .headerTitle {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* A label chip: mono, bordered, no fill (palette rule — teal carries tags). */
+.block .langChip {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0 var(--space-0);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-sm);
+  color: var(--color-tag-text);
+}
+
+.block .headerHint {
+  margin: 0;
+  flex: 1 1 100%;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
+}
+
+/* ---------- code ---------- */
+
+.block .scroller {
+  overflow-x: auto;
+  /* A focusable scroll region needs a visible focus ring of its own. */
+  outline-offset: calc(-1 * var(--border-regular));
+}
+
+.block .lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.block .lineItem {
+  /*
+   * As wide as the widest line, so the sticky gutter and cards inside it
+   * have room to travel while the code scrolls. See note 2 above.
+   */
+  width: max-content;
+  min-width: 100%;
+}
+
+div.lineRow {
+  /* Neutralises the parts of globals.css's `.shiki` that belong to a whole
+     block rather than to one line. Font, size, line-height and the dual-theme
+     colour rules are deliberately left alone. */
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+
+  display: flex;
+  align-items: stretch;
+  width: max-content;
+  min-width: 100%;
+}
+
+/*
+ * Authoring mode opens the line pitch to 32px. A code line is ~20px tall,
+ * which is an unusable tap target; 32px across the full row width is a
+ * target you can hit, and — unlike padding an invisible 44px hit area around
+ * a 20px line — adjacent lines do not overlap, so a tap is never ambiguous
+ * about which line it meant. The remaining gap to 44px is covered by making
+ * a mis-tap free to correct (the ± steppers in the bar), never by hover.
+ */
+section.block[data-mode='annotate'] div.lineRow {
+  min-height: var(--space-5);
+}
+
+.block .gutter,
+.block .gutterStatic {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex: 0 0 auto;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-0);
+  padding: 0 var(--space-1);
+  /* The yellow selection rule lives here; transparent keeps the code from
+     shifting by 2px when a line is selected. */
+  border-left: var(--border-regular) solid transparent;
+  border-right: var(--border-hairline) solid var(--color-border-hairline);
+  background: var(--color-surface-raised);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.75rem;
+  text-align: right;
+  user-select: none;
+}
+
+button.gutter {
+  cursor: pointer;
+}
+
+.block .lineNumber,
+.block .badge {
+  background-color: transparent;
+  color: inherit;
+}
+
+/*
+ * "This line has annotations" is a COUNT, not a colour or a dot: it is in
+ * the line's accessible name (describeLine) and printed here in mono. The
+ * hairline ring is structural, matching the chip pattern.
+ */
+.block .badge {
+  min-width: 1.1rem;
+  padding: 0 var(--space-0);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-pill);
+  font-size: 0.65rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.block .lineRow[data-annotated] .badge {
+  border-color: var(--color-link);
+  color: var(--color-tag-text);
+}
+
+/*
+ * Selected lines. §14.2 warns the yellow may not clear 3:1 against paper, so
+ * it is never the only signal: the number also goes bold and full-strength,
+ * the action bar names the range in words, and the control carries
+ * aria-pressed.
+ */
+.block .lineRow[data-selected] .gutter {
+  border-left-color: var(--color-accent-yellow);
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.block .gutter:focus-visible {
+  outline: var(--border-regular) solid var(--color-link);
+  outline-offset: calc(-1 * var(--border-regular));
+}
+
+.block .lineCode {
+  flex: 1 1 auto;
+  padding: 0 var(--space-3) 0 var(--space-2);
+  white-space: pre;
+  font-family: inherit;
+}
+
+/* ---------- annotation cards ---------- */
+
+.block .cardSlot {
+  padding: var(--space-1) var(--space-1) var(--space-1) 44px;
+}
+
+.block .card,
+.block .composer {
+  position: sticky;
+  left: var(--space-1);
+  display: block;
+  max-width: var(--measure-prose);
+  width: min(var(--measure-prose), 100cqi - var(--space-6));
+  padding: var(--space-2);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  /* Structural left rule — the pattern the palette reserves for track hues
+     (§14.1). Neutral by default; a track hue only when the annotation
+     declares a track. */
+  border-left: var(--border-regular) solid var(--color-border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-family: var(--font-serif), 'Source Serif 4', serif;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.block .card[data-origin='student'] {
+  border-left-color: var(--color-link);
+}
+
+/*
+ * A tracked annotation takes the track's hue as its left-edge rule and
+ * nothing else (design §14.1: structural only, never a fill, never text).
+ * `--track-accent` is set inline by the caller, exactly as the course page
+ * does it — one indirection from a track's `hue` to its `--color-track-*`
+ * token, no mapping table here.
+ */
+.block .card[data-track='true'] {
+  border-left-color: var(--track-accent, var(--color-border-hairline));
+}
+
+.block .card:focus-visible {
+  outline: var(--border-regular) solid var(--color-link);
+  outline-offset: var(--border-regular);
+}
+
+.block .cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-0);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.block .cardMeta .cardRange,
+.block .cardMeta .cardOrigin,
+.block .cardMeta .cardTrack {
+  background-color: transparent;
+  color: inherit;
+}
+
+.block .cardMeta .cardTrack {
+  padding: 0 var(--space-0);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-sm);
+}
+
+.block .cardBody {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.block .cardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+}
+
+/* ---------- composer ---------- */
+
+.block .composerLabel {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.block .textarea {
+  display: block;
+  width: 100%;
+  min-height: 88px;
+  padding: var(--space-1);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-serif), 'Source Serif 4', serif;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.block .textarea:focus-visible {
+  outline: var(--border-regular) solid var(--color-link);
+  outline-offset: var(--border-hairline);
+}
+
+.block .composerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+/* ---------- action bar ---------- */
+
+/*
+ * Sticky to the bottom of the viewport while the block is on screen: on a
+ * phone the controls are still reachable after scrolling forty lines, and
+ * they are visible at rest rather than summoned by hover (§14.2).
+ */
+.block .bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-top: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background: var(--color-surface-raised);
+}
+
+.block .barLabel {
+  margin: 0;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text);
+}
+
+.block .steppers,
+.block .barActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.block .stepperGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-0);
+  background-color: transparent;
+}
+
+.block .stepperGroup .stepperLabel {
+  background-color: transparent;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+/* ---------- controls (44px, design §14.2) ---------- */
+
+.block .button,
+.block .primaryButton,
+.block .stepper {
+  min-height: 44px;
+  min-width: 44px;
+  padding: var(--space-0) var(--space-2);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background-color 120ms ease-out;
+}
+
+.block .primaryButton {
+  border-color: var(--color-link);
+}
+
+.block .stepper {
+  padding: 0;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 1rem;
+}
+
+.block .button:hover:not(:disabled),
+.block .primaryButton:hover:not(:disabled),
+.block .stepper:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+}
+
+.block .button:disabled,
+.block .primaryButton:disabled,
+.block .stepper:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.block .button:focus-visible,
+.block .primaryButton:focus-visible,
+.block .stepper:focus-visible {
+  outline: var(--border-regular) solid var(--color-link);
+  outline-offset: var(--border-regular);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .block .button,
+  .block .primaryButton,
+  .block .stepper {
+    transition: none;
+  }
+}
+
+/* ---------- orphans and readout ---------- */
+
+.block .orphans {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-top: var(--border-hairline) solid var(--color-border-hairline);
+}
+
+.block .orphansTitle {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.block .orphans .card {
+  position: static;
+  border-left-color: var(--color-accent-yellow);
+}
+
+/*
+ * The readout is the Heatmap's pattern: a live region that states in words
+ * what a pointer user just did and what a screen-reader user cannot see.
+ */
+.block .readout {
+  margin: 0;
+  padding: var(--space-0) var(--space-2) var(--space-1);
+  min-height: 1.2em;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
+}
+
+.block .srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

@@ -4,12 +4,24 @@ import { codeToHtml } from 'shiki';
 import type { Lesson } from '../../../../../src/lib/api';
 import { fetchLesson } from '../../../../../src/lib/api';
 import type { components } from '../../../../../src/lib/api-types';
+import type { AuthorAnnotationInput } from '../../../../../src/lib/annotations';
+import AnnotatableCode from './AnnotatableCode';
 import MarkCompleteButton from './MarkCompleteButton';
 import Quiz from './Quiz';
 import styles from './lesson.module.css';
 
 type Block = components['schemas']['Block'];
 type CodeBlock = Extract<Block, { type: 'code' }>;
+
+/*
+ * Author annotations (design §6.3's `[!note]` markers) are parsed at import
+ * and stored on the code block, and the lesson route passes stored blocks
+ * through untouched — so they arrive here even though openapi.yaml's
+ * CodeBlock does not describe them yet. Declaring the field locally keeps
+ * the reader honest about what it actually receives; adding it to the
+ * contract belongs with the exercise endpoints, not here.
+ */
+type AnnotatedCodeBlock = CodeBlock & { annotations?: AuthorAnnotationInput[] };
 
 // One dual-theme pair covers both colour schemes — see the shiki rules in
 // app/globals.css that decide which half paints, driven by
@@ -61,12 +73,25 @@ export default async function LessonPage({
               return <div key={index} className={styles.prose} dangerouslySetInnerHTML={{ __html: block.html }} />;
             }
             if (block.type === 'code') {
+              /*
+               * Design §9.4: the same block, two modes. A lesson shows the
+               * author's annotations read-only; an exercise accepts the
+               * student's own. Highlighting still happens above, at render
+               * time (CLAUDE.md rule 4) — AnnotatableCode only splits that
+               * HTML into per-line anchors.
+               *
+               * Persistence is the next task: onChange is deliberately not
+               * wired to anything yet.
+               */
               return (
-                <div
-                  key={index}
-                  className={styles.code}
-                  dangerouslySetInnerHTML={{ __html: highlighted.get(index) ?? '' }}
-                />
+                <div key={index} className={styles.code}>
+                  <AnnotatableCode
+                    html={highlighted.get(index) ?? ''}
+                    lang={block.lang ?? undefined}
+                    mode={lesson.kind === 'exercise' ? 'annotate' : 'read'}
+                    authorAnnotations={(block as AnnotatedCodeBlock).annotations}
+                  />
+                </div>
               );
             }
             // block.type === 'quiz'. Design §9.1: not markable — the Quiz
