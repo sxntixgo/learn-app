@@ -21,11 +21,14 @@
     "dev": "node --watch src/index.ts"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@node-rs/argon2": "^2.1.0",
     "ajv": "^8.17.1",
     "fastify": "^5.0.0",
     "hast-util-from-html": "^2.0.3",
     "hast-util-sanitize": "^5.0.2",
     "hast-util-to-html": "^9.0.5",
+    "jose": "^6.2.9",
     "mdast-util-to-string": "^4.0.0",
     "pg": "^8.11.0",
     "rehype-sanitize": "^6.0.0",

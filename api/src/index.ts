@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
+import cookie from '@fastify/cookie';
 import type { CourseRouteDeps } from './routes/courses.ts';
 import { registerCourseRoutes } from './routes/courses.ts';
 import type { ProgressRouteDeps } from './routes/progress.ts';
@@ -12,24 +13,51 @@ import type { AdminRouteDeps } from './routes/admin.ts';
 import { registerAdminRoutes } from './routes/admin.ts';
 import type { SetupRouteDeps } from './routes/setup.ts';
 import { registerSetupRoutes } from './routes/setup.ts';
+import type { AuthRouteDeps } from './routes/auth.ts';
+import { registerAuthRoutes } from './routes/auth.ts';
+import { registerActorHook } from './auth/actor.ts';
+import { getSigningKeys } from './auth/keys.ts';
+import { hashPassword } from './auth/password.ts';
 import { getPool } from './db.ts';
 import { ensureSetupToken } from './auth/setup-token.ts';
 
 // CourseRouteDeps, ProgressRouteDeps, MeRouteDeps, and AdminRouteDeps are
 // structurally identical ({can?, actor?}) but declared separately in each
 // route module (CLAUDE.md style: small modules, no speculative shared
-// abstraction). One options bag satisfies all four. SetupRouteDeps adds the
-// password-hashing seam, and deliberately has no `actor` — see routes/setup.ts.
+// abstraction). One options bag satisfies all of them. SetupRouteDeps adds
+// the password-hashing seam, and deliberately has no `actor` — see
+// routes/setup.ts. AuthRouteDeps adds the rate limiter and signing keys.
 export type BuildServerOptions = CourseRouteDeps &
   ProgressRouteDeps &
   MeRouteDeps &
   AdminRouteDeps &
-  SetupRouteDeps;
+  SetupRouteDeps &
+  AuthRouteDeps & {
+    /**
+     * Whether to believe `X-Forwarded-For`. OFF unless explicitly enabled,
+     * because a trusted-by-default proxy header lets any client forge the
+     * address the login rate limiter counts against. Behind the design's
+     * Caddy (§4) it must be on, or every request looks like it came from the
+     * proxy and the per-IP limit collapses into a global one.
+     */
+    trustProxy?: boolean;
+  };
 
 export async function buildServer(options: BuildServerOptions = {}) {
   const fastify = Fastify({
     logger: true,
+    trustProxy: options.trustProxy ?? process.env.API_TRUST_PROXY === 'true',
   });
+
+  // Session cookies (design §13). Registered before the actor hook, which
+  // reads request.cookies.
+  await fastify.register(cookie);
+
+  // CLAUDE.md rule 2, completed: `actor` is now resolved from the access
+  // token on EVERY request — anonymous when there is no valid one — and
+  // handlers keep asking can() exactly as they did in phase 1. No route
+  // gained an authentication check of its own; that is the point.
+  registerActorHook(fastify, { signingKeys: options.signingKeys });
 
   fastify.get('/api/v1/health', async () => {
     return { status: 'ok' };
@@ -39,7 +67,11 @@ export async function buildServer(options: BuildServerOptions = {}) {
   registerProgressRoutes(fastify, options);
   registerMeRoutes(fastify, options);
   registerAdminRoutes(fastify, options);
-  registerSetupRoutes(fastify, options);
+  // The real Argon2id hasher fills the seam auth/bootstrap.ts left open, so
+  // the first accounts are created with real credentials rather than the
+  // NULL password_hash that means "cannot authenticate".
+  registerSetupRoutes(fastify, { ...options, hashPassword: options.hashPassword ?? hashPassword });
+  registerAuthRoutes(fastify, options);
 
   return fastify;
 }
@@ -51,6 +83,11 @@ async function main(): Promise<void> {
 
   const port = Number(process.env.API_PORT ?? 3001);
   const fastify = await buildServer();
+
+  // Resolved at boot rather than on the first login, so a misconfigured or
+  // unparseable signing key stops the process here — and so the ephemeral-key
+  // warning is printed at startup where an operator will see it.
+  getSigningKeys();
 
   // Design §5.2: on first boot the app generates a one-time setup token and
   // prints it to the container logs. Printed with console.log rather than the

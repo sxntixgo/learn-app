@@ -2,26 +2,31 @@ import { PassThrough } from 'node:stream';
 import type { FastifyInstance } from 'fastify';
 import { getPool } from '../db.ts';
 import type { Actor } from '../policy/can.ts';
-import { can as defaultCan, DEV_ACTOR } from '../policy/can.ts';
+import { can as defaultCan } from '../policy/can.ts';
+import { actorFor } from '../auth/actor.ts';
+import { actorWithFreshRoles } from '../auth/roles.ts';
 import type { ImportProgressEvent } from '../content/run-import.ts';
 import { runImportPipeline } from '../content/run-import.ts';
 
 // =============================================================================
-// UNAUTHENTICATED UNTIL PHASE 6.
+// AUTHENTICATED AS OF PHASE 6.
 //
-// There is no session and no login anywhere in this codebase yet — `actor`
-// below is DEV_ACTOR, a hardcoded stand-in, exactly like every other route
-// registered in api/src/index.ts today. That is acceptable ONLY because the
-// app is LAN-only until Gate 6 (design §5.2). It is worth being explicit
-// about it here specifically because, unlike a course GET, this screen
-// triggers a real network fetch (`git clone` of a caller-supplied URL) and
-// real database writes.
+// `actor` is resolved per request from the access-token cookie
+// (api/src/auth/actor.ts) and is the anonymous actor when there is no valid
+// session. The two actions here ('repo:import', 'import:history:read') were
+// kept distinct from every other action string in the codebase precisely so
+// this screen could be gated without touching a handler — and that is what
+// happened: `can()` now restricts both to admins and teachers, and no code
+// below changed shape. CLAUDE.md rule 2, paying off.
 //
-// The two actions below ('repo:import', 'import:history:read') are
-// deliberately distinct from every other action string in this codebase, so
-// Phase 6 can gate this screen precisely by populating `actor` from a real
-// session and tightening `can()` — no handler code changes, per CLAUDE.md
-// rule 2.
+// The POST additionally RE-READS the actor's roles from the database before
+// asking `can()`. Design §13: "role is in the token for cheap reads;
+// privileged mutations re-check the database, so a demotion takes effect
+// immediately rather than at next refresh." This route is the clearest case
+// for it in the codebase today — it makes a real network fetch (`git clone`
+// of a caller-supplied URL) and real database writes — so a teacher whose
+// role was revoked two minutes ago must not get one last import in on a
+// still-valid 15-minute token.
 // =============================================================================
 
 export interface AdminRouteDeps {
@@ -74,7 +79,6 @@ function writeEvent(stream: PassThrough, event: ImportProgressEvent): void {
 /** Registers the admin content-import routes: streamed import + run history. */
 export function registerAdminRoutes(fastify: FastifyInstance, deps: AdminRouteDeps = {}): void {
   const can = deps.can ?? defaultCan;
-  const actor = deps.actor ?? DEV_ACTOR;
 
   fastify.post<{ Body: AdminImportBody }>('/api/v1/admin/imports', async (request, reply) => {
     const body = request.body ?? {};
@@ -86,6 +90,13 @@ export function registerAdminRoutes(fastify: FastifyInstance, deps: AdminRouteDe
     if (ref !== undefined && typeof ref !== 'string') {
       return reply.code(400).send({ message: 'ref must be a string when provided.' });
     }
+
+    // Resolved per request from the access-token cookie (auth/actor.ts) — the
+    // anonymous actor when there is no valid session, never a bypass — and
+    // then re-roled from `user_roles` because this is a privileged mutation
+    // (design §13). The token's own role claim is discarded here; `can()`
+    // sees only what the database says right now.
+    const actor = await actorWithFreshRoles(getPool(), actorFor(request, deps));
 
     if (!can(actor, 'repo:import', { url, ref })) {
       return reply.code(403).send({ message: 'Forbidden' });
@@ -116,6 +127,10 @@ export function registerAdminRoutes(fastify: FastifyInstance, deps: AdminRouteDe
   });
 
   fastify.get<{ Querystring: { limit?: string } }>('/api/v1/admin/import-runs', async (request, reply) => {
+    // Resolved per request from the access-token cookie (auth/actor.ts):
+    // the anonymous actor when there is no valid session, never a bypass.
+    const actor = actorFor(request, deps);
+
     if (!can(actor, 'import:history:read')) {
       return reply.code(403).send({ message: 'Forbidden' });
     }

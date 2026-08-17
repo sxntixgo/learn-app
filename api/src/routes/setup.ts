@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getPool } from '../db.ts';
-import type { Actor } from '../policy/can.ts';
-import { can as defaultCan } from '../policy/can.ts';
+import { ANONYMOUS_ACTOR, can as defaultCan } from '../policy/can.ts';
 import type { BootstrapDeps, BootstrapFailureReason } from '../auth/bootstrap.ts';
 import { bootstrapInstance, parseBootstrapRequest } from '../auth/bootstrap.ts';
 
@@ -20,11 +19,11 @@ import { bootstrapInstance, parseBootstrapRequest } from '../auth/bootstrap.ts';
 // single-row claim (api/src/auth/bootstrap.ts).
 // =============================================================================
 
-// Not a user, and never a users row: the nil UUID cannot collide with a
-// gen_random_uuid() id. Deliberately NOT deps.actor — the caller of this
-// route is by definition not signed in, so taking the injected actor (which
-// is DEV_ACTOR today) would quietly assert the opposite.
-const ANONYMOUS_ACTOR: Actor = { id: '00000000-0000-0000-0000-000000000000', roles: [] };
+// Deliberately NOT request.actor and NOT deps.actor: the caller of this
+// route is by definition not signed in, and using the resolved actor would
+// let a signed-in operator's roles decide a question about an unclaimed
+// instance. ANONYMOUS_ACTOR now lives in the policy module (it is the same
+// actor every unauthenticated request gets — see api/src/auth/actor.ts).
 
 export interface SetupRouteDeps extends BootstrapDeps {
   // Injectable policy function (CLAUDE.md rule 2), same seam as every other

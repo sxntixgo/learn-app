@@ -7,6 +7,14 @@ import { buildServer } from '../index.ts';
 import { setPool, closePool } from '../db.ts';
 import { DEV_ACTOR } from '../policy/can.ts';
 
+// Phase 6 note: these servers are built with an explicit `actor`. Until now
+// the route modules defaulted to DEV_ACTOR when none was injected; they now
+// default to the actor resolved from the access-token cookie, which is the
+// ANONYMOUS actor for an unauthenticated inject() — and `can()` refuses that,
+// as api/src/routes/auth.test.ts asserts. Injecting the same DEV_ACTOR these
+// tests always ran as keeps them testing what they are about (courses,
+// progress) rather than re-testing authentication.
+
 const { Pool } = pg;
 
 const connectionString = process.env.TEST_DATABASE_URL;
@@ -126,7 +134,7 @@ describe('progress routes', () => {
 
   describe('POST /api/v1/courses/:courseSlug/lessons/:lessonSlug/progress', () => {
     it('marks a lesson complete: 200, one lesson_progress row, one lesson_completed event', async () => {
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
 
       const before = await pool.query<{ c: string }>(
         `select count(*)::int as c from activity_events where lesson_id = $1 and type = 'lesson_completed'`,
@@ -160,7 +168,7 @@ describe('progress routes', () => {
     });
 
     it('is idempotent: completing the same lesson a second time leaves one row and one event', async () => {
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
 
       const before = await pool.query<{ c: string }>(
         `select count(*)::int as c from activity_events where lesson_id = $1 and type = 'lesson_completed'`,
@@ -195,7 +203,7 @@ describe('progress routes', () => {
     });
 
     it('stores lastPosition and secondsSpent, resumable via the lesson endpoint', async () => {
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
 
       const response = await fastify.inject({
         method: 'POST',
@@ -222,7 +230,7 @@ describe('progress routes', () => {
     });
 
     it('returns 409 attempting to mark an exercise-kind lesson complete directly', async () => {
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
 
       const response = await fastify.inject({
         method: 'POST',
@@ -245,7 +253,7 @@ describe('progress routes', () => {
     });
 
     it('returns 404 for an unknown course slug', async () => {
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
       const response = await fastify.inject({
         method: 'POST',
         url: `/api/v1/courses/no-such-course-xyz/lessons/${LESSON_SLUG}/progress`,
@@ -257,7 +265,7 @@ describe('progress routes', () => {
     });
 
     it('returns 404 for an archived lesson', async () => {
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
       const response = await fastify.inject({
         method: 'POST',
         url: `/api/v1/courses/${COURSE_SLUG}/lessons/${ARCHIVED_SLUG}/progress`,
@@ -270,7 +278,7 @@ describe('progress routes', () => {
 
     it('calls can() with a "lesson:progress:write" action and the lesson as resource — the seam guard', async () => {
       const canSpy = vi.fn().mockReturnValue(true);
-      const fastify = await buildServer({ can: canSpy });
+      const fastify = await buildServer({ can: canSpy, actor: DEV_ACTOR });
 
       const response = await fastify.inject({
         method: 'POST',
@@ -289,7 +297,7 @@ describe('progress routes', () => {
     });
 
     it('returns 403 when the injected policy denies access', async () => {
-      const fastify = await buildServer({ can: () => false });
+      const fastify = await buildServer({ can: () => false, actor: DEV_ACTOR });
       const response = await fastify.inject({
         method: 'POST',
         url: `/api/v1/courses/${COURSE_SLUG}/lessons/${LESSON_SLUG}/progress`,
@@ -303,7 +311,7 @@ describe('progress routes', () => {
 
   describe('GET /api/v1/courses/:courseSlug/progress', () => {
     it('reports totals, percent, and per-lesson states, excluding archived lessons', async () => {
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
       const response = await fastify.inject({
         method: 'GET',
         url: `/api/v1/courses/${COURSE_SLUG}/progress`,
@@ -336,7 +344,7 @@ describe('progress routes', () => {
     });
 
     it('returns 404 for an unknown course slug', async () => {
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
       const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses/no-such-course-xyz/progress' });
 
       expect(response.statusCode).toBe(404);
@@ -345,7 +353,7 @@ describe('progress routes', () => {
 
     it('calls can() with a "course:progress:read" action — the seam guard', async () => {
       const canSpy = vi.fn().mockReturnValue(true);
-      const fastify = await buildServer({ can: canSpy });
+      const fastify = await buildServer({ can: canSpy, actor: DEV_ACTOR });
 
       const response = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${COURSE_SLUG}/progress` });
 
@@ -359,7 +367,7 @@ describe('progress routes', () => {
     });
 
     it('returns 403 when the injected policy denies access', async () => {
-      const fastify = await buildServer({ can: () => false });
+      const fastify = await buildServer({ can: () => false, actor: DEV_ACTOR });
       const response = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${COURSE_SLUG}/progress` });
 
       expect(response.statusCode).toBe(403);

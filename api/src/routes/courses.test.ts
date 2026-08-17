@@ -7,6 +7,14 @@ import { buildServer } from '../index.ts';
 import { setPool, closePool } from '../db.ts';
 import { DEV_ACTOR } from '../policy/can.ts';
 
+// Phase 6 note: these servers are built with an explicit `actor`. Until now
+// the route modules defaulted to DEV_ACTOR when none was injected; they now
+// default to the actor resolved from the access-token cookie, which is the
+// ANONYMOUS actor for an unauthenticated inject() — and `can()` refuses that,
+// as api/src/routes/auth.test.ts asserts. Injecting the same DEV_ACTOR these
+// tests always ran as keeps them testing what they are about (courses,
+// progress) rather than re-testing authentication.
+
 const { Pool } = pg;
 
 const connectionString = process.env.TEST_DATABASE_URL;
@@ -181,7 +189,7 @@ describe('courses routes', () => {
 
   describe('GET /api/v1/courses', () => {
     it('lists course summaries with counts that exclude archived modules/lessons', async () => {
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
       const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses' });
 
       expect(response.statusCode).toBe(200);
@@ -204,7 +212,7 @@ describe('courses routes', () => {
 
     it('calls can() with a "course:list" action — the seam guard', async () => {
       const canSpy = vi.fn().mockReturnValue(true);
-      const fastify = await buildServer({ can: canSpy });
+      const fastify = await buildServer({ can: canSpy, actor: DEV_ACTOR });
 
       const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses' });
 
@@ -218,7 +226,7 @@ describe('courses routes', () => {
     });
 
     it('returns 403 when the injected policy denies access', async () => {
-      const fastify = await buildServer({ can: () => false });
+      const fastify = await buildServer({ can: () => false, actor: DEV_ACTOR });
       const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses' });
 
       expect(response.statusCode).toBe(403);
@@ -231,7 +239,7 @@ describe('courses routes', () => {
 
   describe('GET /api/v1/courses/:courseSlug', () => {
     it('returns the course, its tracks, and only its non-archived modules/lessons in manifest order', async () => {
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
       const response = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${COURSE_SLUG}` });
 
       expect(response.statusCode).toBe(200);
@@ -256,7 +264,7 @@ describe('courses routes', () => {
     });
 
     it('returns 404 with a message body for an unknown course slug', async () => {
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
       const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses/no-such-course-xyz' });
 
       expect(response.statusCode).toBe(404);
@@ -269,7 +277,7 @@ describe('courses routes', () => {
 
     it('calls can() with a "course:read" action and the course as resource — the seam guard', async () => {
       const canSpy = vi.fn().mockReturnValue(true);
-      const fastify = await buildServer({ can: canSpy });
+      const fastify = await buildServer({ can: canSpy, actor: DEV_ACTOR });
 
       const response = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${COURSE_SLUG}` });
 
@@ -286,7 +294,7 @@ describe('courses routes', () => {
 
   describe('GET /api/v1/courses/:courseSlug/lessons/:lessonSlug', () => {
     it('returns the lesson with prev/next computed across the whole course, not just the module', async () => {
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
 
       const a1 = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${COURSE_SLUG}/lessons/mod-a-lesson-1` });
       expect(a1.statusCode).toBe(200);
@@ -320,7 +328,7 @@ describe('courses routes', () => {
     });
 
     it('includes the actor\'s progress (null when none exists, populated once a row does)', async () => {
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
 
       const before = await fastify.inject({ method: 'GET', url: `/api/v1/courses/${COURSE_SLUG}/lessons/mod-b-lesson-1` });
       expect(before.statusCode).toBe(200);
@@ -349,7 +357,7 @@ describe('courses routes', () => {
     });
 
     it('returns 404 for an archived lesson requested directly', async () => {
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
       const response = await fastify.inject({
         method: 'GET',
         url: `/api/v1/courses/${COURSE_SLUG}/lessons/mod-a-archived-lesson`,
@@ -378,7 +386,7 @@ describe('courses routes', () => {
         position: 0,
       });
 
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
       const response = await fastify.inject({
         method: 'GET',
         url: `/api/v1/courses/${COURSE_SLUG}/lessons/mod-c-lesson-1`,
@@ -390,7 +398,7 @@ describe('courses routes', () => {
     });
 
     it('returns 404 for an unknown lesson slug', async () => {
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
       const response = await fastify.inject({
         method: 'GET',
         url: `/api/v1/courses/${COURSE_SLUG}/lessons/no-such-lesson-xyz`,
@@ -402,7 +410,7 @@ describe('courses routes', () => {
     });
 
     it('returns 404 for an unknown course slug', async () => {
-      const fastify = await buildServer();
+      const fastify = await buildServer({ actor: DEV_ACTOR });
       const response = await fastify.inject({
         method: 'GET',
         url: '/api/v1/courses/no-such-course-xyz/lessons/mod-a-lesson-1',
@@ -415,7 +423,7 @@ describe('courses routes', () => {
 
     it('calls can() with a "lesson:read" action and the lesson as resource — the seam guard', async () => {
       const canSpy = vi.fn().mockReturnValue(true);
-      const fastify = await buildServer({ can: canSpy });
+      const fastify = await buildServer({ can: canSpy, actor: DEV_ACTOR });
 
       const response = await fastify.inject({
         method: 'GET',
@@ -433,7 +441,7 @@ describe('courses routes', () => {
     });
 
     it('returns 403 when the injected policy denies access', async () => {
-      const fastify = await buildServer({ can: () => false });
+      const fastify = await buildServer({ can: () => false, actor: DEV_ACTOR });
       const response = await fastify.inject({
         method: 'GET',
         url: `/api/v1/courses/${COURSE_SLUG}/lessons/mod-a-lesson-1`,

@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { getPool } from '../db.ts';
 import type { Actor } from '../policy/can.ts';
-import { can as defaultCan, DEV_ACTOR } from '../policy/can.ts';
+import { can as defaultCan } from '../policy/can.ts';
+import { actorFor } from '../auth/actor.ts';
 
 export interface CourseRouteDeps {
   // Injectable policy function (CLAUDE.md rule 2), same seam as lessons.ts
@@ -68,9 +69,12 @@ interface LessonProgressRow {
 /** Registers the course + course-scoped-lesson routes on `fastify`. */
 export function registerCourseRoutes(fastify: FastifyInstance, deps: CourseRouteDeps = {}): void {
   const can = deps.can ?? defaultCan;
-  const actor = deps.actor ?? DEV_ACTOR;
 
-  fastify.get('/api/v1/courses', async (_request, reply) => {
+  fastify.get('/api/v1/courses', async (request, reply) => {
+    // Resolved per request from the access-token cookie (auth/actor.ts):
+    // the anonymous actor when there is no valid session, never a bypass.
+    const actor = actorFor(request, deps);
+
     const result = await getPool().query<CourseSummaryRow>(`
       select
         c.slug, c.title, c.subtitle, c.description, c.tags,
@@ -102,6 +106,10 @@ export function registerCourseRoutes(fastify: FastifyInstance, deps: CourseRoute
   });
 
   fastify.get<{ Params: { courseSlug: string } }>('/api/v1/courses/:courseSlug', async (request, reply) => {
+    // Resolved per request from the access-token cookie (auth/actor.ts):
+    // the anonymous actor when there is no valid session, never a bypass.
+    const actor = actorFor(request, deps);
+
     const { courseSlug } = request.params;
 
     const courseResult = await getPool().query<CourseRow>(
@@ -180,6 +188,10 @@ export function registerCourseRoutes(fastify: FastifyInstance, deps: CourseRoute
   fastify.get<{ Params: { courseSlug: string; lessonSlug: string } }>(
     '/api/v1/courses/:courseSlug/lessons/:lessonSlug',
     async (request, reply) => {
+      // Resolved per request from the access-token cookie (auth/actor.ts):
+      // the anonymous actor when there is no valid session, never a bypass.
+      const actor = actorFor(request, deps);
+
       const { courseSlug, lessonSlug } = request.params;
 
       const courseResult = await getPool().query<{ id: string }>('select id from courses where slug = $1', [

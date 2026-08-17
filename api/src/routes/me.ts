@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { getPool } from '../db.ts';
 import type { Actor } from '../policy/can.ts';
-import { can as defaultCan, DEV_ACTOR } from '../policy/can.ts';
+import { can as defaultCan } from '../policy/can.ts';
+import { actorFor } from '../auth/actor.ts';
 import { DEFAULT_TIMEZONE, isValidTimeZone } from '../time/timezone.ts';
 import { computeStreaks } from '../activity/streaks.ts';
 import type { StreakEvent } from '../activity/streaks.ts';
@@ -75,23 +76,36 @@ function clampActivityLimit(raw: unknown): number {
 /** Registers the /api/v1/me* routes (design §10, §15) on `fastify`. */
 export function registerMeRoutes(fastify: FastifyInstance, deps: MeRouteDeps = {}): void {
   const can = deps.can ?? defaultCan;
-  const actor = deps.actor ?? DEV_ACTOR;
 
-  fastify.get('/api/v1/me', async (_request, reply) => {
+  fastify.get('/api/v1/me', async (request, reply) => {
+    // Resolved per request from the access-token cookie (auth/actor.ts):
+    // the anonymous actor when there is no valid session, never a bypass.
+    const actor = actorFor(request, deps);
+
+    // The policy question is asked BEFORE the lookup, unlike the other
+    // routes here, because on this one the resource IS the actor. With the
+    // lookup first, an unauthenticated request fell through to "user not
+    // found" for the anonymous actor's nil uuid — a 404 that was really an
+    // authorization outcome, decided by an accident of query results
+    // instead of by can(). The row is not needed to answer "may you read
+    // your own profile", so it is fetched only once that is settled.
+    if (!can(actor, 'me:read', { id: actor.id })) {
+      return reply.code(403).send({ message: 'Forbidden' });
+    }
+
     const userRow = await findUser(actor.id);
     if (!userRow) {
       return reply.code(404).send({ message: `User not found: ${actor.id}` });
     }
-    const me = toMeResponse(userRow);
 
-    if (!can(actor, 'me:read', me)) {
-      return reply.code(403).send({ message: 'Forbidden' });
-    }
-
-    return reply.code(200).send(me);
+    return reply.code(200).send(toMeResponse(userRow));
   });
 
   fastify.patch<{ Body: MeUpdateBody }>('/api/v1/me', async (request, reply) => {
+    // Resolved per request from the access-token cookie (auth/actor.ts):
+    // the anonymous actor when there is no valid session, never a bypass.
+    const actor = actorFor(request, deps);
+
     const body = request.body ?? {};
     const timezone = body.timezone;
 
@@ -121,6 +135,10 @@ export function registerMeRoutes(fastify: FastifyInstance, deps: MeRouteDeps = {
   });
 
   fastify.get<{ Querystring: { limit?: string } }>('/api/v1/me/activity', async (request, reply) => {
+    // Resolved per request from the access-token cookie (auth/actor.ts):
+    // the anonymous actor when there is no valid session, never a bypass.
+    const actor = actorFor(request, deps);
+
     if (!can(actor, 'me:activity:read')) {
       return reply.code(403).send({ message: 'Forbidden' });
     }
@@ -153,6 +171,10 @@ export function registerMeRoutes(fastify: FastifyInstance, deps: MeRouteDeps = {
   });
 
   fastify.get<{ Querystring: { weeks?: string } }>('/api/v1/me/heatmap', async (request, reply) => {
+    // Resolved per request from the access-token cookie (auth/actor.ts):
+    // the anonymous actor when there is no valid session, never a bypass.
+    const actor = actorFor(request, deps);
+
     if (!can(actor, 'me:heatmap:read')) {
       return reply.code(403).send({ message: 'Forbidden' });
     }
