@@ -699,6 +699,13 @@ it, and an untested restore is not a backup. This lands before real progress dat
 - [ ] **Public profile route** — deny-by-default serializer, rate limiting, per-user `noindex`, OG tags
       **Acceptance:** a test that adds a new field to the profile model asserts it does **not** appear publicly without explicit allowlisting
       **Model:** `opus` — *(a) security: this is the classic profile-endpoint leak*
+- [ ] **BLOCKER, found 2026-08-17: `sharp` carries unpatched libvips CVEs**
+      (CVE-2026-33327 / 33328 / 35590). It ships with Next and processes nothing
+      untrusted today — but avatar uploads are precisely untrusted image bytes reaching
+      libvips, and the design's "always re-encode" rule routes them straight through it.
+      Fix requires Next 15 → 16 (semver major, touches middleware and the CSP nonce
+      plumbing). **Do this before the upload pipeline, not after.**
+      **Model:** `sonnet`
 - [ ] **Avatars** — generated identicon plus upload pipeline
       **Acceptance:** a JPEG with EXIF GPS yields a WebP with no metadata; SVG rejected; oversized rejected **before** decode; a decompression bomb does not exhaust memory
       **Model:** `opus` — *(a) security: untrusted binary input and image decoding*
