@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
+import { registerSecurityHeaders } from './security-headers.ts';
 import cookie from '@fastify/cookie';
 import type { CourseRouteDeps } from './routes/courses.ts';
 import { registerCourseRoutes } from './routes/courses.ts';
@@ -48,6 +49,10 @@ export async function buildServer(options: BuildServerOptions = {}) {
     logger: true,
     trustProxy: options.trustProxy ?? process.env.API_TRUST_PROXY === 'true',
   });
+
+  // Security response headers. Registered first so they apply to every
+  // response, including ones short-circuited by a later hook or an error.
+  registerSecurityHeaders(fastify);
 
   // Session cookies (design §13). Registered before the actor hook, which
   // reads request.cookies.
