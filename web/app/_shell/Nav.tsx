@@ -17,7 +17,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { isNavActive, NAV_DESTINATIONS } from '../../src/lib/nav';
+import { isNavActive, visibleNavDestinations } from '../../src/lib/nav';
 import styles from './nav.module.css';
 
 const ICONS: Record<string, React.ReactNode> = {
@@ -36,6 +36,12 @@ const ICONS: Record<string, React.ReactNode> = {
       <path d="M20 20v-6" />
     </svg>
   ),
+  '/grading': (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 4h9l3 3v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" />
+      <path d="m8.5 13 2.5 2.5L16 10" />
+    </svg>
+  ),
   '/admin/imports': (
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M12 3.5 4.5 7v6c0 4 3 6.7 7.5 7.8 4.5-1.1 7.5-3.8 7.5-7.8V7L12 3.5Z" />
@@ -44,7 +50,7 @@ const ICONS: Record<string, React.ReactNode> = {
   ),
 };
 
-export default function Nav({ signedIn }: { signedIn: boolean }) {
+export default function Nav({ signedIn, isTeacher }: { signedIn: boolean; isTeacher: boolean }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -55,6 +61,11 @@ export default function Nav({ signedIn }: { signedIn: boolean }) {
   // could usefully point at. TopBar's Sign-in link is the only navigation
   // offered instead.
   if (!signedIn) return null;
+
+  // Design §9.4 / the grading UI brief: "a Grading destination for
+  // teachers; do not show it to students." visibleNavDestinations is the
+  // one tested place that decision lives (web/src/lib/nav.ts).
+  const destinations = visibleNavDestinations(isTeacher);
 
   return (
     <nav className={styles.nav} data-collapsed={collapsed} aria-label="Primary">
@@ -70,7 +81,7 @@ export default function Nav({ signedIn }: { signedIn: boolean }) {
         <span className={styles.srOnly}>{collapsed ? 'Expand navigation' : 'Collapse navigation'}</span>
       </button>
       <ul className={styles.list}>
-        {NAV_DESTINATIONS.map((destination) => {
+        {destinations.map((destination) => {
           const active = isNavActive(pathname, destination);
           return (
             <li key={destination.href}>

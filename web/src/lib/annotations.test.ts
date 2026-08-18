@@ -10,6 +10,7 @@ import {
   describeRange,
   formatRangeLabel,
   fromAuthorAnnotations,
+  fromGradedAnnotations,
   fromSubmissionAnnotations,
   groupAnnotationsByEndLine,
   isValidAnchor,
@@ -17,10 +18,13 @@ import {
   parseStyleAttribute,
   partitionAnnotations,
   removeAnnotation,
+  repliesByParent,
   selectLine,
   sortAnnotations,
   splitHighlightedLines,
+  toGradeAnnotationInputs,
   toSubmissionAnnotationInputs,
+  topLevelAnnotations,
   updateAnnotation,
   type Annotation,
   type SubmissionAnnotationWire,
@@ -430,6 +434,178 @@ describe('fromSubmissionAnnotations', () => {
         origin: 'student',
         createdAt: '2026-01-01T00:00:00Z',
       },
+    ]);
+  });
+});
+
+describe('addAnnotation with an explicit origin/parentId/pending (grading)', () => {
+  it('defaults to a student, non-reply, persisted annotation', () => {
+    const next = addAnnotation([], { id: 'a', range: { start: 1, end: 1 }, body: 'hi' });
+    expect(next).toEqual([{ id: 'a', range: { start: 1, end: 1 }, body: 'hi', origin: 'student' }]);
+  });
+
+  it('adds a pending top-level teacher annotation flagging a missed line', () => {
+    const next = addAnnotation([], {
+      id: 'local-1',
+      range: { start: 4, end: 4 },
+      body: 'You missed the off-by-one here.',
+      origin: 'teacher',
+      pending: true,
+    });
+    expect(next).toEqual([
+      {
+        id: 'local-1',
+        range: { start: 4, end: 4 },
+        body: 'You missed the off-by-one here.',
+        origin: 'teacher',
+        pending: true,
+      },
+    ]);
+  });
+
+  it('adds a pending reply carrying its parent id', () => {
+    const next = addAnnotation([], {
+      id: 'local-2',
+      range: { start: 4, end: 4 },
+      body: 'Good catch.',
+      origin: 'teacher',
+      parentId: 'ann-1',
+      pending: true,
+    });
+    expect(next[0]?.parentId).toBe('ann-1');
+    expect(next[0]?.pending).toBe(true);
+  });
+});
+
+describe('topLevelAnnotations / repliesByParent (design §9.4 threading)', () => {
+  const parent: Annotation = { id: 'ann-1', range: { start: 2, end: 2 }, body: 'why here?', origin: 'student' };
+  const reply: Annotation = {
+    id: 'ann-2',
+    range: { start: 2, end: 2 },
+    body: 'good question',
+    origin: 'teacher',
+    parentId: 'ann-1',
+    createdAt: '2026-01-01T00:00:00Z',
+  };
+  const flagged: Annotation = { id: 'ann-3', range: { start: 9, end: 9 }, body: 'missed this', origin: 'teacher' };
+
+  it('keeps only top-level annotations, dropping replies', () => {
+    expect(topLevelAnnotations([parent, reply, flagged]).map((a) => a.id)).toEqual(['ann-1', 'ann-3']);
+  });
+
+  it('groups replies under the id they answer, and skips top-level annotations entirely', () => {
+    const grouped = repliesByParent([parent, reply, flagged]);
+    expect(grouped.get('ann-1')?.map((a) => a.id)).toEqual(['ann-2']);
+    expect(grouped.has('ann-3')).toBe(false);
+    expect(grouped.has('ann-2')).toBe(false);
+  });
+});
+
+describe('fromGradedAnnotations', () => {
+  const wire: SubmissionAnnotationWire[] = [
+    {
+      id: 'ann-1',
+      blockIndex: 0,
+      startLine: 2,
+      endLine: 2,
+      body: 'why here?',
+      track: null,
+      parentId: null,
+      authorId: 'student-1',
+      createdAt: '2026-01-01T00:00:00Z',
+    },
+    {
+      id: 'ann-2',
+      blockIndex: 0,
+      startLine: 2,
+      endLine: 2,
+      body: 'good question',
+      track: null,
+      parentId: 'ann-1',
+      authorId: 'teacher-1',
+      createdAt: '2026-01-02T00:00:00Z',
+    },
+    {
+      id: 'ann-3',
+      blockIndex: 1,
+      startLine: 9,
+      endLine: 9,
+      body: 'missed this',
+      track: 'cx',
+      parentId: null,
+      authorId: 'teacher-1',
+      createdAt: '2026-01-03T00:00:00Z',
+    },
+  ];
+
+  it('marks the submission owner as origin "student" and every other author as "teacher"', () => {
+    const converted = fromGradedAnnotations(wire, 0, 'student-1');
+    expect(converted).toEqual([
+      { id: 'ann-1', range: { start: 2, end: 2 }, body: 'why here?', origin: 'student', createdAt: '2026-01-01T00:00:00Z' },
+      {
+        id: 'ann-2',
+        range: { start: 2, end: 2 },
+        body: 'good question',
+        origin: 'teacher',
+        parentId: 'ann-1',
+        createdAt: '2026-01-02T00:00:00Z',
+      },
+    ]);
+  });
+
+  it('includes a reply via the same blockIndex filter that finds its parent, without re-deriving the anchor', () => {
+    const converted = fromGradedAnnotations(wire, 1, 'student-1');
+    expect(converted).toEqual([
+      {
+        id: 'ann-3',
+        range: { start: 9, end: 9 },
+        body: 'missed this',
+        origin: 'teacher',
+        track: 'cx',
+        createdAt: '2026-01-03T00:00:00Z',
+      },
+    ]);
+  });
+});
+
+describe('toGradeAnnotationInputs', () => {
+  it('sends only pending annotations — anything already persisted is left alone', () => {
+    const persisted: Annotation = { id: 'ann-1', range: { start: 2, end: 2 }, body: 'why here?', origin: 'student' };
+    const pendingFlag: Annotation = {
+      id: 'local-1',
+      range: { start: 9, end: 9 },
+      body: 'missed this',
+      origin: 'teacher',
+      pending: true,
+    };
+    expect(toGradeAnnotationInputs([persisted, pendingFlag], 3)).toEqual([
+      { blockIndex: 3, startLine: 9, endLine: 9, body: 'missed this' },
+    ]);
+  });
+
+  it('sends a pending reply as {parentId, body} with no anchor fields', () => {
+    const pendingReply: Annotation = {
+      id: 'local-2',
+      range: { start: 2, end: 2 },
+      body: 'good catch',
+      origin: 'teacher',
+      parentId: 'ann-1',
+      pending: true,
+    };
+    expect(toGradeAnnotationInputs([pendingReply], 0)).toEqual([{ parentId: 'ann-1', body: 'good catch' }]);
+  });
+
+  it('carries track through only when present', () => {
+    const pendingFlag: Annotation = {
+      id: 'local-3',
+      range: { start: 1, end: 1 },
+      body: 'x',
+      origin: 'teacher',
+      track: 'cx',
+      pending: true,
+    };
+    expect(toGradeAnnotationInputs([pendingFlag], 0)).toEqual([
+      { blockIndex: 0, startLine: 1, endLine: 1, body: 'x', track: 'cx' },
     ]);
   });
 });

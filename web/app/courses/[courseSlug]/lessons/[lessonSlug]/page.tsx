@@ -1,11 +1,11 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { codeToHtml } from 'shiki';
 import type { Lesson, Submission } from '../../../../../src/lib/api';
-import { fetchLesson, fetchSubmission } from '../../../../../src/lib/api';
+import { fetchLesson, fetchMe, fetchSubmission } from '../../../../../src/lib/api';
 import { withAuthRedirect } from '../../../../../src/lib/require-auth';
 import type { components } from '../../../../../src/lib/api-types';
 import type { AuthorAnnotationInput } from '../../../../../src/lib/annotations';
+import { highlightCodeBlocks } from '../../../../../src/lib/highlight';
 import AnnotatableCode from './AnnotatableCode';
 import ExercisePanel from './ExercisePanel';
 import MarkCompleteButton from './MarkCompleteButton';
@@ -25,22 +25,7 @@ type CodeBlock = Extract<Block, { type: 'code' }>;
  */
 type AnnotatedCodeBlock = CodeBlock & { annotations?: AuthorAnnotationInput[] };
 
-// One dual-theme pair covers both colour schemes — see the shiki rules in
-// app/globals.css that decide which half paints, driven by
-// prefers-color-scheme (no JS theme switcher; that's Phase 4).
-const CODE_THEMES = { light: 'github-light', dark: 'github-dark-dimmed' } as const;
-
-// Highlighting happens here, at render time, never at import/build time
-// (CLAUDE.md rule 4). A language shiki doesn't recognise falls back to
-// plain text rather than failing the whole page.
-async function highlightCode(block: CodeBlock): Promise<string> {
-  const lang = block.lang ?? 'text';
-  try {
-    return await codeToHtml(block.source, { lang, themes: CODE_THEMES, defaultColor: false });
-  } catch {
-    return await codeToHtml(block.source, { lang: 'text', themes: CODE_THEMES, defaultColor: false });
-  }
-}
+const isCodeBlock = (block: Block): block is CodeBlock => block.type === 'code';
 
 export default async function LessonPage({
   params,
@@ -71,13 +56,12 @@ export default async function LessonPage({
       : null;
   const blocks: Block[] = submission ? submission.snapshot : lesson.blocks;
 
-  const codeIndexes = blocks
-    .map((block, index) => ({ block, index }))
-    .filter((entry): entry is { block: CodeBlock; index: number } => entry.block.type === 'code');
+  const highlighted = await highlightCodeBlocks(blocks, isCodeBlock);
 
-  const highlighted = new Map(
-    await Promise.all(codeIndexes.map(async ({ block, index }) => [index, await highlightCode(block)] as const)),
-  );
+  // Only exercises need this — it is how ExercisePanel tells the student's
+  // OWN annotations apart from a teacher's replies/flags once a submission
+  // is returned (design §9.4; see fromGradedAnnotations).
+  const me = lesson.kind === 'exercise' ? await fetchMe() : null;
 
   return (
     <main className={styles.page}>
@@ -88,9 +72,10 @@ export default async function LessonPage({
             courseSlug={courseSlug}
             lessonSlug={lesson.slug}
             blocks={blocks}
-            highlighted={Object.fromEntries(highlighted)}
+            highlighted={highlighted}
             initialSubmission={submission}
             progress={lesson.progress}
+            studentUserId={me!.id}
           />
         ) : (
           <div className={styles.body}>
@@ -110,7 +95,7 @@ export default async function LessonPage({
                 return (
                   <div key={index} className={styles.code}>
                     <AnnotatableCode
-                      html={highlighted.get(index) ?? ''}
+                      html={highlighted[index] ?? ''}
                       lang={block.lang ?? undefined}
                       mode="read"
                       authorAnnotations={(block as AnnotatedCodeBlock).annotations}
@@ -118,18 +103,27 @@ export default async function LessonPage({
                   </div>
                 );
               }
-              // block.type === 'quiz'. Design §9.1: not markable — the Quiz
-              // component owns scoring and completion for this lesson entirely
-              // through the .../quiz endpoint, never through MarkCompleteButton.
-              return (
-                <Quiz
-                  key={index}
-                  courseSlug={courseSlug}
-                  lessonSlug={lesson.slug}
-                  quiz={block}
-                  progress={lesson.progress}
-                />
-              );
+              if (block.type === 'quiz') {
+                // Design §9.1: not markable — the Quiz component owns scoring
+                // and completion for this lesson entirely through the
+                // .../quiz endpoint, never through MarkCompleteButton.
+                return (
+                  <Quiz
+                    key={index}
+                    courseSlug={courseSlug}
+                    lessonSlug={lesson.slug}
+                    quiz={block}
+                    progress={lesson.progress}
+                  />
+                );
+              }
+              // block.type === 'rubric'. Rubric blocks are declared beside
+              // an EXERCISE (design §9.4) and this branch only ever renders
+              // a lesson/quiz-kind lesson's blocks — ExercisePanel is what
+              // handles kind "exercise" above — so there is nothing to grade
+              // here. Rendered as nothing rather than crashed on, in case a
+              // future content shape ever puts one here.
+              return null;
             })}
           </div>
         )}

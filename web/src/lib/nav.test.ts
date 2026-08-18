@@ -1,17 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { isNavActive, NAV_DESTINATIONS, type NavDestination } from './nav';
+import { isNavActive, NAV_DESTINATIONS, visibleNavDestinations, type NavDestination } from './nav';
 
 const catalog = NAV_DESTINATIONS.find((d) => d.href === '/')!;
 const dashboard = NAV_DESTINATIONS.find((d) => d.href === '/me')!;
+const grading = NAV_DESTINATIONS.find((d) => d.href === '/grading')!;
 const admin = NAV_DESTINATIONS.find((d) => d.href === '/admin/imports')!;
 
 describe('NAV_DESTINATIONS', () => {
-  it('is exactly Catalog, Dashboard, and Admin', () => {
-    expect(NAV_DESTINATIONS.map((d) => d.href)).toEqual(['/', '/me', '/admin/imports']);
+  it('is exactly Catalog, Dashboard, Grading, and Admin', () => {
+    expect(NAV_DESTINATIONS.map((d) => d.href)).toEqual(['/', '/me', '/grading', '/admin/imports']);
   });
 
   it('labels the admin destination clearly as admin', () => {
     expect(admin.label).toBe('Admin');
+  });
+
+  it('marks Grading, and only Grading, restricted to teachers', () => {
+    expect(grading.restrictedToTeacher).toBe(true);
+    expect(catalog.restrictedToTeacher).toBeUndefined();
+    expect(dashboard.restrictedToTeacher).toBeUndefined();
+    expect(admin.restrictedToTeacher).toBeUndefined();
+  });
+});
+
+describe('visibleNavDestinations', () => {
+  it('drops Grading for a non-teacher', () => {
+    expect(visibleNavDestinations(false).map((d) => d.href)).toEqual(['/', '/me', '/admin/imports']);
+  });
+
+  it('keeps every destination, in order, for a teacher', () => {
+    expect(visibleNavDestinations(true).map((d) => d.href)).toEqual(['/', '/me', '/grading', '/admin/imports']);
   });
 });
 
@@ -43,5 +61,12 @@ describe('isNavActive', () => {
     expect(isNavActive('/admin/imports/stream', admin)).toBe(true);
     expect(isNavActive('/', admin)).toBe(false);
     expect(isNavActive('/me', admin)).toBe(false);
+  });
+
+  it('matches Grading exactly and while grading one submission, but not the catalog or dashboard', () => {
+    expect(isNavActive('/grading', grading)).toBe(true);
+    expect(isNavActive('/grading/anything', grading)).toBe(true);
+    expect(isNavActive('/', grading)).toBe(false);
+    expect(isNavActive('/me', grading)).toBe(false);
   });
 });

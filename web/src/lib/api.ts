@@ -23,6 +23,8 @@ export type QuizSubmitRequest = components['schemas']['QuizSubmitRequest'];
 export type QuizSubmitResult = components['schemas']['QuizSubmitResult'];
 export type Submission = components['schemas']['Submission'];
 export type SubmissionAnnotationInput = components['schemas']['SubmissionAnnotationInput'];
+export type GradingQueueItem = components['schemas']['GradingQueueItem'];
+export type GradeRequest = components['schemas']['GradeRequest'];
 export type Me = components['schemas']['Me'];
 export type ImportRunSummary = components['schemas']['ImportRunSummary'];
 export type ImportProgressEvent = components['schemas']['ImportProgressEvent'];
@@ -372,6 +374,106 @@ export async function submitSubmission(courseSlug: string, lessonSlug: string): 
   );
   if (!res.ok) {
     throw new Error(await errorMessage(res, `Failed to submit lesson "${lessonSlug}": ${res.status}`));
+  }
+  return (await res.json()) as Submission;
+}
+
+// =============================================================================
+// GRADING (design §9.4, Phase 9). Everything below is the TEACHER'S half of
+// the submissions API — routes/submissions.ts's grading section.
+// =============================================================================
+
+/**
+ * Every submission awaiting review across courses the actor owns (design
+ * §9.4), oldest first. Routed through `apiFetch` like every other
+ * route-guarded page fetch (Task B): a signed-out visitor or a student gets
+ * 403 from `submission:queue:read`, and that becomes `AuthRequiredError`
+ * here exactly like a 403 anywhere else in this client — the /grading page
+ * redirects to sign-in on it via `withAuthRedirect`, and the root layout
+ * (`fetchIsTeacher` below) instead treats it as "not a teacher".
+ */
+export async function fetchGradingQueue(): Promise<GradingQueueItem[]> {
+  const res = await apiFetch('/api/v1/grading/queue');
+  if (!res.ok) {
+    throw new Error(`Failed to fetch grading queue: ${res.status}`);
+  }
+  return (await res.json()) as GradingQueueItem[];
+}
+
+/**
+ * Whether the actor can reach the grading queue at all — the root layout's
+ * answer to "should Nav's Grading destination render" (design §9.4: "do not
+ * show it to students"). There is no `roles` field on Me to check directly
+ * (web has no database access of its own, CLAUDE.md rule 1), so this asks
+ * the API's own `submission:queue:read` role floor the same question
+ * `fetchGradingQueue` does, and treats an auth failure as "no" rather than
+ * letting it propagate — the shell renders for every visitor, signed in or
+ * not, so it must never throw where a page's own data-loading would.
+ */
+export async function fetchIsTeacher(): Promise<boolean> {
+  try {
+    await fetchGradingQueue();
+    return true;
+  } catch (err) {
+    if (err instanceof AuthRequiredError) return false;
+    throw err;
+  }
+}
+
+/**
+ * A teacher's view of one student's submission (design §9.4). Same payload
+ * `fetchSubmission` returns to the student themself, including
+ * `rubricScores`. Routed through `apiFetch`: a course the actor does not
+ * own answers 403 from `submission:grade`, which becomes `AuthRequiredError`
+ * here — the grading page redirects to sign-in on it via
+ * `withAuthRedirect`, the same treatment every other ownership-gated page in
+ * this app already gives a 403 (e.g. `fetchCourse`). 404 means this student
+ * has no submission for this lesson — a real, common state (they haven't
+ * done the exercise), not a failure — and becomes `null`.
+ */
+export async function fetchSubmissionForGrading(
+  courseSlug: string,
+  lessonSlug: string,
+  userId: string,
+): Promise<Submission | null> {
+  const res = await apiFetch(
+    `/api/v1/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lessonSlug)}/submissions/${encodeURIComponent(userId)}`,
+  );
+  if (res.status === 404) {
+    return null;
+  }
+  if (!res.ok) {
+    throw new Error(`Failed to fetch submission for grading: ${res.status}`);
+  }
+  return (await res.json()) as Submission;
+}
+
+/**
+ * Scores rubric criteria and/or adds annotations (replies and top-level
+ * flags), then returns the submission (design §9.4, Task C) — every call,
+ * including a re-grade, moves `status` to `returned`. Not routed through
+ * `apiFetch`: like `saveSubmissionDraft`, a refusal here (400 malformed
+ * input or an incomplete rubric, 409 still a draft) is an ordinary outcome
+ * the grading form shows as a message WITHOUT discarding what the teacher
+ * typed, not an auth failure to redirect away from.
+ */
+export async function gradeSubmission(
+  courseSlug: string,
+  lessonSlug: string,
+  userId: string,
+  body: GradeRequest,
+): Promise<Submission> {
+  const res = await fetch(
+    `${apiBase()}/api/v1/courses/${encodeURIComponent(courseSlug)}/lessons/${encodeURIComponent(lessonSlug)}/submissions/${encodeURIComponent(userId)}/grade`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      cache: 'no-store',
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `Failed to grade submission: ${res.status}`));
   }
   return (await res.json()) as Submission;
 }

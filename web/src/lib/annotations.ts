@@ -35,15 +35,33 @@ export interface Annotation {
   /**
    * `author` annotations come from the content repo and are read-only
    * everywhere (design §9.4: "in a lesson it carries author annotations,
-   * read-only"). `student` annotations are the ones this component's user
-   * writes. Editing and deleting check this, not the UI mode, so a stray
-   * call cannot rewrite content.
+   * read-only"). `student` annotations are the ones a student writes.
+   * `teacher` annotations are a grader's — either a reply to a student
+   * comment (`parentId` set) or a top-level annotation flagging a line the
+   * student missed (design §9.4). Editing and deleting check this, not the
+   * UI mode, so a stray call cannot rewrite content.
    */
-  origin: 'author' | 'student';
+  origin: 'author' | 'student' | 'teacher';
   /** Optional track id (design §6.1), rendered as a structural left rule only. */
   track?: string;
   /** ISO timestamp, used only for stable ordering of same-anchor annotations. */
   createdAt?: string;
+  /**
+   * Threading (design §9.4): set on a reply, naming the TOP-LEVEL annotation
+   * it answers. Always absent on a top-level annotation — threading is one
+   * level, so a reply's own `parentId` is never itself a reply's id.
+   */
+  parentId?: string;
+  /**
+   * True only for an annotation added locally this session that has not yet
+   * been persisted by a grade call (design §9.4's grading flow: replies and
+   * flagged lines are staged client-side and sent together when the teacher
+   * returns the submission). Only a `pending: true` annotation's id is a
+   * client-local id rather than a server one — which is also why only a
+   * non-pending (already persisted) top-level annotation can be replied to:
+   * the API's `parentId` must name a row that already exists.
+   */
+  pending?: boolean;
 }
 
 /** The content-model shape, from schemas/blocks.schema.json's `annotation`. */
@@ -207,6 +225,29 @@ export function annotationsCoveringLine(annotations: readonly Annotation[], line
 }
 
 /**
+ * Only the top-level annotations — the ones a line's gutter/card grouping
+ * should ever place directly on a line. Replies (design §9.4: one level of
+ * threading) render nested under their parent instead, via
+ * `repliesByParent`, so they must never also be grouped as if they were
+ * their own top-level comment on the same line.
+ */
+export function topLevelAnnotations(annotations: readonly Annotation[]): Annotation[] {
+  return annotations.filter((a) => !a.parentId);
+}
+
+/** Every reply, grouped by the top-level annotation id it answers, reading order within each group. */
+export function repliesByParent(annotations: readonly Annotation[]): Map<string, Annotation[]> {
+  const grouped = new Map<string, Annotation[]>();
+  for (const annotation of sortAnnotations(annotations)) {
+    if (!annotation.parentId) continue;
+    const bucket = grouped.get(annotation.parentId);
+    if (bucket) bucket.push(annotation);
+    else grouped.set(annotation.parentId, [annotation]);
+  }
+  return grouped;
+}
+
+/**
  * Files each annotation under the LAST line of its range, which is where the
  * component renders its card: you read the passage, then the comment on it —
  * the order a code review is read in.
@@ -286,11 +327,18 @@ export interface NewAnnotation {
   body: string;
   track?: string;
   createdAt?: string;
+  /** Defaults to `'student'` — the only origin the student-facing composer ever writes. */
+  origin?: 'student' | 'teacher';
+  /** Set when this is a reply to an existing top-level annotation (design §9.4). */
+  parentId?: string;
+  /** Set on every annotation a grading session adds — see `Annotation.pending`. */
+  pending?: boolean;
 }
 
 /**
- * Adds a student annotation. Returns the SAME array reference when the input
- * is refused, so a caller can treat identity as "nothing changed".
+ * Adds an annotation (student or, in grade mode, teacher). Returns the SAME
+ * array reference when the input is refused, so a caller can treat identity
+ * as "nothing changed".
  */
 export function addAnnotation(annotations: readonly Annotation[], next: NewAnnotation): Annotation[] {
   const body = next.body.trim();
@@ -303,9 +351,11 @@ export function addAnnotation(annotations: readonly Annotation[], next: NewAnnot
       id: next.id,
       range: next.range,
       body,
-      origin: 'student',
+      origin: next.origin ?? 'student',
       ...(next.track ? { track: next.track } : {}),
       ...(next.createdAt ? { createdAt: next.createdAt } : {}),
+      ...(next.parentId ? { parentId: next.parentId } : {}),
+      ...(next.pending ? { pending: true } : {}),
     },
   ]);
 }
@@ -433,4 +483,73 @@ export function fromSubmissionAnnotations(
         createdAt: a.createdAt,
       }))
   );
+}
+
+/**
+ * This block's slice of a submission's stored annotations, keeping teacher
+ * authorship distinct from the student's own (design §9.4: a returned
+ * submission may carry BOTH — the student's original comments and a
+ * teacher's replies/flags). `studentUserId` is the submission's owner (the
+ * route param on the grading view, the actor's own id on the student's read
+ * view); every other author on the submission is, by construction, a
+ * teacher who graded it — there is no third kind of writer.
+ *
+ * A reply's own `blockIndex`/`startLine`/`endLine` are not re-derived here:
+ * the API already writes them copied from the parent at grade time (see
+ * submissions.ts's `resolvedAnnotations`), so a reply is naturally included
+ * by the same `blockIndex` filter that finds its parent.
+ */
+export function fromGradedAnnotations(
+  wire: readonly SubmissionAnnotationWire[],
+  blockIndex: number,
+  studentUserId: string
+): Annotation[] {
+  return sortAnnotations(
+    wire
+      .filter((a) => a.blockIndex === blockIndex)
+      .map((a) => ({
+        id: a.id,
+        range: { start: a.startLine, end: a.endLine },
+        body: a.body,
+        origin: a.authorId === studentUserId ? ('student' as const) : ('teacher' as const),
+        ...(a.track ? { track: a.track } : {}),
+        ...(a.parentId ? { parentId: a.parentId } : {}),
+        createdAt: a.createdAt,
+      }))
+  );
+}
+
+/** One annotation as POST .../grade's body wants it (submissions.ts's `GradeAnnotationInput`). */
+export type GradeAnnotationInput =
+  | { parentId: string; body: string; track?: string }
+  | { parentId?: null; blockIndex: number; startLine: number; endLine: number; body: string; track?: string };
+
+/**
+ * This block's newly-added grading annotations (replies and flagged lines),
+ * as the grade-request body wants them. Only `pending` annotations are
+ * converted — everything else in the local list is already persisted (it
+ * came from the submission's own wire annotations), and design §9.4's grade
+ * route only ever INSERTS, never re-sends what is already stored. A reply
+ * carries no anchor of its own (the API derives it from the parent it
+ * answers), so its object omits blockIndex/startLine/endLine entirely
+ * rather than sending them as `undefined` — the shape itself says which
+ * kind of annotation this is.
+ */
+export function toGradeAnnotationInputs(
+  annotations: readonly Annotation[],
+  blockIndex: number
+): GradeAnnotationInput[] {
+  return annotations
+    .filter((a) => a.pending === true)
+    .map((a) =>
+      a.parentId
+        ? { parentId: a.parentId, body: a.body, ...(a.track ? { track: a.track } : {}) }
+        : {
+            blockIndex,
+            startLine: a.range.start,
+            endLine: a.range.end,
+            body: a.body,
+            ...(a.track ? { track: a.track } : {}),
+          }
+    );
 }

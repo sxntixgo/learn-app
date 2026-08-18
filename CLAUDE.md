@@ -60,6 +60,11 @@ for the design and `docs/plans/2026-08-15-learning-platform-plan.md` for the pha
 - **Vitest runs with `fileParallelism: false`** — the DB-touching test files share one test
   database and race otherwise.
 - Test databases: apply migrations first, and clean up rows you create.
+- **`npm run typecheck` does NOT cover `web/`.** Next generates its own tsconfig outside the
+  root project's references, so `next build` is the only thing that type-checks the web app.
+  CI runs it (added Phase 9, after nine phases in which web type errors could reach `main`
+  undetected). When verifying web work, run `cd web && npx next build` — a clean
+  `npm run typecheck` says nothing about it.
 
 ## Public repository
 

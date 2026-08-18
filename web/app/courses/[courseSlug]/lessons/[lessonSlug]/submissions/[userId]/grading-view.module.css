@@ -1,0 +1,237 @@
+/*
+ * The grading view (design §9.4). Same three-measure layout as
+ * lesson.module.css (prose column, code breakout) — a teacher reading a
+ * student's submission is reading the same kind of content the student
+ * read, so it keeps the same shape. The rubric form and the return control
+ * are new, sized to the same 44px touch targets as everything else (§14.2:
+ * grading on a phone is a real use case).
+ */
+
+.page {
+  max-width: var(--measure-full, 76ch);
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+.back {
+  display: inline-block;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  color: var(--color-link);
+  text-decoration: none;
+}
+
+.back:hover {
+  text-decoration: underline;
+}
+
+.title {
+  font-size: clamp(1.4rem, 4vw + 0.5rem, 2.2rem);
+  margin: 0 0 0.25rem;
+}
+
+.subtitle {
+  margin: 0 0 0.4rem;
+  color: var(--color-text-secondary);
+}
+
+.status {
+  margin: 0 0 2rem;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.prose {
+  max-width: var(--measure-prose, 46ch);
+  margin-inline: auto;
+  font-size: 1.0625rem;
+  line-height: 1.65;
+}
+
+.prose :global(p),
+.prose :global(ul),
+.prose :global(ol),
+.prose :global(blockquote) {
+  margin: 0 0 1em;
+}
+
+.code {
+  max-width: var(--measure-breakout, 70ch);
+  width: 100%;
+  margin-inline: auto;
+}
+
+/*
+ * The rubric form — same bordered-card idiom as lesson.module.css's read-only
+ * .rubric, but with a real input per criterion instead of a score span.
+ */
+.rubric {
+  max-width: var(--measure-prose, 46ch);
+  margin: 1.75rem auto;
+  padding: 1.25rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 8px;
+  background: var(--color-surface-raised);
+}
+
+.rubricTitle {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.rubricList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.rubricRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border-hairline);
+}
+
+.rubricRow:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.rubricLabel {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rubricName {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-weight: 500;
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+
+.rubricTrack {
+  padding: 0 0.4rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-tag-text);
+}
+
+.rubricMax {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.rubricInput {
+  min-height: 44px;
+  width: 100%;
+  max-width: 10rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 8px;
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 0.95rem;
+}
+
+.rubricInput:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 1px;
+}
+
+.rubricInput[aria-invalid='true'] {
+  border-color: var(--color-accent-yellow);
+}
+
+.rubricProblem {
+  margin: 0;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--color-accent-yellow);
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+}
+
+/*
+ * The return control — its OWN section, visually set apart from the rubric
+ * (a wide top border, generous margin) so returning reads as its own
+ * deliberate step, never a side effect of the fields above it.
+ */
+.returnControl {
+  max-width: var(--measure-prose, 46ch);
+  margin: 2rem auto 0;
+  padding-top: 1.5rem;
+  border-top: 2px solid var(--color-border-hairline);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.returnStatus {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.returnError {
+  margin: 0;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--color-accent-yellow);
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.returnButton {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.7rem 1.5rem;
+  border: 1px solid var(--color-link);
+  border-radius: 8px;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background-color 120ms ease-out;
+}
+
+.returnButton:hover:not(:disabled) {
+  background: var(--color-page);
+}
+
+.returnButton:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.returnButton:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .returnButton {
+    transition: none;
+  }
+}

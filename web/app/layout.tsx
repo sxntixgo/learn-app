@@ -3,7 +3,7 @@ import { ReactNode } from 'react';
 import { cookies } from 'next/headers';
 import { IBM_Plex_Mono, Libre_Franklin, Source_Serif_4 } from 'next/font/google';
 import { resolveThemePreference, THEME_COOKIE_NAME, themeDataAttribute } from '../src/lib/theme';
-import { fetchMeOrNull } from '../src/lib/api';
+import { fetchIsTeacher, fetchMeOrNull } from '../src/lib/api';
 import Shell from './_shell/Shell';
 import './globals.css';
 
@@ -67,6 +67,15 @@ export default async function RootLayout({
   // required, Task B).
   const user = await fetchMeOrNull();
 
+  // Design §9.4 / the grading UI brief: Grading must not show to students.
+  // There is no `roles` field on Me (web has no database of its own,
+  // CLAUDE.md rule 1), so this asks the same question the API's own
+  // `submission:queue:read` role floor answers: can this actor reach the
+  // grading queue at all. Skipped entirely when signed out — Nav renders
+  // nothing for that visitor regardless (see Shell), so the extra request
+  // would be pure waste.
+  const isTeacher = user !== null && (await fetchIsTeacher());
+
   return (
     <html
       lang="en"
@@ -74,7 +83,7 @@ export default async function RootLayout({
       className={`${libreFranklin.variable} ${sourceSerif4.variable} ${ibmPlexMono.variable}`}
     >
       <body>
-        <Shell theme={theme} user={user}>
+        <Shell theme={theme} user={user} isTeacher={isTeacher}>
           {children}
         </Shell>
       </body>

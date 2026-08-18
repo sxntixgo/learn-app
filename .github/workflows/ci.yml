@@ -69,5 +69,13 @@ jobs:
       - name: Tests
         run: npm test
 
+      # `npm run typecheck` does NOT cover web/: Next generates its own
+      # tsconfig, which is not in the root project's references. So `next build`
+      # is the only thing that type-checks the web app — and until now CI never
+      # ran it, meaning web type errors could reach main undetected. Two real
+      # bugs were found this way in Phase 9 alone.
+      - name: Build web
+        run: npm run build --workspace web
+
       - name: Check generated API types are up-to-date
         run: npm run gen:api:check

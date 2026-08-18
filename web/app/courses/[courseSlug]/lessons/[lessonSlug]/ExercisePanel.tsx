@@ -39,9 +39,10 @@ import { useRouter } from 'next/navigation';
 import type { Lesson, Submission, SubmissionAnnotationInput } from '../../../../../src/lib/api';
 import type { components } from '../../../../../src/lib/api-types';
 import type { Annotation, AuthorAnnotationInput } from '../../../../../src/lib/annotations';
-import { fromSubmissionAnnotations, toSubmissionAnnotationInputs } from '../../../../../src/lib/annotations';
+import { fromGradedAnnotations, toSubmissionAnnotationInputs } from '../../../../../src/lib/annotations';
 import AnnotatableCode from './AnnotatableCode';
 import Quiz from './Quiz';
+import RubricDisplay from './RubricDisplay';
 import { saveSubmissionDraftAction, submitExerciseAction } from './actions';
 import styles from './lesson.module.css';
 
@@ -67,16 +68,28 @@ export interface ExercisePanelProps {
   highlighted: Record<string, string>;
   initialSubmission: Submission | null;
   progress: Lesson['progress'];
+  /**
+   * The actor's own user id (design §9.4: a submission's annotations may
+   * carry the student's OWN notes and a teacher's replies/flags once
+   * returned; `authorId === studentUserId` is what tells the two apart —
+   * see `fromGradedAnnotations`). This route only ever renders the actor's
+   * own submission, so this is always "self".
+   */
+  studentUserId: string;
 }
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
-function initialAnnotationsByBlock(blocks: Block[], submission: Submission | null): Record<number, Annotation[]> {
+function initialAnnotationsByBlock(
+  blocks: Block[],
+  submission: Submission | null,
+  studentUserId: string,
+): Record<number, Annotation[]> {
   const map: Record<number, Annotation[]> = {};
   if (!submission) return map;
   blocks.forEach((block, index) => {
     if (block.type !== 'code') return;
-    const forBlock = fromSubmissionAnnotations(submission.annotations, index);
+    const forBlock = fromGradedAnnotations(submission.annotations, index, studentUserId);
     if (forBlock.length > 0) map[index] = forBlock;
   });
   return map;
@@ -89,6 +102,7 @@ export default function ExercisePanel({
   highlighted,
   initialSubmission,
   progress,
+  studentUserId,
 }: ExercisePanelProps) {
   const router = useRouter();
   const [submission, setSubmission] = useState<Submission | null>(initialSubmission);
@@ -106,7 +120,9 @@ export default function ExercisePanel({
   // and reading it synchronously (rather than via a stale closure over
   // state) is what keeps two saves fired in quick succession from racing
   // each other's payload.
-  const annotationsRef = useRef<Record<number, Annotation[]>>(initialAnnotationsByBlock(blocks, initialSubmission));
+  const annotationsRef = useRef<Record<number, Annotation[]>>(
+    initialAnnotationsByBlock(blocks, initialSubmission, studentUserId),
+  );
   const saveSeqRef = useRef(0);
 
   // Design §9.1: submitted or returned is finished work. The API refuses a
@@ -189,10 +205,25 @@ export default function ExercisePanel({
                   mode="annotate"
                   readOnly={readOnly}
                   authorAnnotations={codeBlock.annotations}
-                  initialAnnotations={submission ? fromSubmissionAnnotations(submission.annotations, index) : []}
+                  initialAnnotations={
+                    submission ? fromGradedAnnotations(submission.annotations, index, studentUserId) : []
+                  }
                   onChange={readOnly ? undefined : (next) => handleBlockChange(index, next)}
                 />
               </div>
+            );
+          }
+          if (block.type === 'rubric') {
+            // Design §9.4: "students read the criteria before submitting" —
+            // rendered read-only, in place, exactly where the author put it
+            // among the exercise's other blocks. The teacher's own scoring
+            // UI is a separate, interactive component on the grading view.
+            return (
+              <RubricDisplay
+                key={index}
+                criteria={block.criteria}
+                scores={submission?.status === 'returned' ? submission.rubricScores : undefined}
+              />
             );
           }
           return (

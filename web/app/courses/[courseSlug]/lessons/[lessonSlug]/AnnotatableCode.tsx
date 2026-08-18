@@ -66,9 +66,11 @@ import {
   groupAnnotationsByEndLine,
   partitionAnnotations,
   removeAnnotation,
+  repliesByParent,
   selectLine,
   sortAnnotations,
   splitHighlightedLines,
+  topLevelAnnotations,
   updateAnnotation,
   type Annotation,
   type AuthorAnnotationInput,
@@ -78,18 +80,32 @@ import styles from './annotatable-code.module.css';
 
 export type { Annotation };
 
+/** Author → "Author", teacher → "Teacher", anything else (a student's own) → "You". Callers override for the other side of a conversation (design §9.4: a teacher grading sees the STUDENT'S notes as not-theirs; the student reading a return sees the TEACHER'S notes as not-theirs — this default already gets both right without an override). */
+function defaultOriginLabel(annotation: Annotation): string {
+  if (annotation.origin === 'author') return 'Author';
+  if (annotation.origin === 'teacher') return 'Teacher';
+  return 'You';
+}
+
 export interface AnnotatableCodeProps {
   /** Shiki's rendered HTML for the whole block — highlighting stays at render time (CLAUDE.md rule 4). */
   html: string;
-  /** `read`: author annotations, read-only (a lesson). `annotate`: the student writes (an exercise). */
-  mode?: 'read' | 'annotate';
+  /**
+   * `read`: author annotations, read-only (a lesson), plus a student's own
+   * plus any teacher replies/flags once returned (design §9.4). `annotate`:
+   * the student writes (an exercise). `grade`: a teacher replies to the
+   * student's annotations and flags lines the student missed (the grading
+   * view) — design §9.4 calls the second "the more instructive of the two",
+   * so both are always-visible controls, never one hidden behind the other.
+   */
+  mode?: 'read' | 'annotate' | 'grade';
   /** Language label for the header chip, e.g. "ts". */
   lang?: string | null;
   /** Author annotations from the content repo (design §6.3 `[!note]` markers). */
   authorAnnotations?: readonly AuthorAnnotationInput[];
-  /** Student annotations to start from — e.g. a draft restored by the caller. */
+  /** Annotations to start from — e.g. a draft restored by the caller, or a submission's stored annotations. */
   initialAnnotations?: readonly Annotation[];
-  /** Fired with the student's annotations whenever they change. Persistence is the caller's job. */
+  /** Fired with the FULL current annotation list whenever it changes. Persistence is the caller's job — in `grade` mode, only the `pending: true` entries are new (see `toGradeAnnotationInputs`). */
   onChange?: (annotations: Annotation[]) => void;
   /**
    * Locks a `mode="annotate"` block into read behaviour once a submission is
@@ -101,9 +117,14 @@ export interface AnnotatableCodeProps {
    * the header wording's baseline; `readOnly` overrides the *behaviour*.
    */
   readOnly?: boolean;
+  /** Card label per annotation — see `defaultOriginLabel`. Override when the viewer is the OTHER party in the conversation. */
+  originLabel?: (annotation: Annotation) => string;
 }
 
-type Composer = { kind: 'create'; range: LineRange } | { kind: 'edit'; id: string };
+type Composer =
+  | { kind: 'create'; range: LineRange }
+  | { kind: 'edit'; id: string }
+  | { kind: 'reply'; parentId: string; range: LineRange };
 
 export default function AnnotatableCode({
   html,
@@ -113,15 +134,22 @@ export default function AnnotatableCode({
   initialAnnotations,
   onChange,
   readOnly = false,
+  originLabel = defaultOriginLabel,
 }: AnnotatableCodeProps) {
   // The mode that actually governs behaviour below: a submitted exercise
   // passes mode="annotate" (so the header still reads as an exercise) with
   // readOnly=true, and every interactive branch checks THIS, not `mode`.
+  // `grade` is never forced to `read` — a teacher stays able to reply/flag
+  // regardless of `readOnly`, which this component never receives in grade
+  // mode anyway (the grading view has no draft to lock).
   const effectiveMode = readOnly ? 'read' : mode;
   const domId = useId();
   const { style, lines } = useMemo(() => splitHighlightedLines(html), [html]);
   const lineCount = lines.length;
 
+  // Named for its original (student-draft) use; in `grade` mode this same
+  // state holds every LOCALLY ADDED reply/flag too (origin 'teacher',
+  // pending: true) — see the module doc on `onChange`.
   const [studentAnnotations, setStudentAnnotations] = useState<Annotation[]>(() =>
     sortAnnotations(initialAnnotations ?? [])
   );
@@ -144,12 +172,23 @@ export default function AnnotatableCode({
     () => partitionAnnotations([...authored, ...studentAnnotations], lineCount),
     [authored, studentAnnotations, lineCount]
   );
-  const cardsByLine = useMemo(() => groupAnnotationsByEndLine(anchored), [anchored]);
+  // Threading (design §9.4): a reply never gets its own line grouping — it
+  // renders nested under the top-level annotation it answers instead, via
+  // `replies`. `topLevel`/`orphanedTopLevel` are what every line/count/orphan
+  // computation below uses, so a reply can never double-appear as if it were
+  // its own comment on the line.
+  const topLevel = useMemo(() => topLevelAnnotations(anchored), [anchored]);
+  const orphanedTopLevel = useMemo(() => topLevelAnnotations(orphaned), [orphaned]);
+  const replies = useMemo(() => repliesByParent(anchored), [anchored]);
+  const cardsByLine = useMemo(() => groupAnnotationsByEndLine(topLevel), [topLevel]);
 
   // A read-only block with no annotations is just a code block: no per-line
   // controls, no readout, nothing to tab through. Only blocks that actually
-  // carry (or accept) annotations pay the interaction cost.
-  const interactive = effectiveMode === 'annotate' || anchored.length > 0 || orphaned.length > 0;
+  // carry (or accept) annotations pay the interaction cost. `grade` is
+  // always interactive — a teacher can flag any line, even one with nothing
+  // on it yet.
+  const interactive =
+    effectiveMode === 'annotate' || effectiveMode === 'grade' || topLevel.length > 0 || orphanedTopLevel.length > 0;
 
   const onChangeRef = useRef(onChange);
   useEffect(() => {
@@ -175,14 +214,14 @@ export default function AnnotatableCode({
 
   const announceSelection = useCallback(
     (range: LineRange) => {
-      const covering = annotationsCoveringLine(anchored, range.start).length;
+      const covering = annotationsCoveringLine(topLevel, range.start).length;
       const notes =
         range.start === range.end && covering > 0
           ? `, ${covering} annotation${covering === 1 ? '' : 's'} here`
           : '';
       setStatus(`Selected ${describeRange(range)}${notes}.`);
     },
-    [anchored]
+    [topLevel]
   );
 
   const select = useCallback(
@@ -220,7 +259,7 @@ export default function AnnotatableCode({
         select(line);
         return;
       }
-      if (effectiveMode === 'annotate') {
+      if (effectiveMode === 'annotate' || effectiveMode === 'grade') {
         openComposer({ start: line, end: line });
         return;
       }
@@ -286,16 +325,46 @@ export default function AnnotatableCode({
     if (!body || !composer) return;
 
     if (composer.kind === 'create') {
-      const id = `student-${domId}-${nextId.current++}`;
+      // `annotate`: the student's own note. `grade`: a top-level teacher
+      // annotation flagging a line the student missed (design §9.4) — staged
+      // locally (`pending: true`) until the teacher's own explicit "Return"
+      // action sends it (see toGradeAnnotationInputs).
+      const isGrading = effectiveMode === 'grade';
+      const id = `${isGrading ? 'teacher' : 'student'}-${domId}-${nextId.current++}`;
       setStudentAnnotations((current) =>
         addAnnotation(current, {
           id,
           range: composer.range,
           body,
           createdAt: new Date().toISOString(),
+          ...(isGrading ? { origin: 'teacher' as const, pending: true } : {}),
         })
       );
-      setStatus(`Annotation added on ${describeRange(composer.range)}.`);
+      setStatus(
+        isGrading
+          ? `Flagged ${describeRange(composer.range)} for the student.`
+          : `Annotation added on ${describeRange(composer.range)}.`
+      );
+      setComposer(null);
+      setDraft('');
+      focusLineButton(composer.range.end);
+      return;
+    }
+
+    if (composer.kind === 'reply') {
+      const id = `teacher-${domId}-${nextId.current++}`;
+      setStudentAnnotations((current) =>
+        addAnnotation(current, {
+          id,
+          range: composer.range,
+          body,
+          createdAt: new Date().toISOString(),
+          origin: 'teacher',
+          parentId: composer.parentId,
+          pending: true,
+        })
+      );
+      setStatus(`Reply added on ${describeRange(composer.range)}.`);
       setComposer(null);
       setDraft('');
       focusLineButton(composer.range.end);
@@ -315,13 +384,20 @@ export default function AnnotatableCode({
     // disappears, or it falls back to the document and the keyboard user
     // loses their place in the code.
     const line =
-      composer?.kind === 'create'
+      composer?.kind === 'create' || composer?.kind === 'reply'
         ? composer.range.end
         : (anchored.find((a) => a.id === composer?.id)?.range.end ?? null);
+    const wasReply = composer?.kind === 'reply';
     setComposer(null);
     setDraft('');
-    setStatus('Editing cancelled.');
+    setStatus(wasReply ? 'Reply cancelled.' : 'Editing cancelled.');
     if (line) focusLineButton(line);
+  }
+
+  function startReply(annotation: Annotation) {
+    setDraft('');
+    setComposer({ kind: 'reply', parentId: annotation.id, range: annotation.range });
+    setStatus(`Replying to ${originLabel(annotation)}'s annotation on ${describeRange(annotation.range)}.`);
   }
 
   function deleteAnnotation(annotation: Annotation) {
@@ -352,14 +428,24 @@ export default function AnnotatableCode({
 
   const editingId = composer?.kind === 'edit' ? composer.id : null;
   const composerLine = composer?.kind === 'create' ? composer.range.end : null;
+  const replyParentId = composer?.kind === 'reply' ? composer.parentId : null;
   const headerId = `${domId}-header`;
 
   function renderComposer(range: LineRange, existing: Annotation | null) {
     const fieldId = `${domId}-composer`;
+    const isReply = composer?.kind === 'reply';
+    const isFlag = composer?.kind === 'create' && effectiveMode === 'grade';
+    const label = existing
+      ? 'Edit your annotation on '
+      : isReply
+        ? 'Your reply, on '
+        : isFlag
+          ? 'Flag on '
+          : 'Your annotation on ';
     return (
       <div className={styles.composer}>
         <label className={styles.composerLabel} htmlFor={fieldId}>
-          {existing ? 'Edit your annotation on ' : 'Your annotation on '}
+          {label}
           {describeRange(range)}
         </label>
         <textarea
@@ -383,7 +469,7 @@ export default function AnnotatableCode({
         />
         <div className={styles.composerActions}>
           <button type="button" className={styles.primaryButton} onClick={saveComposer} disabled={!draft.trim()}>
-            Save annotation
+            {isReply ? 'Save reply' : isFlag ? 'Save flag' : 'Save annotation'}
           </button>
           <button type="button" className={styles.button} onClick={cancelComposer}>
             Cancel
@@ -408,16 +494,18 @@ export default function AnnotatableCode({
     >
       <header className={styles.header}>
         <h3 className={styles.headerTitle} id={headerId}>
-          {mode === 'annotate' ? 'Code to annotate' : 'Code'}
+          {mode === 'annotate' ? 'Code to annotate' : mode === 'grade' ? 'Code under review' : 'Code'}
           {lang ? <span className={styles.langChip}>{lang}</span> : null}
         </h3>
         {interactive ? (
           <p className={styles.headerHint}>
             {readOnly
-              ? `Submitted — ${anchored.length} annotation${anchored.length === 1 ? '' : 's'}. Select a line to hear what is on it.`
+              ? `Submitted — ${topLevel.length} annotation${topLevel.length === 1 ? '' : 's'}. Select a line to hear what is on it.`
               : effectiveMode === 'annotate'
                 ? 'Select a line, then add a note. Arrow keys move; Shift+Arrow selects a range.'
-                : `${anchored.length} annotation${anchored.length === 1 ? '' : 's'}. Select a line to hear what is on it.`}
+                : effectiveMode === 'grade'
+                  ? 'Reply under any comment, or select a line to flag one the student missed.'
+                  : `${topLevel.length} annotation${topLevel.length === 1 ? '' : 's'}. Select a line to hear what is on it.`}
           </p>
         ) : null}
       </header>
@@ -434,7 +522,7 @@ export default function AnnotatableCode({
         <ol className={styles.lines} onKeyDown={interactive ? onListKeyDown : undefined}>
           {lines.map((lineHtml, index) => {
             const line = index + 1;
-            const covering = annotationsCoveringLine(anchored, line);
+            const covering = annotationsCoveringLine(topLevel, line);
             const selected = selection !== null && selection.start <= line && line <= selection.end;
             const cards = cardsByLine.get(line) ?? [];
 
@@ -493,8 +581,11 @@ export default function AnnotatableCode({
                   <code className={styles.lineCode} dangerouslySetInnerHTML={{ __html: lineHtml }} />
                 </div>
 
-                {cards.map((annotation) =>
-                  editingId === annotation.id ? (
+                {cards.map((annotation) => {
+                  const canReply = effectiveMode === 'grade' && !annotation.pending;
+                  const annotationReplies = replies.get(annotation.id) ?? [];
+
+                  return editingId === annotation.id ? (
                     <div key={annotation.id} className={styles.cardSlot}>
                       {renderComposer(annotation.range, annotation)}
                     </div>
@@ -509,19 +600,15 @@ export default function AnnotatableCode({
                           if (node) cardRefs.current.set(annotation.id, node);
                           else cardRefs.current.delete(annotation.id);
                         }}
-                        aria-label={`${
-                          annotation.origin === 'author' ? 'Author annotation' : 'Your annotation'
-                        } on ${describeRange(annotation.range)}`}
+                        aria-label={`${originLabel(annotation)}'s annotation on ${describeRange(annotation.range)}`}
                       >
                         <p className={styles.cardMeta}>
                           <span className={styles.cardRange}>{formatRangeLabel(annotation.range)}</span>
-                          <span className={styles.cardOrigin}>
-                            {annotation.origin === 'author' ? 'Author' : 'You'}
-                          </span>
+                          <span className={styles.cardOrigin}>{originLabel(annotation)}</span>
                           {annotation.track ? <span className={styles.cardTrack}>{annotation.track}</span> : null}
                         </p>
                         <p className={styles.cardBody}>{annotation.body}</p>
-                        {annotation.origin === 'student' && !readOnly ? (
+                        {annotation.origin === 'student' && effectiveMode === 'annotate' ? (
                           <p className={styles.cardActions}>
                             <button type="button" className={styles.button} onClick={() => startEdit(annotation)}>
                               Edit<span className={styles.srOnly}> annotation on {describeRange(annotation.range)}</span>
@@ -536,10 +623,46 @@ export default function AnnotatableCode({
                             </button>
                           </p>
                         ) : null}
+                        {/*
+                         * Reply is ALWAYS a visible button, never a hover-only
+                         * affordance or a menu item (§14.2) — design §9.4 asks
+                         * for both "reply" and "flag a missed line" to be
+                         * equally obvious, not one buried under the other.
+                         */}
+                        {canReply ? (
+                          <p className={styles.cardActions}>
+                            <button type="button" className={styles.button} onClick={() => startReply(annotation)}>
+                              Reply<span className={styles.srOnly}> to the annotation on {describeRange(annotation.range)}</span>
+                            </button>
+                          </p>
+                        ) : null}
                       </article>
+
+                      {annotationReplies.length > 0 ? (
+                        <ul className={styles.replyList}>
+                          {annotationReplies.map((reply) => (
+                            <li key={reply.id} className={styles.replySlot}>
+                              <article
+                                className={styles.replyCard}
+                                aria-label={`${originLabel(reply)}'s reply on ${describeRange(annotation.range)}`}
+                              >
+                                <p className={styles.cardMeta}>
+                                  <span className={styles.cardOrigin}>{originLabel(reply)}</span>
+                                  {reply.pending ? <span className={styles.cardPending}>Not sent yet</span> : null}
+                                </p>
+                                <p className={styles.cardBody}>{reply.body}</p>
+                              </article>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+
+                      {replyParentId === annotation.id ? (
+                        <div className={styles.cardSlot}>{renderComposer(annotation.range, null)}</div>
+                      ) : null}
                     </div>
-                  )
-                )}
+                  );
+                })}
 
                 {composerLine === line && composer?.kind === 'create' ? (
                   <div className={styles.cardSlot}>{renderComposer(composer.range, null)}</div>
@@ -550,11 +673,15 @@ export default function AnnotatableCode({
         </ol>
       </div>
 
-      {effectiveMode === 'annotate' ? (
+      {effectiveMode === 'annotate' || effectiveMode === 'grade' ? (
         /*
          * The action bar is sticky to the bottom of the block, so on a phone
          * it is still there after scrolling forty lines of code — the
          * affordance never goes off screen, and it never depends on hover.
+         * This is the OTHER half of design §9.4's "both obviously
+         * available" pair in grade mode: Reply lives on each card above;
+         * flagging a missed line lives here, always visible, never behind
+         * a menu.
          */
         <div className={styles.bar}>
           {selection ? (
@@ -605,9 +732,13 @@ export default function AnnotatableCode({
                   type="button"
                   className={styles.primaryButton}
                   onClick={() => openComposer(selection)}
-                  aria-label={`Add an annotation on ${describeRange(selection)}`}
+                  aria-label={
+                    effectiveMode === 'grade'
+                      ? `Flag ${describeRange(selection)} for the student`
+                      : `Add an annotation on ${describeRange(selection)}`
+                  }
                 >
-                  Add note
+                  {effectiveMode === 'grade' ? 'Flag this line' : 'Add note'}
                 </button>
                 <button
                   type="button"
@@ -633,7 +764,7 @@ export default function AnnotatableCode({
                   className={styles.primaryButton}
                   onClick={() => openComposer({ start: focusLine, end: focusLine })}
                 >
-                  Annotate line {focusLine}
+                  {effectiveMode === 'grade' ? `Flag line ${focusLine}` : `Annotate line ${focusLine}`}
                 </button>
               </div>
             </>
@@ -641,7 +772,7 @@ export default function AnnotatableCode({
         </div>
       ) : null}
 
-      {orphaned.length > 0 ? (
+      {orphanedTopLevel.length > 0 ? (
         /*
          * Anchors are never silently moved (design §9.4). If an annotation no
          * longer fits the code it was written against, it is shown here
@@ -649,9 +780,9 @@ export default function AnnotatableCode({
          */
         <section className={styles.orphans} aria-label="Annotations that no longer match this code">
           <h4 className={styles.orphansTitle}>
-            {orphaned.length} annotation{orphaned.length === 1 ? '' : 's'} no longer match this code
+            {orphanedTopLevel.length} annotation{orphanedTopLevel.length === 1 ? '' : 's'} no longer match this code
           </h4>
-          {orphaned.map((annotation) => (
+          {orphanedTopLevel.map((annotation) => (
             <article key={annotation.id} className={styles.card} data-origin={annotation.origin}>
               <p className={styles.cardMeta}>
                 <span className={styles.cardRange}>{formatRangeLabel(annotation.range)}</span>

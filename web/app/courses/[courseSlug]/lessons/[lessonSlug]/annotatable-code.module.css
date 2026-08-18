@@ -132,7 +132,8 @@ div.lineRow {
  * about which line it meant. The remaining gap to 44px is covered by making
  * a mis-tap free to correct (the ± steppers in the bar), never by hover.
  */
-section.block[data-mode='annotate'] div.lineRow {
+section.block[data-mode='annotate'] div.lineRow,
+section.block[data-mode='grade'] div.lineRow {
   min-height: var(--space-5);
 }
 
@@ -242,7 +243,8 @@ button.gutter {
   white-space: normal;
 }
 
-.block .card[data-origin='student'] {
+.block .card[data-origin='student'],
+.block .card[data-origin='teacher'] {
   border-left-color: var(--color-link);
 }
 
@@ -298,6 +300,50 @@ button.gutter {
   flex-wrap: wrap;
   gap: var(--space-1);
   margin: var(--space-1) 0 0;
+}
+
+/* ---------- threaded replies (design §9.4, grading) ---------- */
+
+/*
+ * Nested under the top-level card they answer, indented from the card's own
+ * left edge rather than the gutter — a reply is a sub-item of the comment
+ * above it, not a sibling of it.
+ */
+.block .replyList {
+  margin: 0;
+  padding: 0 0 0 var(--space-3);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.block .replySlot {
+  padding: 0 var(--space-1) var(--space-1) 44px;
+}
+
+.block .replyCard {
+  display: block;
+  max-width: var(--measure-prose);
+  width: min(var(--measure-prose), 100cqi - var(--space-6) - var(--space-3));
+  padding: var(--space-1) var(--space-2);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-left: var(--border-regular) solid var(--color-link);
+  border-radius: var(--radius-sm);
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-serif), 'Source Serif 4', serif;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+/* A reply staged this session but not yet sent — plain text, not colour alone. */
+.block .cardPending {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
 }
 
 /* ---------- composer ---------- */
