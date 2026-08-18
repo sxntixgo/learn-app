@@ -938,6 +938,7 @@ export interface components {
              * @description When this progress row was last written.
              */
             updatedAt: string;
+            awarded: components["schemas"]["AwardNotice"];
         };
         /** @description A partial update to the actor's progress on a lesson. */
         ProgressUpsertRequest: {
@@ -1017,6 +1018,7 @@ export interface components {
                 [key: string]: components["schemas"]["QuizTrackScore"];
             };
             attempt: components["schemas"]["QuizAttemptRef"];
+            awarded: components["schemas"]["AwardNotice"];
         };
         /**
          * @description A submission's lifecycle state (design §9.1/§9.4). `draft` accepts further PUT saves; `submitted` and `returned` are finished work and refuse them (409). Only `submitted` and `returned` have completed the lesson.
@@ -1116,6 +1118,8 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+            /** @description Present only on the response to POST .../submission/submit — the one request on a submission that can complete a lesson and therefore earn something. Absent on GET and on draft saves. */
+            awarded?: components["schemas"]["AwardNotice"];
         };
         /** @description One submission awaiting review, from GET /api/v1/grading/queue (design §9.4). Carries enough to list the queue and link straight into the grading view without a second fetch per row. */
         GradingQueueItem: {
@@ -1403,6 +1407,30 @@ export interface components {
             percent: number;
             /** @description What is counted — e.g. "lessons", "exercises", "courses", "days", "percent", "quizzes". */
             unit: string;
+        };
+        /**
+         * @description What THIS request earned — never what the actor already held.
+         *     Design §9.3: "evaluation is synchronous on every progress write ... so the award animation fires the moment you finish, which is the entire point." That is only possible if the write's own response carries the news, so every endpoint that can complete a lesson returns this. Both arrays are empty on the overwhelming majority of writes, and empty on a repeat of a request that already awarded — the insert is `on conflict do nothing`, so only the request that actually created the row reports it. A client may therefore treat a non-empty array as "animate this now" without tracking what it has already shown.
+         */
+        AwardNotice: {
+            badges: components["schemas"]["AwardedBadge"][];
+            degrees: components["schemas"]["AwardedDegree"][];
+        };
+        /** @description A badge awarded by the request being answered. */
+        AwardedBadge: {
+            slug: string;
+            title: string;
+            description: string | null;
+            /** Format: date-time */
+            awardedAt: string;
+        };
+        /** @description A degree awarded by the request being answered (design §9.2). */
+        AwardedDegree: {
+            slug: string;
+            title: string;
+            description: string | null;
+            /** Format: date-time */
+            awardedAt: string;
         };
         /** @description One badge as a learner sees it (design §9.3). */
         BadgeProgress: {

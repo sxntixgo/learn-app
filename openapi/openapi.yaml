@@ -2211,12 +2211,15 @@ components:
           type: string
           format: date-time
           description: When this progress row was last written.
+        awarded:
+          $ref: '#/components/schemas/AwardNotice'
       required:
         - state
         - lastPosition
         - secondsSpent
         - completedAt
         - updatedAt
+        - awarded
 
     ProgressUpsertRequest:
       type: object
@@ -2397,6 +2400,8 @@ components:
             $ref: '#/components/schemas/QuizTrackScore'
         attempt:
           $ref: '#/components/schemas/QuizAttemptRef'
+        awarded:
+          $ref: '#/components/schemas/AwardNotice'
       required:
         - score
         - passed
@@ -2404,6 +2409,7 @@ components:
         - results
         - trackScores
         - attempt
+        - awarded
 
     SubmissionStatus:
       type: string
@@ -2689,6 +2695,12 @@ components:
         updatedAt:
           type: string
           format: date-time
+        awarded:
+          description: >-
+            Present only on the response to POST .../submission/submit —
+            the one request on a submission that can complete a lesson and
+            therefore earn something. Absent on GET and on draft saves.
+          $ref: '#/components/schemas/AwardNotice'
       required:
         - id
         - lessonSlug
@@ -3392,6 +3404,76 @@ components:
         - target
         - percent
         - unit
+
+    AwardNotice:
+      type: object
+      description: >-
+        What THIS request earned — never what the actor already held.
+
+        Design §9.3: "evaluation is synchronous on every progress write ...
+        so the award animation fires the moment you finish, which is the
+        entire point." That is only possible if the write's own response
+        carries the news, so every endpoint that can complete a lesson
+        returns this. Both arrays are empty on the overwhelming majority of
+        writes, and empty on a repeat of a request that already awarded —
+        the insert is `on conflict do nothing`, so only the request that
+        actually created the row reports it. A client may therefore treat a
+        non-empty array as "animate this now" without tracking what it has
+        already shown.
+      properties:
+        badges:
+          type: array
+          items:
+            $ref: '#/components/schemas/AwardedBadge'
+        degrees:
+          type: array
+          items:
+            $ref: '#/components/schemas/AwardedDegree'
+      required:
+        - badges
+        - degrees
+
+    AwardedBadge:
+      type: object
+      description: A badge awarded by the request being answered.
+      properties:
+        slug:
+          type: string
+        title:
+          type: string
+        description:
+          type:
+            - string
+            - "null"
+        awardedAt:
+          type: string
+          format: date-time
+      required:
+        - slug
+        - title
+        - description
+        - awardedAt
+
+    AwardedDegree:
+      type: object
+      description: A degree awarded by the request being answered (design §9.2).
+      properties:
+        slug:
+          type: string
+        title:
+          type: string
+        description:
+          type:
+            - string
+            - "null"
+        awardedAt:
+          type: string
+          format: date-time
+      required:
+        - slug
+        - title
+        - description
+        - awardedAt
 
     BadgeProgress:
       type: object
