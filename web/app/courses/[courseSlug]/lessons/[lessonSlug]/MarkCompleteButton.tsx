@@ -15,8 +15,9 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Lesson } from '../../../../../src/lib/api';
+import type { AwardNotice, Lesson } from '../../../../../src/lib/api';
 import { markLessonCompleteAction } from './actions';
+import AwardAnnouncement from './AwardAnnouncement';
 import styles from './lesson.module.css';
 
 export interface MarkCompleteButtonProps {
@@ -31,13 +32,22 @@ export default function MarkCompleteButton({ courseSlug, lessonSlug, kind, progr
   const [isPending, startTransition] = useTransition();
   const [complete, setComplete] = useState(progress?.state === 'complete');
   const [error, setError] = useState<string | null>(null);
+  // What THIS click earned (design §9.3). Kept in state rather than read
+  // from a refreshed server render so the panel appears the instant the
+  // write returns — which is the point of evaluating synchronously.
+  const [awarded, setAwarded] = useState<AwardNotice | undefined>(undefined);
 
   // Checked BEFORE the kind branch below: once a quiz is passed (Task C —
   // "a passed quiz shows its state on revisit") or an exercise is
   // submitted (Phase 8), the lesson IS complete, and the note about how
   // completion works is no longer the useful thing to show — the state is.
   if (complete) {
-    return <p className={styles.progressDone}>Completed</p>;
+    return (
+      <>
+        <p className={styles.progressDone}>Completed</p>
+        <AwardAnnouncement awarded={awarded} />
+      </>
+    );
   }
 
   if (kind !== 'lesson') {
@@ -54,6 +64,7 @@ export default function MarkCompleteButton({ courseSlug, lessonSlug, kind, progr
     startTransition(async () => {
       const result = await markLessonCompleteAction(courseSlug, lessonSlug);
       if (result.ok) {
+        setAwarded(result.progress.awarded);
         setComplete(true);
         router.refresh();
       } else {

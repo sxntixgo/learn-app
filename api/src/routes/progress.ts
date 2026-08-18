@@ -3,6 +3,8 @@ import { getPool } from '../db.ts';
 import type { Actor } from '../policy/can.ts';
 import { can as defaultCan } from '../policy/can.ts';
 import { actorFor } from '../auth/actor.ts';
+import { evaluateAndAward, noAwards } from '../progression/award.ts';
+import type { AwardNotice } from '../progression/award.ts';
 
 export interface ProgressRouteDeps {
   // Injectable policy function (CLAUDE.md rule 2), same seam as courses.ts.
@@ -28,6 +30,11 @@ interface ProgressWriteRow {
   secondsSpent: number;
   completedAt: string | null;
   updatedAt: string;
+}
+
+interface ProgressWriteResponse extends ProgressWriteRow {
+  /** What this write earned (design §9.3). Empty on every write that earned nothing. */
+  awarded: AwardNotice;
 }
 
 interface CourseProgressLessonRow {
@@ -112,6 +119,7 @@ export function registerProgressRoutes(fastify: FastifyInstance, deps: ProgressR
       const client = await getPool().connect();
       let row: ProgressWriteRow;
       let becameComplete: boolean;
+      let awarded: AwardNotice = noAwards();
       try {
         await client.query('BEGIN');
 
@@ -169,6 +177,15 @@ export function registerProgressRoutes(fastify: FastifyInstance, deps: ProgressR
              values ($1, 'lesson_completed', $2, $3, '{}'::jsonb)`,
             [actor.id, courseId, lessonRow.id],
           );
+
+          // Design §9.3: "evaluation is synchronous on every progress
+          // write ... so the award animation fires the moment you finish."
+          // Inside this transaction and on this client, so it sees the row
+          // just written — and so an award rolls back with the progress
+          // that earned it if anything below fails. Gated on
+          // `becameComplete` for the same reason the activity event is: a
+          // repeated request has changed nothing to evaluate.
+          awarded = await evaluateAndAward(client, actor.id, 'lesson_completed');
         }
 
         await client.query('COMMIT');
@@ -179,7 +196,8 @@ export function registerProgressRoutes(fastify: FastifyInstance, deps: ProgressR
         client.release();
       }
 
-      return reply.code(200).send(row);
+      const response: ProgressWriteResponse = { ...row, awarded };
+      return reply.code(200).send(response);
     },
   );
 

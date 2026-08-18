@@ -1,0 +1,83 @@
+/*
+ * The award panel (design §9.3). Existing tokens only.
+ *
+ * THE REDUCED-MOTION RULE: the animation below is the ONLY thing
+ * `prefers-reduced-motion: reduce` removes. The panel, its border, the seal
+ * and every word stay exactly where they are — a reader who asked for less
+ * motion asked for less motion, not for less news.
+ */
+
+.panel {
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border: var(--border-regular) solid var(--color-link);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+
+  animation: award-in 320ms ease-out both;
+}
+
+@keyframes award-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.announcement {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-text-secondary);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+/* Filled, like an earned badge on /me — the same visual language in both
+   places, so an award is recognisable when the reader next sees the shelf. */
+.seal {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  background: var(--color-link);
+}
+
+.kind {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-text-secondary);
+}
+
+.name {
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    animation: none;
+  }
+}

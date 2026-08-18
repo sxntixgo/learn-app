@@ -464,4 +464,154 @@ describe('me routes', () => {
       await fastify.close();
     });
   });
+
+  // ===========================================================================
+  // Design §9.3 / §9.2. Both of these are read-only views over rows the award
+  // path writes; what they are tested for here is the SHAPE the contract
+  // promises and the two properties that are easy to get wrong — a locked
+  // badge is still returned, and `earned` never comes from re-evaluating the
+  // criteria.
+  // ===========================================================================
+  describe('GET /api/v1/me/badges', () => {
+    const EARNED_SLUG = `me-badge-earned-${RUN_ID}`;
+    const LOCKED_SLUG = `me-badge-locked-${RUN_ID}`;
+
+    beforeAll(async () => {
+      const earned = await pool.query<{ id: string }>(
+        `insert into badges (slug, title, description, source, criteria)
+         values ($1, 'Earned Badge', 'Already held', 'admin', $2::jsonb) returning id`,
+        [EARNED_SLUG, JSON.stringify({ type: 'lessons_completed', count: 900 })],
+      );
+      await pool.query('insert into user_badges (user_id, badge_id) values ($1, $2)', [
+        actor.id,
+        earned.rows[0]!.id,
+      ]);
+
+      await pool.query(
+        `insert into badges (slug, title, description, source, criteria)
+         values ($1, 'Locked Badge', null, 'admin', $2::jsonb)`,
+        [LOCKED_SLUG, JSON.stringify({ type: 'lessons_completed', count: 900 })],
+      );
+    });
+
+    it('returns earned and locked badges, each with progress', async () => {
+      const fastify = await buildServer({ actor });
+      const response = await fastify.inject({ method: 'GET', url: '/api/v1/me/badges' });
+
+      expect(response.statusCode).toBe(200);
+      const badges = JSON.parse(response.payload) as Array<{
+        slug: string;
+        earned: boolean;
+        awardedAt: string | null;
+        progress: { current: number; target: number; percent: number; unit: string };
+      }>;
+
+      const earned = badges.find((b) => b.slug === EARNED_SLUG)!;
+      const locked = badges.find((b) => b.slug === LOCKED_SLUG)!;
+
+      // A LOCKED badge is returned, not hidden: "a badge nobody can see is
+      // not a goal" (design §9.3).
+      expect(locked).toBeDefined();
+      expect(locked.earned).toBe(false);
+      expect(locked.awardedAt).toBeNull();
+      expect(locked.progress.target).toBe(900);
+      expect(locked.progress.unit).toBe('lessons');
+
+      // And an EARNED badge reads earned even though its criteria are far
+      // out of reach — `earned` comes from user_badges, never from
+      // re-evaluating. Design §9.3: badges are never revoked.
+      expect(earned.earned).toBe(true);
+      expect(earned.awardedAt).not.toBeNull();
+      expect(earned.progress.current).toBeLessThan(earned.progress.target);
+
+      // Earned before locked, so the dashboard need not know the order.
+      expect(badges.findIndex((b) => b.slug === EARNED_SLUG)).toBeLessThan(
+        badges.findIndex((b) => b.slug === LOCKED_SLUG),
+      );
+
+      await fastify.close();
+    });
+
+    it('calls can() with "me:badges:read" — the seam guard', async () => {
+      const canSpy = vi.fn().mockReturnValue(true);
+      const fastify = await buildServer({ actor, can: canSpy });
+
+      const response = await fastify.inject({ method: 'GET', url: '/api/v1/me/badges' });
+
+      expect(response.statusCode).toBe(200);
+      const [, actionArg] = canSpy.mock.calls[0] as [unknown, unknown, unknown];
+      expect(actionArg).toBe('me:badges:read');
+
+      await fastify.close();
+    });
+
+    it('returns 403 when the injected policy denies access', async () => {
+      const fastify = await buildServer({ actor, can: () => false });
+      const response = await fastify.inject({ method: 'GET', url: '/api/v1/me/badges' });
+
+      expect(response.statusCode).toBe(403);
+      await fastify.close();
+    });
+  });
+
+  describe('GET /api/v1/me/degrees', () => {
+    const DEGREE_SLUG = `me-degree-${RUN_ID}`;
+
+    beforeAll(async () => {
+      await pool.query(
+        `insert into degrees (slug, title, description, required_slugs, electives_choose, electives_from)
+         values ($1, 'Test Degree', null, $2::text[], 0, '{}'::text[])`,
+        [DEGREE_SLUG, [COURSE_SLUG, `me-never-imported-${RUN_ID}`]],
+      );
+    });
+
+    it('lists a degree with its requirements, marking an unimported course unsatisfiable', async () => {
+      const fastify = await buildServer({ actor });
+      const response = await fastify.inject({ method: 'GET', url: '/api/v1/me/degrees' });
+
+      expect(response.statusCode).toBe(200);
+      const degrees = JSON.parse(response.payload) as Array<{
+        slug: string;
+        earned: boolean;
+        satisfiable: boolean;
+        missingCourses: string[];
+        required: Array<{ slug: string; imported: boolean; title: string | null }>;
+        electives: unknown;
+        percent: number;
+      }>;
+
+      const degree = degrees.find((d) => d.slug === DEGREE_SLUG)!;
+      expect(degree).toBeDefined();
+      expect(degree.earned).toBe(false);
+      // Design §6.1/§8: a cross-repo reference never fails an import — it
+      // surfaces as an unsatisfiable degree, still listed.
+      expect(degree.satisfiable).toBe(false);
+      expect(degree.missingCourses).toEqual([`me-never-imported-${RUN_ID}`]);
+      expect(degree.required.find((r) => r.slug === COURSE_SLUG)!.imported).toBe(true);
+      expect(degree.electives).toBeNull();
+
+      await fastify.close();
+    });
+
+    it('calls can() with "me:degrees:read" — the seam guard', async () => {
+      const canSpy = vi.fn().mockReturnValue(true);
+      const fastify = await buildServer({ actor, can: canSpy });
+
+      const response = await fastify.inject({ method: 'GET', url: '/api/v1/me/degrees' });
+
+      expect(response.statusCode).toBe(200);
+      const [, actionArg] = canSpy.mock.calls[0] as [unknown, unknown, unknown];
+      expect(actionArg).toBe('me:degrees:read');
+
+      await fastify.close();
+    });
+
+    it('returns 403 when the injected policy denies access', async () => {
+      const fastify = await buildServer({ actor, can: () => false });
+      const response = await fastify.inject({ method: 'GET', url: '/api/v1/me/degrees' });
+
+      expect(response.statusCode).toBe(403);
+      await fastify.close();
+    });
+  });
 });

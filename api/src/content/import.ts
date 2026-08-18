@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import type pg from 'pg';
-import type { LoadedCourse, LoadedLesson, LoadedModule, TrackDef } from './manifest.ts';
+import type { BadgeDef, DegreeDef, LoadedCourse, LoadedLesson, LoadedModule, TrackDef } from './manifest.ts';
 import type { Block } from './parse.ts';
-import { validateBlocks } from './validate.ts';
+import { validateBadge, validateBlocks } from './validate.ts';
 
 // ---------------------------------------------------------------------------
 // The import transaction (design §7 and §8).
@@ -42,6 +42,10 @@ export interface ImportCounts {
   tracks: EntityCounts;
   modules: EntityCounts;
   lessons: EntityCounts;
+  /** Design §9.2 — degrees declared by this repo's manifest. Never archived; see upsertDegrees. */
+  degrees: EntityCounts;
+  /** Design §9.3 — GIT-sourced badges only. An admin badge is refused, not counted. */
+  badges: EntityCounts;
 }
 
 export interface ImportOptions {
@@ -363,6 +367,8 @@ async function writeCourse(
     tracks: noCounts(),
     modules: noCounts(),
     lessons: noCounts(),
+    degrees: noCounts(),
+    badges: noCounts(),
   };
 
   const courseId = await upsertCourse(client, course, repoId, commit, counts.courses);
@@ -409,6 +415,13 @@ async function writeCourse(
 
   counts.modules.archived = await archiveMissingModules(client, courseId, planned);
   counts.lessons.archived = await archiveMissingLessons(client, courseId, keptLessonIds);
+
+  // Progression definitions last: a badge may scope itself to this course,
+  // so the course row has to exist first (design §9.3's optional course
+  // scope). Both are inside the same transaction as everything above, so a
+  // refused badge rolls the whole course import back.
+  await upsertDegrees(client, course.degrees, repoId, counts.degrees);
+  await upsertBadges(client, course.badges, repoId, counts.badges);
 
   return { courseId, counts };
 }
@@ -534,6 +547,191 @@ async function upsertTracks(
   }
 
   return ids;
+}
+
+// ---------------------------------------------------------------------------
+// Progression definitions (design §9.2, §9.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Upserts the manifest's degrees on their global slug.
+ *
+ * A degree names courses BY SLUG, never by foreign key (migration 0013's
+ * header, design §6.1) — so a degree naming a course this instance has not
+ * imported is written exactly as declared and shows as unsatisfiable in
+ * admin. Design §8 is explicit that a cross-repo reference never fails an
+ * import, and this is where that would otherwise have been tempting.
+ *
+ * A degree that DISAPPEARS from a manifest is left in place, not deleted:
+ * `user_degrees.degree_id` is `on delete restrict`, so deleting one somebody
+ * holds is refused by the database — and quietly deleting the ones nobody
+ * holds would make "was this degree removed or is this repo just not synced
+ * yet" invisible. Same reasoning that keeps upsertTracks from deleting
+ * departed tracks.
+ */
+async function upsertDegrees(
+  client: pg.PoolClient,
+  degrees: DegreeDef[],
+  repoId: string | null,
+  counts: EntityCounts,
+): Promise<void> {
+  for (const degree of degrees) {
+    const description = degree.description ?? null;
+    const requiredSlugs = degree.required ?? [];
+    const electivesChoose = degree.electives?.choose ?? 0;
+    const electivesFrom = degree.electives?.from ?? [];
+
+    const existing = await client.query<{
+      id: string;
+      title: string;
+      description: string | null;
+      required_slugs: string[];
+      electives_choose: number;
+      electives_from: string[];
+      repo_id: string | null;
+    }>(
+      `select id, title, description, required_slugs, electives_choose, electives_from, repo_id
+         from degrees where slug = $1`,
+      [degree.slug],
+    );
+
+    const row = existing.rows[0];
+    if (row === undefined) {
+      await client.query(
+        `insert into degrees (slug, title, description, repo_id, required_slugs, electives_choose, electives_from)
+         values ($1, $2, $3, $4, $5::text[], $6, $7::text[])`,
+        [degree.slug, degree.title, description, repoId, requiredSlugs, electivesChoose, electivesFrom],
+      );
+      counts.created++;
+      continue;
+    }
+
+    const unchanged =
+      row.title === degree.title &&
+      row.description === description &&
+      JSON.stringify(row.required_slugs) === JSON.stringify(requiredSlugs) &&
+      row.electives_choose === electivesChoose &&
+      JSON.stringify(row.electives_from) === JSON.stringify(electivesFrom) &&
+      row.repo_id === repoId;
+
+    if (unchanged) {
+      counts.skipped++;
+      continue;
+    }
+
+    await client.query(
+      `update degrees
+          set title = $2, description = $3, repo_id = $4, required_slugs = $5::text[],
+              electives_choose = $6, electives_from = $7::text[], updated_at = now()
+        where id = $1`,
+      [row.id, degree.title, description, repoId, requiredSlugs, electivesChoose, electivesFrom],
+    );
+    counts.updated++;
+  }
+}
+
+/**
+ * Upserts the manifest's badges as GIT-sourced rows — and REFUSES to
+ * overwrite an admin-created one.
+ *
+ * Design §9.3: "slugs are globally unique across both [sources], and the
+ * importer refuses to overwrite an admin-created badge rather than silently
+ * clobbering a hand-tuned one."
+ *
+ * The refusal is a thrown Error, not a skip. A skip would leave the operator
+ * with a repo that says one thing, a database that says another, and a
+ * successful-looking import between them — the silent divergence this rule
+ * exists to prevent. Thrown here, it aborts the surrounding transaction
+ * (nothing of this import lands) and is recorded on the `import_runs` row
+ * with its message, which is where an admin goes to find out why. Renaming
+ * one of the two badges, or deleting the admin badge, is a decision only a
+ * human can make.
+ */
+async function upsertBadges(
+  client: pg.PoolClient,
+  badges: BadgeDef[],
+  repoId: string | null,
+  counts: EntityCounts,
+): Promise<void> {
+  for (const badge of badges) {
+    // The same contract the admin CRUD writes against
+    // (schemas/badge.schema.json). loadCourseManifest already validated the
+    // whole manifest, so this only fires for a LoadedCourse assembled some
+    // other way — but a badge whose criteria no evaluator understands is a
+    // badge nobody can ever earn, and that must not reach the database.
+    const result = validateBadge(badge);
+    if (!result.valid) {
+      const detail = result.errors.map((e) => `  badges/${badge.slug}${e.path}: ${e.message}`).join('\n');
+      throw new Error(`course.yaml: badge "${badge.slug}" is not valid, refusing to write:\n${detail}`);
+    }
+
+    const existing = await client.query<{
+      id: string;
+      source: string;
+      title: string;
+      description: string | null;
+      course_id: string | null;
+      criteria: unknown;
+      repo_id: string | null;
+    }>(`select id, source, title, description, course_id, criteria, repo_id from badges where slug = $1`, [
+      badge.slug,
+    ]);
+
+    const row = existing.rows[0];
+    if (row !== undefined && row.source === 'admin') {
+      throw new Error(
+        `course.yaml: badge "${badge.slug}" already exists on this instance as an ADMIN-created badge, ` +
+          `and the importer will not overwrite one (design §9.3 — badge slugs are globally unique across ` +
+          `both sources). Rename the badge in the repo, or delete the admin badge first.`,
+      );
+    }
+
+    // An unimported course is not an error here either (design §8): the
+    // badge simply lands global until that course arrives, and the next
+    // sync of this repo attaches it.
+    const courseLookup =
+      badge.course === undefined
+        ? null
+        : ((await client.query<{ id: string }>('select id from courses where slug = $1', [badge.course])).rows[0]
+            ?.id ?? null);
+
+    const description = badge.description ?? null;
+    const criteriaJson = JSON.stringify(badge.criteria);
+
+    if (row === undefined) {
+      await client.query(
+        `insert into badges (slug, title, description, source, repo_id, course_id, criteria)
+         values ($1, $2, $3, 'git', $4, $5, $6::jsonb)`,
+        [badge.slug, badge.title, description, repoId, courseLookup, criteriaJson],
+      );
+      counts.created++;
+      continue;
+    }
+
+    const unchanged =
+      row.title === badge.title &&
+      row.description === description &&
+      row.course_id === courseLookup &&
+      row.repo_id === repoId &&
+      JSON.stringify(row.criteria) === criteriaJson;
+
+    if (unchanged) {
+      counts.skipped++;
+      continue;
+    }
+
+    // A git badge is DERIVED state and is rewritten in place. Its awards are
+    // not: `user_badges` rows reference the badge id, which never changes
+    // here, so retuning a criterion in the repo changes who will earn it
+    // next and nobody who already has (design §9.3).
+    await client.query(
+      `update badges
+          set title = $2, description = $3, repo_id = $4, course_id = $5, criteria = $6::jsonb, updated_at = now()
+        where id = $1`,
+      [row.id, badge.title, description, repoId, courseLookup, criteriaJson],
+    );
+    counts.updated++;
+  }
 }
 
 async function upsertModule(

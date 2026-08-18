@@ -5,6 +5,8 @@ import type { Actor } from '../policy/can.ts';
 import { can as defaultCan } from '../policy/can.ts';
 import { actorFor } from '../auth/actor.ts';
 import { codeLineCount, hashSnapshot, presentBlocks } from '../content/present.ts';
+import { evaluateAndAward, noAwards } from '../progression/award.ts';
+import type { AwardNotice } from '../progression/award.ts';
 
 // ---------------------------------------------------------------------------
 // EXERCISE SUBMISSIONS (design §9.4, §9.1).
@@ -279,8 +281,16 @@ function serialize(
   row: SubmissionRow,
   annotations: AnnotationRow[],
   rubricScores: RubricScoreRow[],
+  /**
+   * What THIS request earned (design §9.3). Passed only by the submit
+   * route, the one request on a submission that completes a lesson — a GET
+   * or a draft save earns nothing, and a grading write earns things for the
+   * STUDENT, who is not the caller reading this response.
+   */
+  awarded?: AwardNotice,
 ): unknown {
   return {
+    ...(awarded === undefined ? {} : { awarded }),
     id: row.id,
     lessonSlug,
     status: row.status,
@@ -613,7 +623,12 @@ export function registerSubmissionRoutes(fastify: FastifyInstance, deps: Submiss
           const stored = await loadAnnotations(client, submission!.id);
           const storedRubricScores = await loadRubricScores(client, submission!.id);
           await client.query('COMMIT');
-          return reply.code(200).send(serialize(resolved.lesson.slug, submission!, stored, storedRubricScores));
+          // Nothing changed, so nothing was earned: a retried submit
+          // reports no awards, exactly as it emits no second activity
+          // event.
+          return reply
+            .code(200)
+            .send(serialize(resolved.lesson.slug, submission!, stored, storedRubricScores, noAwards()));
         }
 
         // Submitting an exercise never opened is legitimate — an exercise
@@ -654,10 +669,17 @@ export function registerSubmissionRoutes(fastify: FastifyInstance, deps: Submiss
           ],
         );
 
+        // Design §9.1: an exercise completes on SUBMIT, so this is a
+        // progress write like any other and design §9.3's synchronous
+        // evaluation applies to it. Same client, same transaction, after
+        // the lesson_progress row above — so the exercise just handed in
+        // counts toward `exercises_passed`.
+        const awarded = await evaluateAndAward(client, actor.id, 'exercise_submitted');
+
         const stored = await loadAnnotations(client, saved.id);
         const storedRubricScores = await loadRubricScores(client, saved.id);
         await client.query('COMMIT');
-        return reply.code(200).send(serialize(resolved.lesson.slug, saved, stored, storedRubricScores));
+        return reply.code(200).send(serialize(resolved.lesson.slug, saved, stored, storedRubricScores, awarded));
       } catch (err) {
         await client.query('ROLLBACK');
         throw err;
@@ -1170,6 +1192,17 @@ export function registerSubmissionRoutes(fastify: FastifyInstance, deps: Submiss
             [userId, resolved.courseId, resolved.lesson.id, JSON.stringify({ submissionId: saved.id, gradedBy: actor.id })],
           );
         }
+
+        // Grading writes rubric_scores on a RETURNED submission, which is
+        // half of a track score (progression/track-score.ts) — so a
+        // `track_score` badge can become due here, and criteria.ts's
+        // `submission_graded` row is exactly that one type.
+        //
+        // Evaluated for the STUDENT (`userId`), never for the grading
+        // teacher, and deliberately NOT reported in this response: an
+        // AwardNotice says what the CALLER earned, and the caller here is
+        // the teacher. The student learns of it from their own next read.
+        await evaluateAndAward(client, userId, 'submission_graded');
 
         const storedAnnotations = await loadAnnotations(client, saved.id);
         const storedRubricScores = await loadRubricScores(client, saved.id);

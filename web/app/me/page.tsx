@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
-import { fetchActivity, fetchHeatmap } from '../../src/lib/api';
+import { fetchActivity, fetchHeatmap, fetchMyBadges, fetchMyDegrees } from '../../src/lib/api';
 import { withAuthRedirect } from '../../src/lib/require-auth';
 import { HEATMAP_MAX_WEEKS } from '../../src/lib/heatmap';
 import ActivityFeed from './ActivityFeed';
+import BadgeShelf from './BadgeShelf';
+import DegreeList from './DegreeList';
 import Heatmap from './Heatmap';
 import styles from './me.module.css';
 
@@ -27,8 +29,8 @@ function days(n: number): string {
  * resolved for the heatmap, rather than a second call to /api/v1/me.
  */
 export default async function MePage() {
-  const [heatmap, activity] = await withAuthRedirect('/me', () =>
-    Promise.all([fetchHeatmap(HEATMAP_MAX_WEEKS), fetchActivity()]),
+  const [heatmap, activity, badges, degrees] = await withAuthRedirect('/me', () =>
+    Promise.all([fetchHeatmap(HEATMAP_MAX_WEEKS), fetchActivity(), fetchMyBadges(), fetchMyDegrees()]),
   );
 
   return (
@@ -62,6 +64,27 @@ export default async function MePage() {
         ) : (
           <p className={styles.timezoneNote}>Days are counted in {heatmap.timezone}.</p>
         )}
+      </section>
+
+      {/*
+       * Badges and degrees (design §9.3, §9.2), above the feed: they are the
+       * standing answer to "where am I", where the feed is "what did I just
+       * do". Both render earned and locked alike — a badge nobody can see is
+       * not a goal — and award dates use the same effective timezone the
+       * heatmap resolved.
+       */}
+      <section className={styles.panel} aria-labelledby="badges-heading">
+        <h2 className={styles.sectionTitle} id="badges-heading">
+          Badges
+        </h2>
+        <BadgeShelf badges={badges} timezone={heatmap.timezone} />
+      </section>
+
+      <section className={styles.panel} aria-labelledby="degrees-heading">
+        <h2 className={styles.sectionTitle} id="degrees-heading">
+          Degrees
+        </h2>
+        <DegreeList degrees={degrees} timezone={heatmap.timezone} />
       </section>
 
       <section className={styles.feed} aria-labelledby="feed-heading">

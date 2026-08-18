@@ -29,6 +29,11 @@ function formatSummary(slug: string, counts: ImportCounts): string {
     formatCounts('tracks', counts.tracks),
     formatCounts('modules', counts.modules),
     formatCounts('lessons', counts.lessons),
+    // Design §9.2/§9.3. Printed even when a manifest declares none: a row of
+    // zeroes is how an author sees that the `badges:` key they just added is
+    // not being read, which is exactly the case a missing line would hide.
+    formatCounts('degrees', counts.degrees),
+    formatCounts('badges', counts.badges),
   ].join('\n');
 }
 

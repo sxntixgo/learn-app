@@ -78,6 +78,16 @@
   color: var(--color-text-secondary);
 }
 
+/* Badges and degrees: the same card the activity panel uses, so the page
+   reads as one column of panels rather than as three unrelated widgets. */
+.panel {
+  margin-top: 1.5rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 10px;
+  background: var(--color-surface-raised);
+  padding: 1.25rem;
+}
+
 .feed {
   margin-top: 1.5rem;
   border: 1px solid var(--color-border-hairline);

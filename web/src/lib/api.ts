@@ -25,6 +25,13 @@ export type Submission = components['schemas']['Submission'];
 export type SubmissionAnnotationInput = components['schemas']['SubmissionAnnotationInput'];
 export type GradingQueueItem = components['schemas']['GradingQueueItem'];
 export type GradeRequest = components['schemas']['GradeRequest'];
+export type BadgeProgress = components['schemas']['BadgeProgress'];
+export type DegreeProgress = components['schemas']['DegreeProgress'];
+export type DegreeRequirement = components['schemas']['DegreeRequirement'];
+export type CriterionProgress = components['schemas']['CriterionProgress'];
+export type AwardNotice = components['schemas']['AwardNotice'];
+export type AwardedBadge = components['schemas']['AwardedBadge'];
+export type AwardedDegree = components['schemas']['AwardedDegree'];
 export type Me = components['schemas']['Me'];
 export type ImportRunSummary = components['schemas']['ImportRunSummary'];
 export type ImportProgressEvent = components['schemas']['ImportProgressEvent'];
@@ -201,6 +208,30 @@ export async function fetchActivity(limit?: number): Promise<ActivityEvent[]> {
     throw new Error(`Failed to fetch activity: ${res.status}`);
   }
   return (await res.json()) as ActivityEvent[];
+}
+
+/**
+ * The actor's badges — EARNED AND LOCKED, in that order (design §9.3).
+ *
+ * Locked ones are not filtered out here or in the API: "a badge nobody can
+ * see is not a goal", and each carries the scalar progress the dashboard
+ * renders as "3 of 5 lessons".
+ */
+export async function fetchMyBadges(): Promise<BadgeProgress[]> {
+  const res = await apiFetch('/api/v1/me/badges');
+  if (!res.ok) {
+    throw new Error(`Failed to fetch badges: ${res.status}`);
+  }
+  return (await res.json()) as BadgeProgress[];
+}
+
+/** The actor's degrees, earned and in progress (design §9.2). */
+export async function fetchMyDegrees(): Promise<DegreeProgress[]> {
+  const res = await apiFetch('/api/v1/me/degrees');
+  if (!res.ok) {
+    throw new Error(`Failed to fetch degrees: ${res.status}`);
+  }
+  return (await res.json()) as DegreeProgress[];
 }
 
 /** The actor's progress summary for a course: totals, percent, and every lesson's state. */

@@ -4,6 +4,8 @@ import type { Actor } from '../policy/can.ts';
 import { can as defaultCan } from '../policy/can.ts';
 import { actorFor } from '../auth/actor.ts';
 import type { Block, QuizBlock } from '../content/parse.ts';
+import { evaluateAndAward, noAwards } from '../progression/award.ts';
+import type { AwardNotice } from '../progression/award.ts';
 
 // ---------------------------------------------------------------------------
 // The quiz scoring endpoint (design §9.1: "quiz — PASSED — the threshold
@@ -179,6 +181,7 @@ export function registerQuizRoutes(fastify: FastifyInstance, deps: QuizRouteDeps
       let attemptId: string;
       let createdAt: string;
       let becameComplete = false;
+      let awarded: AwardNotice = noAwards();
       try {
         await client.query('BEGIN');
 
@@ -225,6 +228,14 @@ export function registerQuizRoutes(fastify: FastifyInstance, deps: QuizRouteDeps
           }
         }
 
+        // EVERY attempt, passing or not (criteria.ts's `quiz_attempted`
+        // row): a failed attempt still moves a track score, and a retake
+        // that finally scores 100 % earns a `perfect_quiz` badge without
+        // completing anything — `becameComplete` would miss both. The
+        // attempt row above is already written on this client, so the
+        // facts below include it.
+        awarded = await evaluateAndAward(client, actor.id, 'quiz_attempted');
+
         await client.query('COMMIT');
       } catch (err) {
         await client.query('ROLLBACK');
@@ -240,6 +251,7 @@ export function registerQuizRoutes(fastify: FastifyInstance, deps: QuizRouteDeps
         results,
         trackScores,
         attempt: { id: attemptId, createdAt },
+        awarded,
       });
     },
   );

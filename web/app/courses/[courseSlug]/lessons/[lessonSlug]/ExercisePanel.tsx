@@ -46,6 +46,7 @@ import Figure from './Figure';
 import Quiz from './Quiz';
 import RubricDisplay from './RubricDisplay';
 import { saveSubmissionDraftAction, submitExerciseAction } from './actions';
+import AwardAnnouncement from './AwardAnnouncement';
 import styles from './lesson.module.css';
 
 type Block = components['schemas']['Block'];
@@ -248,7 +249,14 @@ export default function ExercisePanel({
 
       <div className={styles.exercise}>
         {readOnly ? (
-          <p className={styles.progressDone}>{submission?.status === 'returned' ? 'Returned' : 'Submitted'}</p>
+          <>
+            <p className={styles.progressDone}>{submission?.status === 'returned' ? 'Returned' : 'Submitted'}</p>
+            {/* Design §9.1: an exercise completes on SUBMIT, so the submit
+                response is the one that can carry an award. `awarded` is
+                absent on a GET and on a draft save, so nothing renders when
+                this panel is merely showing an older submission. */}
+            <AwardAnnouncement awarded={submission?.awarded} />
+          </>
         ) : (
           <>
             <p className={styles.exerciseSaveStatus} role="status">

@@ -77,6 +77,26 @@ export function emptyFacts(): LearnerFacts {
   };
 }
 
+/**
+ * The learner's completed course slugs — the input degrees are decided from
+ * (design §9.2) and the shared reading of "complete" everything else uses.
+ *
+ * `totalLessons > 0` is load-bearing rather than defensive, exactly as in
+ * evaluate.ts's isCourseComplete: 0 of 0 is arithmetically "all of them", and
+ * an empty course is what a fully-archived one looks like through this
+ * module. Without the guard, archiving a course's last lesson would award its
+ * degree to everyone who had ever touched it — and design §9.3 gives no way
+ * to take that back. It lives here, next to the fact it reads, so the award
+ * path and the read path cannot drift into two different answers.
+ */
+export function completedCoursesOf(facts: LearnerFacts): Set<string> {
+  return new Set(
+    facts.courseProgress
+      .filter((c) => c.totalLessons > 0 && c.completedLessons >= c.totalLessons)
+      .map((c) => c.courseSlug),
+  );
+}
+
 async function loadCourseProgress(client: pg.PoolClient, userId: string): Promise<CourseProgressFact[]> {
   const { rows } = await client.query<{
     course_slug: string;
@@ -251,14 +271,19 @@ export async function loadFacts(
 ): Promise<LearnerFacts> {
   const facts = emptyFacts();
 
-  const [courseProgress, degrees, quizTallies, rubricTallies, currentStreak, perfectQuizzes] = await Promise.all([
-    needed.has('courseProgress') ? loadCourseProgress(client, userId) : Promise.resolve(null),
-    needed.has('degrees') ? loadDegrees(client, userId) : Promise.resolve(null),
-    needed.has('trackScores') ? loadQuizTallies(client, userId) : Promise.resolve(null),
-    needed.has('trackScores') ? loadRubricTallies(client, userId) : Promise.resolve(null),
-    needed.has('streak') ? loadCurrentStreak(client, userId) : Promise.resolve(null),
-    needed.has('perfectQuizzes') ? loadPerfectQuizzes(client, userId) : Promise.resolve(null),
-  ]);
+  // SEQUENTIAL, not Promise.all. Every query here runs on ONE client, inside
+  // the caller's open transaction — a single connection cannot execute two
+  // statements at once, so `Promise.all` bought no parallelism: node-postgres
+  // queued them and warned ("Calling client.query() when the client is
+  // already executing a query is deprecated and will be removed in pg@9.0").
+  // Awaiting in turn is what that code was already doing underneath, minus
+  // the deprecation.
+  const courseProgress = needed.has('courseProgress') ? await loadCourseProgress(client, userId) : null;
+  const degrees = needed.has('degrees') ? await loadDegrees(client, userId) : null;
+  const quizTallies = needed.has('trackScores') ? await loadQuizTallies(client, userId) : null;
+  const rubricTallies = needed.has('trackScores') ? await loadRubricTallies(client, userId) : null;
+  const currentStreak = needed.has('streak') ? await loadCurrentStreak(client, userId) : null;
+  const perfectQuizzes = needed.has('perfectQuizzes') ? await loadPerfectQuizzes(client, userId) : null;
 
   return {
     ...facts,

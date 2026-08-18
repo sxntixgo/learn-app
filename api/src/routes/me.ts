@@ -8,6 +8,7 @@ import { computeStreaks } from '../activity/streaks.ts';
 import type { StreakEvent } from '../activity/streaks.ts';
 import { buildHeatmapDays, clampWeeks } from '../activity/heatmap.ts';
 import { localDateKey } from '../activity/streaks.ts';
+import { listBadgeProgress, listDegreeProgress } from '../progression/views.ts';
 
 export interface MeRouteDeps {
   // Injectable policy function (CLAUDE.md rule 2), same seam as
@@ -233,5 +234,46 @@ export function registerMeRoutes(fastify: FastifyInstance, deps: MeRouteDeps = {
       currentStreak: current,
       longestStreak: longest,
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Design §9.3 / §9.2: the learner's badges and degrees, earned AND locked.
+  //
+  // Both take a client out of the pool rather than querying it directly:
+  // progression/facts.ts loads several bundles in sequence and they must all
+  // see the same snapshot of the world, which a pool cannot promise (each
+  // query could land on a different connection, mid-write). The award path
+  // gets that for free by running inside the write's transaction; a read has
+  // to ask for it.
+  // ---------------------------------------------------------------------------
+
+  fastify.get('/api/v1/me/badges', async (request, reply) => {
+    const actor = actorFor(request, deps);
+
+    if (!can(actor, 'me:badges:read', { userId: actor.id })) {
+      return reply.code(403).send({ message: 'Forbidden' });
+    }
+
+    const client = await getPool().connect();
+    try {
+      return reply.code(200).send(await listBadgeProgress(client, actor.id));
+    } finally {
+      client.release();
+    }
+  });
+
+  fastify.get('/api/v1/me/degrees', async (request, reply) => {
+    const actor = actorFor(request, deps);
+
+    if (!can(actor, 'me:degrees:read', { userId: actor.id })) {
+      return reply.code(403).send({ message: 'Forbidden' });
+    }
+
+    const client = await getPool().connect();
+    try {
+      return reply.code(200).send(await listDegreeProgress(client, actor.id));
+    } finally {
+      client.release();
+    }
   });
 }

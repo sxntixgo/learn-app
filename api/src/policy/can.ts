@@ -406,6 +406,28 @@ const MATRIX = {
   // ---- Define degrees, global badges (§9.2, §9.3) --------------------------
   'degree:define': { row: 'Define degrees, global badges', admin: ALLOW },
   'badge:global:define': { row: 'Define degrees, global badges', admin: ALLOW },
+  // Phase 11. The rest of the badge lifecycle, split by VERB rather than
+  // folded into `badge:global:define`, because these are the actions an
+  // audit log has to be able to tell apart: reading every definition,
+  // retuning one, removing one, and exporting one to YAML for promotion
+  // into git (§9.3).
+  //
+  // Role floors, like `submission:queue:read` and unlike the course-scoped
+  // rows: the resource is the badge catalogue as a whole, and there is no
+  // per-call `{ course: { ownerId } }` for `can()` to check. The refusals
+  // that actually protect a badge — a git-sourced row is read-only, an
+  // earned badge cannot be deleted — are not authorization questions at
+  // all and live in the route and in the schema respectively (migration
+  // 0013's `on delete restrict`).
+  //
+  // §5's teacher cell for "create course-scoped badges" is
+  // `course:badge:create` above, which is OWN_COURSE and deliberately not
+  // widened here: these actions reach every badge on the instance.
+  'badge:list': { row: 'Define degrees, global badges', admin: ALLOW },
+  'badge:update': { row: 'Define degrees, global badges', admin: ALLOW },
+  'badge:delete': { row: 'Define degrees, global badges', admin: ALLOW },
+  'badge:export': { row: 'Define degrees, global badges', admin: ALLOW },
+  'degree:list': { row: 'Define degrees, global badges', admin: ALLOW },
 
   // ---- Assign roles, grant invite budgets ----------------------------------
   'role:assign': { row: 'Assign roles, grant invite budgets', admin: ALLOW },

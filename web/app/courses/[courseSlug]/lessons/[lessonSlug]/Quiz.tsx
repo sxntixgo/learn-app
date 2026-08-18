@@ -21,6 +21,7 @@ import { useRouter } from 'next/navigation';
 import type { Lesson, QuizSubmitRequest, QuizSubmitResult } from '../../../../../src/lib/api';
 import type { components } from '../../../../../src/lib/api-types';
 import { submitQuizAction } from './actions';
+import AwardAnnouncement from './AwardAnnouncement';
 import styles from './lesson.module.css';
 
 type QuizBlock = Extract<components['schemas']['Block'], { type: 'quiz' }>;
@@ -104,6 +105,14 @@ export default function Quiz({ courseSlug, lessonSlug, quiz, progress }: QuizPro
             : `Not yet — ${Math.round(result.score * 100)}% correct (need ${Math.round(result.pass * 100)}%).`}
         </p>
       ) : null}
+
+      {/*
+       * Any attempt can earn something, not only a passing one: a failed
+       * attempt still moves a track score, and a retake can be the first
+       * 100 % (design §9.3, criteria.ts's `quiz_attempted` row). So this
+       * reads `result.awarded` rather than gating on `result.passed`.
+       */}
+      <AwardAnnouncement awarded={result?.awarded} />
 
       {quiz.questions.map((question, questionIndex) => {
         const questionResult = result?.results.find((r) => r.questionIndex === questionIndex) ?? null;

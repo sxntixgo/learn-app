@@ -27,6 +27,33 @@ export interface ModuleDef {
   lessons: string[];
 }
 
+/** A degree declared by a curriculum repo (design §6.1, §9.2). */
+export interface DegreeDef {
+  slug: string;
+  title: string;
+  description?: string;
+  /** Course slugs that must ALL be complete. Global slugs, so a degree may span repos. */
+  required?: string[];
+  electives?: { choose: number; from: string[] };
+}
+
+/**
+ * A badge declared by a curriculum repo — the GIT half of design §9.3's two
+ * sources. `criteria` is deliberately `unknown` here: the closed vocabulary
+ * lives in schemas/badge.schema.json (which the manifest has already been
+ * validated against) and in progression/criteria.ts, and re-declaring the
+ * union a third time in this file would be the third place to forget when a
+ * ninth type is added.
+ */
+export interface BadgeDef {
+  slug: string;
+  title: string;
+  description?: string;
+  /** Optional course scope, by global course slug. Absent for a global badge. */
+  course?: string;
+  criteria: unknown;
+}
+
 export interface CourseManifest {
   schema: 1;
   slug: string;
@@ -36,6 +63,8 @@ export interface CourseManifest {
   tracks?: TrackDef[];
   tags?: string[];
   modules: ModuleDef[];
+  degrees?: DegreeDef[];
+  badges?: BadgeDef[];
 }
 
 const MANIFEST_FILENAMES = ['course.yaml', 'course.yml'];
@@ -337,6 +366,10 @@ export interface LoadedCourse {
   tags?: string[];
   tracks: TrackDef[];
   modules: LoadedModule[];
+  /** Design §9.2 — degrees this repo declares. Empty when the manifest declares none. */
+  degrees: DegreeDef[];
+  /** Design §9.3 — git-sourced badges this repo declares. */
+  badges: BadgeDef[];
 }
 
 /**
@@ -399,5 +432,7 @@ export async function loadCourse(dir: string): Promise<LoadedCourse> {
     tags: manifest.tags,
     tracks: manifest.tracks ?? [],
     modules,
+    degrees: manifest.degrees ?? [],
+    badges: manifest.badges ?? [],
   };
 }

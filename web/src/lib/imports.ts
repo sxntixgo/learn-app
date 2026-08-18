@@ -11,6 +11,10 @@ const ENTITY_LABELS: Array<{ key: keyof ImportCounts; label: string }> = [
   { key: 'tracks', label: 'track' },
   { key: 'modules', label: 'module' },
   { key: 'lessons', label: 'lesson' },
+  // Design §9.2/§9.3, Phase 11. Zero-count kinds are omitted by the loop
+  // below, so a repo declaring no badges reads exactly as it did before.
+  { key: 'degrees', label: 'degree' },
+  { key: 'badges', label: 'badge' },
 ];
 
 /**

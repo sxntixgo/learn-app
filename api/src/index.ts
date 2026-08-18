@@ -16,6 +16,7 @@ import type { MeRouteDeps } from './routes/me.ts';
 import { registerMeRoutes } from './routes/me.ts';
 import type { AdminRouteDeps } from './routes/admin.ts';
 import { registerAdminRoutes } from './routes/admin.ts';
+import { registerAdminBadgeRoutes } from './routes/admin-badges.ts';
 import type { SetupRouteDeps } from './routes/setup.ts';
 import { registerSetupRoutes } from './routes/setup.ts';
 import type { AuthRouteDeps } from './routes/auth.ts';
@@ -79,6 +80,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   registerQuizRoutes(fastify, options);
   registerMeRoutes(fastify, options);
   registerAdminRoutes(fastify, options);
+  registerAdminBadgeRoutes(fastify, options);
   // The real Argon2id hasher fills the seam auth/bootstrap.ts left open, so
   // the first accounts are created with real credentials rather than the
   // NULL password_hash that means "cannot authenticate".

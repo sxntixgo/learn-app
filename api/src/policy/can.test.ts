@@ -355,6 +355,40 @@ const MATRIX: readonly MatrixCase[] = [
     resource: noResource,
     expected: [DENY, DENY, DENY, DENY, ALLOW],
   },
+  // Phase 11: the rest of the badge lifecycle (§9.3's admin CRUD and the
+  // export-to-YAML action), plus the admin degree list (§6.1's
+  // "unsatisfiable shows in admin"). Admin only — a teacher's badge power
+  // is `course:badge:create`, scoped to a course they own.
+  {
+    row: 'Define degrees, global badges',
+    action: 'badge:list',
+    resource: noResource,
+    expected: [DENY, DENY, DENY, DENY, ALLOW],
+  },
+  {
+    row: 'Define degrees, global badges',
+    action: 'badge:update',
+    resource: noResource,
+    expected: [DENY, DENY, DENY, DENY, ALLOW],
+  },
+  {
+    row: 'Define degrees, global badges',
+    action: 'badge:delete',
+    resource: noResource,
+    expected: [DENY, DENY, DENY, DENY, ALLOW],
+  },
+  {
+    row: 'Define degrees, global badges',
+    action: 'badge:export',
+    resource: noResource,
+    expected: [DENY, DENY, DENY, DENY, ALLOW],
+  },
+  {
+    row: 'Define degrees, global badges',
+    action: 'degree:list',
+    resource: noResource,
+    expected: [DENY, DENY, DENY, DENY, ALLOW],
+  },
 
   // ---------------------------------------------------------------------------
   // Row: "Assign roles, grant invite budgets" — admin ✅

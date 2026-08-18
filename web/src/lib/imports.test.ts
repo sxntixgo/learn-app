@@ -4,7 +4,15 @@ import type { ImportCounts } from './api';
 
 function counts(overrides: Partial<ImportCounts> = {}): ImportCounts {
   const zero = { created: 0, updated: 0, skipped: 0, archived: 0 };
-  return { courses: { ...zero }, tracks: { ...zero }, modules: { ...zero }, lessons: { ...zero }, ...overrides };
+  return {
+    courses: { ...zero },
+    tracks: { ...zero },
+    modules: { ...zero },
+    lessons: { ...zero },
+    degrees: { ...zero },
+    badges: { ...zero },
+    ...overrides,
+  };
 }
 
 describe('summarizeImportCounts', () => {
@@ -23,6 +31,14 @@ describe('summarizeImportCounts', () => {
       lessons: { created: 3, updated: 2, skipped: 0, archived: 1 },
     });
     expect(summarizeImportCounts(c)).toBe('1 created course · 3 created, 2 updated, 1 archived lessons');
+  });
+
+  it('names the progression kinds a repo declares (design §9.2, §9.3)', () => {
+    const c = counts({
+      degrees: { created: 1, updated: 0, skipped: 0, archived: 0 },
+      badges: { created: 0, updated: 2, skipped: 1, archived: 0 },
+    });
+    expect(summarizeImportCounts(c)).toBe('1 created degree · 2 updated badges');
   });
 });
 

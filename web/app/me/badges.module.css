@@ -1,0 +1,229 @@
+/*
+ * Badge shelf and degree list on `/me`.
+ *
+ * EARNED vs LOCKED IS STRUCTURAL, not chromatic (design §14): border-style
+ * (solid/dashed), the seal glyph (filled disc / open ring), a visible status
+ * word, and different content per state. Take every colour out of this file
+ * and the two states are still distinguishable — which is the test that
+ * matters for WCAG 1.4.1.
+ *
+ * Existing tokens only. 375px is the design floor: the grid is one column
+ * until 30rem, and every interactive target here is a link in the degree
+ * list, sized to 44px through its own padding.
+ */
+
+.grid {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+}
+
+@media (min-width: 30rem) {
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  }
+}
+
+.cardEarned,
+.cardLocked {
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--color-page);
+}
+
+/* Solid, full-weight border: this one is yours. */
+.cardEarned {
+  border: var(--border-regular) solid var(--color-link);
+}
+
+/* Dashed hairline: the same card, visibly unfinished — legible with no
+   colour vision at all. */
+.cardLocked {
+  border: var(--border-hairline) dashed var(--color-border-hairline);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* A filled seal vs an open ring — a shape difference, not a hue difference. */
+.sealEarned,
+.sealLocked {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+}
+
+.sealEarned {
+  background: var(--color-link);
+  border: var(--border-hairline) solid var(--color-link);
+}
+
+.sealLocked {
+  background: transparent;
+  border: var(--border-regular) dashed var(--color-text-secondary);
+}
+
+.title {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+
+.status {
+  margin: var(--space-0) 0 0;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-text-secondary);
+}
+
+.description {
+  margin: var(--space-1) 0 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.awarded {
+  margin: var(--space-1) 0 0;
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+}
+
+.progress {
+  margin-top: var(--space-1);
+}
+
+.track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-heat-0);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  background: var(--color-heat-3);
+}
+
+.count {
+  margin: var(--space-0) 0 0;
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+}
+
+.empty {
+  margin: 1rem 0 0;
+  max-width: var(--measure-prose);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------------------------
+ * Degrees (design §9.2). Same structural rules; a degree additionally has an
+ * UNSATISFIABLE state, which is again a word plus a border change, never a
+ * colour on its own.
+ * ------------------------------------------------------------------------ */
+
+.degrees {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.degreeEarned,
+.degreeLocked {
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--color-page);
+}
+
+.degreeEarned {
+  border: var(--border-regular) solid var(--color-link);
+}
+
+.degreeLocked {
+  border: var(--border-hairline) dashed var(--color-border-hairline);
+}
+
+.degreeHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.degreeTitle {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.requirements {
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-0) var(--space-1);
+}
+
+/*
+ * A requirement is a pill in one of three states, each with its own PREFIX
+ * character rendered in the markup ("✓", "·", "?") as well as its own border
+ * style — so the three read apart in greyscale.
+ */
+.reqDone,
+.reqTodo,
+.reqMissing {
+  font-size: 0.72rem;
+  padding: var(--space-0) var(--space-1);
+  border-radius: var(--radius-pill);
+}
+
+.reqDone {
+  border: var(--border-hairline) solid var(--color-link);
+  color: var(--color-text);
+}
+
+.reqTodo {
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  color: var(--color-text-secondary);
+}
+
+.reqMissing {
+  border: var(--border-hairline) dotted var(--color-text-secondary);
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+/* Announced, never drawn — the prefix characters above are decorative, so
+   the completed/not-completed state needs a spoken form too. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.unsatisfiable {
+  margin: var(--space-1) 0 0;
+  max-width: var(--measure-prose);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}

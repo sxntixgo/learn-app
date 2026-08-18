@@ -52,6 +52,9 @@ interface CourseSpec {
   title?: string;
   tracks?: { id: string; name: string; hue: string }[];
   modules: ModuleSpec[];
+  /** Design §9.2 / §9.3 — the two optional top-level manifest keys. */
+  degrees?: unknown[];
+  badges?: unknown[];
 }
 
 async function writeCourse(dir: string, spec: CourseSpec): Promise<string> {
@@ -68,6 +71,8 @@ async function writeCourse(dir: string, spec: CourseSpec): Promise<string> {
       title: m.title,
       lessons: m.lessons.map((l) => l.file),
     })),
+    ...(spec.degrees ? { degrees: spec.degrees } : {}),
+    ...(spec.badges ? { badges: spec.badges } : {}),
   };
   await writeFile(path.join(dir, 'course.yaml'), JSON.stringify(manifest, null, 2));
 
@@ -180,6 +185,12 @@ describe.sequential('importCourse', () => {
 
   afterAll(async () => {
     await pool.query(`delete from import_runs where course_slug like $1`, [`${SLUG_PREFIX}-%`]);
+    // Badges/degrees before courses: `badges.course_id` is `on delete set
+    // null`, so the order is not forced, but nothing here is ever awarded —
+    // an awarded badge could not be deleted at all (`user_badges.badge_id`
+    // is `on delete restrict`, migration 0013).
+    await pool.query(`delete from badges where slug like $1`, [`${SLUG_PREFIX}-%`]);
+    await pool.query(`delete from degrees where slug like $1`, [`${SLUG_PREFIX}-%`]);
     await pool.query(`delete from courses where slug like $1`, [`${SLUG_PREFIX}-%`]);
     await pool.end();
     await rm(tmp, { recursive: true, force: true });
@@ -742,5 +753,133 @@ describe.sequential('importCourse', () => {
     await expect(importDir(dirPath)).rejects.toThrow(/twice|duplicate/i);
     const rows = await pool.query(`select 1 from courses where slug = $1`, [slug]);
     expect(rows.rowCount).toBe(0);
+  });
+
+  // ===========================================================================
+  // Design §9.2 / §9.3: the two optional manifest keys, and the ONE refusal.
+  // ===========================================================================
+  describe('degrees and badges', () => {
+    it('imports git-sourced badges and degrees, and skips them unchanged on re-import', async () => {
+      const slug = `${SLUG_PREFIX}-progression`;
+      const badgeSlug = `${SLUG_PREFIX}-badge-git`;
+      const degreeSlug = `${SLUG_PREFIX}-degree-git`;
+      const dirPath = path.join(tmp, 'progression');
+
+      const spec: CourseSpec = {
+        slug,
+        modules: [{ id: 'intro', title: 'Introduction', lessons: [lesson('m/one.md', 'One')] }],
+        degrees: [
+          {
+            slug: degreeSlug,
+            title: 'Test Degree',
+            required: [slug],
+            // A slug this instance has NOT imported. Design §8: a cross-repo
+            // reference never fails an import — it is recorded as declared.
+            electives: { choose: 1, from: [slug, `${SLUG_PREFIX}-not-imported`] },
+          },
+        ],
+        badges: [
+          {
+            slug: badgeSlug,
+            title: 'Git Badge',
+            description: 'Declared in the repo',
+            course: slug,
+            criteria: { type: 'course_completed', course: slug },
+          },
+        ],
+      };
+      await writeCourse(dirPath, spec);
+
+      const first = await importDir(dirPath);
+      expect(first.counts.degrees).toEqual({ created: 1, updated: 0, skipped: 0, archived: 0 });
+      expect(first.counts.badges).toEqual({ created: 1, updated: 0, skipped: 0, archived: 0 });
+
+      const badge = await pool.query<{ source: string; criteria: unknown; course_id: string | null }>(
+        `select b.source, b.criteria, b.course_id from badges b where b.slug = $1`,
+        [badgeSlug],
+      );
+      expect(badge.rows[0]!.source).toBe('git');
+      expect(badge.rows[0]!.criteria).toEqual({ type: 'course_completed', course: slug });
+      // Scoped to the course the same manifest declares, resolved to its id.
+      expect(badge.rows[0]!.course_id).not.toBeNull();
+
+      const degree = await pool.query<{ required_slugs: string[]; electives_choose: number; electives_from: string[] }>(
+        `select required_slugs, electives_choose, electives_from from degrees where slug = $1`,
+        [degreeSlug],
+      );
+      expect(degree.rows[0]!.required_slugs).toEqual([slug]);
+      expect(degree.rows[0]!.electives_choose).toBe(1);
+      expect(degree.rows[0]!.electives_from).toEqual([slug, `${SLUG_PREFIX}-not-imported`]);
+
+      // Unchanged re-import rewrites nothing, like every other entity kind.
+      const second = await importDir(dirPath);
+      expect(second.counts.degrees.skipped).toBe(1);
+      expect(second.counts.badges.skipped).toBe(1);
+
+      // A retuned threshold in the repo is an UPDATE of the same row — the
+      // id awards point at never changes.
+      spec.badges = [
+        {
+          slug: badgeSlug,
+          title: 'Git Badge, retitled',
+          description: 'Declared in the repo',
+          course: slug,
+          criteria: { type: 'lessons_completed', count: 3 },
+        },
+      ];
+      await writeCourse(dirPath, spec);
+      const third = await importDir(dirPath);
+      expect(third.counts.badges.updated).toBe(1);
+    });
+
+    it('REFUSES to overwrite an admin-created badge, and leaves it exactly as it was', async () => {
+      const slug = `${SLUG_PREFIX}-refusal`;
+      const badgeSlug = `${SLUG_PREFIX}-badge-handtuned`;
+      const dirPath = path.join(tmp, 'refusal');
+
+      // The hand-tuned badge design §9.3 is protecting: created in the admin
+      // UI, threshold set against real data.
+      await pool.query(
+        `insert into badges (slug, title, description, source, criteria)
+         values ($1, 'Hand-tuned Badge', 'Threshold set against real data', 'admin', $2::jsonb)`,
+        [badgeSlug, JSON.stringify({ type: 'track_score', track: 'cx', min: 87 })],
+      );
+
+      await writeCourse(dirPath, {
+        slug,
+        modules: [{ id: 'intro', title: 'Introduction', lessons: [lesson('m/one.md', 'One')] }],
+        badges: [
+          {
+            slug: badgeSlug,
+            title: 'Repo Badge Claiming The Same Slug',
+            criteria: { type: 'track_score', track: 'cx', min: 50 },
+          },
+        ],
+      });
+
+      // The ERROR is the assertion — a silent skip would leave the repo and
+      // the database disagreeing behind a successful-looking import.
+      await expect(importDir(dirPath)).rejects.toThrow(
+        /already exists on this instance as an ADMIN-created badge/,
+      );
+
+      const badge = await pool.query<{ source: string; title: string; criteria: { min: number } }>(
+        `select source, title, criteria from badges where slug = $1`,
+        [badgeSlug],
+      );
+      expect(badge.rows[0]!.source).toBe('admin');
+      expect(badge.rows[0]!.title).toBe('Hand-tuned Badge');
+      expect(badge.rows[0]!.criteria.min).toBe(87);
+
+      // And the refusal aborts the whole import: one transaction per course
+      // (design §8), so no half-written course is left behind.
+      const courseRows = await pool.query(`select 1 from courses where slug = $1`, [slug]);
+      expect(courseRows.rowCount).toBe(0);
+
+      // The failure is on the audit trail, with the reason.
+      const runs = await importRuns(slug);
+      expect(runs.at(-1)!.status).toBe('failed');
+      expect(JSON.stringify(runs.at(-1)!.log)).toMatch(/ADMIN-created badge/);
+    });
   });
 });
