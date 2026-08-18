@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { loadCourseManifest, resolveLessonPath } from './manifest.ts';
+import { loadCourseManifest, resolveChartSidecars, resolveLessonPath } from './manifest.ts';
 import { parseLesson } from './parse.ts';
 import { validateBlocks } from './validate.ts';
 
@@ -91,6 +91,17 @@ export async function validateCourseDir(dir: string): Promise<ValidateResult> {
       let parsed;
       try {
         parsed = parseLesson(markdown);
+      } catch (err) {
+        problems.push(`${srcPath}: ${err instanceof Error ? err.message : String(err)}`);
+        continue;
+      }
+
+      // Chart CSV sidecars (design §6.3, Task C) must resolve here too —
+      // "a missing sidecar fails validation naming the file" applies to
+      // validate-only mode, not just a real import (manifest.ts's loadCourse
+      // does the identical step for the write path).
+      try {
+        parsed = { ...parsed, blocks: await resolveChartSidecars(dir, srcPath, parsed.blocks) };
       } catch (err) {
         problems.push(`${srcPath}: ${err instanceof Error ? err.message : String(err)}`);
         continue;

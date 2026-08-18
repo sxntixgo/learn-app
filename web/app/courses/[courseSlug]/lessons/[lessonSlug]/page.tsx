@@ -7,7 +7,9 @@ import type { components } from '../../../../../src/lib/api-types';
 import type { AuthorAnnotationInput } from '../../../../../src/lib/annotations';
 import { highlightCodeBlocks } from '../../../../../src/lib/highlight';
 import AnnotatableCode from './AnnotatableCode';
+import Chart from './Chart';
 import ExercisePanel from './ExercisePanel';
+import Figure from './Figure';
 import MarkCompleteButton from './MarkCompleteButton';
 import Quiz from './Quiz';
 import styles from './lesson.module.css';
@@ -116,6 +118,12 @@ export default async function LessonPage({
                     progress={lesson.progress}
                   />
                 );
+              }
+              if (block.type === 'chart') {
+                return <Chart key={index} kind={block.kind} caption={block.caption} data={block.data} />;
+              }
+              if (block.type === 'figure') {
+                return <Figure key={index} svg={block.svg} caption={block.caption} />;
               }
               // block.type === 'rubric'. Rubric blocks are declared beside
               // an EXERCISE (design §9.4) and this branch only ever renders

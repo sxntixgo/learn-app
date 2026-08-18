@@ -1399,12 +1399,89 @@ components:
         - type
         - criteria
 
+    ChartDatum:
+      type: object
+      description: One data point in a chart block — a category label and its numeric value.
+      properties:
+        label:
+          type: string
+          description: The category label
+        value:
+          type: number
+          description: The value plotted for this category
+      required:
+        - label
+        - value
+
+    ChartBlock:
+      type: object
+      description: >-
+        A chart block (design §6.3/§14.1): a small, honest set of
+        server-rendered chart kinds (bar, line) — never a client-side
+        charting library, never a general charting DSL. `data` is always the
+        resolved inline form here: a CSV sidecar reference (design §6.3's
+        escape hatch, `data: ./enrollment.csv`) is resolved to these same
+        rows at import time, so a client never sees an unresolved sidecar
+        path.
+      properties:
+        type:
+          type: string
+          enum:
+            - chart
+          description: The block type discriminator
+        kind:
+          type: string
+          enum:
+            - bar
+            - line
+          description: The chart kind
+        caption:
+          type: string
+          description: A caption naming what the chart shows — required, and doubles as the chart's accessible name
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChartDatum'
+          description: The chart's data points, in order
+      required:
+        - type
+        - kind
+        - caption
+        - data
+
+    FigureBlock:
+      type: object
+      description: >-
+        A figure block (design §6.3): the one sanctioned escape hatch for
+        bespoke static SVG. `svg` is already sanitized (scripts, event
+        handlers, and foreignObject stripped) by the time a lesson reaches
+        this response — see api/src/content/sanitize.ts's sanitizeSvg,
+        applied at import time.
+      properties:
+        type:
+          type: string
+          enum:
+            - figure
+          description: The block type discriminator
+        svg:
+          type: string
+          description: Sanitized inline SVG markup
+        caption:
+          type: string
+          description: A required caption
+      required:
+        - type
+        - svg
+        - caption
+
     Block:
       oneOf:
         - $ref: '#/components/schemas/ProseBlock'
         - $ref: '#/components/schemas/CodeBlock'
         - $ref: '#/components/schemas/QuizBlock'
         - $ref: '#/components/schemas/RubricBlock'
+        - $ref: '#/components/schemas/ChartBlock'
+        - $ref: '#/components/schemas/FigureBlock'
       discriminator:
         propertyName: type
         mapping:
@@ -1412,7 +1489,9 @@ components:
           code: '#/components/schemas/CodeBlock'
           quiz: '#/components/schemas/QuizBlock'
           rubric: '#/components/schemas/RubricBlock'
-      description: A content block, which may be prose, code, a quiz, or a rubric
+          chart: '#/components/schemas/ChartBlock'
+          figure: '#/components/schemas/FigureBlock'
+      description: A content block, which may be prose, code, a quiz, a rubric, a chart, or a figure
 
     LessonNavStub:
       type: object

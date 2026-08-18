@@ -132,8 +132,8 @@ describe('validateBlocks', () => {
     expect(result.valid).toBe(false);
   });
 
-  it('rejects an unsupported block type (chart is a later phase)', () => {
-    const blocks = [{ type: 'chart', kind: 'bar', data: [], caption: 'x' }];
+  it('rejects an unsupported block type (callout is a later phase)', () => {
+    const blocks = [{ type: 'callout', variant: 'warning', html: '<p>x</p>' }];
     const result = validateBlocks(blocks);
     expect(result.valid).toBe(false);
   });
@@ -270,6 +270,118 @@ describe('validateBlocks', () => {
       const result = validateBlocks([rubric]);
       expect(result).toEqual({ valid: true, errors: [] });
       expect(rubric.criteria[0]).toEqual({ name: 'Spotted the shallow module', max: 5, track: 'cx' });
+    });
+  });
+
+  describe('chart blocks (design §6.3/§14.1, Task A)', () => {
+    function validChart() {
+      return {
+        type: 'chart',
+        kind: 'bar',
+        caption: 'Lessons completed per module',
+        data: [
+          { label: 'MCP servers', value: 5 },
+          { label: 'Agents', value: 6 },
+        ],
+      };
+    }
+
+    it('accepts a valid bar chart', () => {
+      expect(validateBlocks([validChart()])).toEqual({ valid: true, errors: [] });
+    });
+
+    it('accepts a valid line chart', () => {
+      const chart = validChart();
+      chart.kind = 'line';
+      expect(validateBlocks([chart])).toEqual({ valid: true, errors: [] });
+    });
+
+    it('rejects a chart with no data (empty array), naming the data field', () => {
+      const chart = validChart();
+      chart.data = [];
+      const result = validateBlocks([chart]);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.path === '/0/data')).toBe(true);
+    });
+
+    it('rejects a chart missing the data field entirely', () => {
+      const chart = validChart() as Record<string, unknown>;
+      delete chart.data;
+      const result = validateBlocks([chart]);
+      expect(result.valid).toBe(false);
+    });
+
+    it('rejects a non-numeric value, naming the offending datum', () => {
+      const chart = validChart();
+      (chart.data[0] as { value: unknown }).value = 'five';
+      const result = validateBlocks([chart]);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.path === '/0/data/0/value')).toBe(true);
+    });
+
+    it('rejects an unknown chart kind, naming the kind field', () => {
+      const chart = validChart() as { kind: string };
+      chart.kind = 'pie';
+      const result = validateBlocks([chart]);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.path === '/0/kind')).toBe(true);
+    });
+
+    it('rejects a chart with no caption', () => {
+      const chart = validChart() as Record<string, unknown>;
+      delete chart.caption;
+      const result = validateBlocks([chart]);
+      expect(result.valid).toBe(false);
+    });
+
+    it('rejects a datum missing a label', () => {
+      const chart = validChart();
+      delete (chart.data[0] as { label?: string }).label;
+      const result = validateBlocks([chart]);
+      expect(result.valid).toBe(false);
+    });
+
+    it('rejects a datum with an unknown property', () => {
+      const chart = validChart();
+      (chart.data[0] as { bogus?: string }).bogus = 'nope';
+      const result = validateBlocks([chart]);
+      expect(result.valid).toBe(false);
+    });
+  });
+
+  describe('figure blocks (design §6.3, Task B)', () => {
+    function validFigure() {
+      return {
+        type: 'figure',
+        svg: '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="currentColor" /></svg>',
+        caption: 'A circle',
+      };
+    }
+
+    it('accepts a valid figure block', () => {
+      expect(validateBlocks([validFigure()])).toEqual({ valid: true, errors: [] });
+    });
+
+    it('rejects a figure with no caption', () => {
+      const figure = validFigure() as Record<string, unknown>;
+      delete figure.caption;
+      const result = validateBlocks([figure]);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.path === '/0')).toBe(true);
+    });
+
+    it('rejects a figure with an empty caption', () => {
+      const figure = validFigure();
+      figure.caption = '';
+      const result = validateBlocks([figure]);
+      expect(result.valid).toBe(false);
+    });
+
+    it('rejects a figure with no svg', () => {
+      const figure = validFigure() as Record<string, unknown>;
+      delete figure.svg;
+      const result = validateBlocks([figure]);
+      expect(result.valid).toBe(false);
     });
   });
 });

@@ -7,15 +7,18 @@ import remarkParse from 'remark-parse';
 import remarkRehype from 'remark-rehype';
 import { unified } from 'unified';
 import { parse as parseYaml } from 'yaml';
-import { proseSanitizeSchema } from './sanitize.ts';
+import { proseSanitizeSchema, sanitizeSvg } from './sanitize.ts';
 
 // Phase 1 supports exactly two block types (design §... / CLAUDE.md rule 5:
 // content is a typed block array, not HTML or a rehype AST). Phase 7 adds
 // `quiz` — the first TAGGED fenced block (design §6.3: "tagged fenced
 // blocks with YAML"), a ```quiz fence whose body is a YAML mapping rather
 // than a language source. Phase 9 adds `rubric`, the second — same fence
-// shape, following the quiz pattern exactly (Task A). Do not add
-// chart/callout/figure here — those are later phases.
+// shape, following the quiz pattern exactly (Task A). Phase 10 adds `chart`
+// and `figure`, the third and fourth — same fence shape again. `figure` is
+// the first caller of sanitize.ts's `sanitizeSvg` (built and tested in
+// Phase 5, unused until now). Do not add `callout` here — it is a later
+// phase.
 export interface Annotation {
   line: number;
   track?: string;
@@ -67,11 +70,43 @@ export interface RubricBlock {
   criteria: RubricCriterion[];
 }
 
+/** One {label, value} point, whether authored inline or read from a CSV sidecar (design §6.3, Task C). */
+export interface ChartDatum {
+  label: string;
+  value: number;
+}
+
+export interface ChartBlock {
+  type: 'chart';
+  kind: string;
+  caption: string;
+  /**
+   * Inline rows as authored, OR (Task C) a CSV sidecar path — a relative
+   * string like "./enrollment.csv" — not yet resolved to rows. parse.ts has
+   * no filesystem access, so it cannot resolve the sidecar itself; that is
+   * manifest.ts's `resolveChartSidecars`, run on every lesson's parsed
+   * blocks BEFORE they reach schemas/blocks.schema.json or the database —
+   * see that function's doc comment. A `ChartBlock` straight off
+   * `parseLesson` may therefore still have a string `data`; a `ChartBlock`
+   * anywhere else in this codebase (post-resolution) never does.
+   */
+  data: ChartDatum[] | string;
+}
+
+export interface FigureBlock {
+  type: 'figure';
+  /** Already sanitized (sanitize.ts's sanitizeSvg) by the time this leaves parse.ts. */
+  svg: string;
+  caption: string;
+}
+
 export type Block =
   | { type: 'prose'; html: string }
   | { type: 'code'; lang: string | null; source: string; annotations?: Annotation[] }
   | QuizBlock
-  | RubricBlock;
+  | RubricBlock
+  | ChartBlock
+  | FigureBlock;
 
 export type LessonKind = 'lesson' | 'exercise' | 'quiz';
 
@@ -226,6 +261,14 @@ function buildBlocks(nodes: RootContent[]): Block[] {
         blocks.push(buildRubricBlock(codeNode));
         continue;
       }
+      if (codeNode.lang === 'chart') {
+        blocks.push(buildChartBlock(codeNode));
+        continue;
+      }
+      if (codeNode.lang === 'figure') {
+        blocks.push(buildFigureBlock(codeNode));
+        continue;
+      }
       const { source, annotations } = extractAnnotations(codeNode.value);
       const block: Block = { type: 'code', lang: codeNode.lang ?? null, source };
       if (annotations.length > 0) block.annotations = annotations;
@@ -339,6 +382,82 @@ function buildRubricBlock(codeNode: Code): RubricBlock {
 
   const record = parsed as Record<string, unknown>;
   return { type: 'rubric', criteria: record.criteria as RubricCriterion[] };
+}
+
+/**
+ * Parses a ```chart fence's body into a typed ChartBlock (design §6.3/§14.1,
+ * Task A). Mirrors buildQuizBlock/buildRubricBlock exactly for error
+ * quality. Does NOT validate `kind`, resolve a CSV `data` sidecar, or check
+ * that `data` entries are numeric — kind/shape validation is
+ * schemas/blocks.schema.json's job (validateBlocks), and sidecar resolution
+ * is manifest.ts's (it needs the course directory, which this function does
+ * not have).
+ */
+function buildChartBlock(codeNode: Code): ChartBlock {
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(codeNode.value);
+  } catch (err) {
+    const relativeLine = hasLinePos(err) ? (err.linePos?.[0]?.line ?? 1) : 1;
+    const line = fencedYamlContentLine(codeNode, relativeLine);
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`invalid chart block YAML at line ${line}: ${detail}`);
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    const line = fencedYamlContentLine(codeNode, 1);
+    throw new Error(
+      `invalid chart block at line ${line}: the \`\`\`chart fence body must be a YAML mapping with "kind", ` +
+        `"caption" and "data" keys, got ${Array.isArray(parsed) ? 'a list' : typeof parsed}.`,
+    );
+  }
+
+  const record = parsed as Record<string, unknown>;
+  return {
+    type: 'chart',
+    kind: record.kind as string,
+    caption: record.caption as string,
+    data: record.data as ChartBlock['data'],
+  };
+}
+
+/**
+ * Parses a ```figure fence's body into a typed FigureBlock (design §6.3,
+ * Task B): the one sanctioned escape hatch for bespoke static SVG. Mirrors
+ * buildQuizBlock/buildRubricBlock for the YAML/error-quality shape, but
+ * additionally sanitizes `svg` through sanitize.ts's `sanitizeSvg` — this is
+ * that function's first caller (built and tested in Phase 5). A `<script>`
+ * or `on*` handler smuggled into a figure's SVG is stripped here, at parse
+ * time, not merely rejected: design §8.1 says figures are sanitized, not
+ * that a hostile one fails import.
+ *
+ * `svg` is only sanitized when it parsed as a string — a non-string (or
+ * missing) `svg` is passed through unchanged so schemas/blocks.schema.json
+ * reports the real problem ("missing required property") instead of this
+ * function throwing a confusing TypeError first.
+ */
+function buildFigureBlock(codeNode: Code): FigureBlock {
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(codeNode.value);
+  } catch (err) {
+    const relativeLine = hasLinePos(err) ? (err.linePos?.[0]?.line ?? 1) : 1;
+    const line = fencedYamlContentLine(codeNode, relativeLine);
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`invalid figure block YAML at line ${line}: ${detail}`);
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    const line = fencedYamlContentLine(codeNode, 1);
+    throw new Error(
+      `invalid figure block at line ${line}: the \`\`\`figure fence body must be a YAML mapping with "svg" ` +
+        `and "caption" keys, got ${Array.isArray(parsed) ? 'a list' : typeof parsed}.`,
+    );
+  }
+
+  const record = parsed as Record<string, unknown>;
+  const svg = typeof record.svg === 'string' ? sanitizeSvg(record.svg) : record.svg;
+  return { type: 'figure', svg: svg as string, caption: record.caption as string };
 }
 
 // In-source annotation markers (design §6.3): a trailing comment of the form

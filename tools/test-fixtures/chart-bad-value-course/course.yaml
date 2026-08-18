@@ -1,0 +1,9 @@
+schema: 1
+slug: chart-bad-value-course
+title: Chart Bad Value Course
+subtitle: a hand-written fixture proving a non-numeric chart value fails import
+modules:
+  - id: intro
+    title: Introduction
+    lessons:
+      - modules/01-intro/chart.md

@@ -623,6 +623,108 @@ describe.sequential('importCourse', () => {
     expect(rows.rowCount).toBe(0);
   });
 
+  it('imports a chart block with inline data and a figure block with sanitized SVG (Phase 10, Task A/B)', async () => {
+    const slug = `${SLUG_PREFIX}-chart-figure`;
+    const dirPath = path.join(tmp, 'chart-figure');
+    const chartFigureBody =
+      '---\ntitle: Chart And Figure\n---\n\n' +
+      '```chart\nkind: bar\ncaption: Lessons completed per module\ndata:\n' +
+      '  - { label: MCP servers, value: 5 }\n  - { label: Agents, value: 6 }\n```\n\n' +
+      '```figure\ncaption: Two circles\nsvg: |\n' +
+      '  <svg viewBox="0 0 10 10"><script>alert(1)</script><circle cx="5" cy="5" r="4" onclick="x()" /></svg>\n```\n';
+    await writeCourse(dirPath, {
+      slug,
+      modules: [{ id: 'intro', title: 'Introduction', lessons: [{ file: 'm/one.md', body: chartFigureBody }] }],
+    });
+
+    const result = await importDir(dirPath);
+    expect(result.counts.lessons.created).toBe(1);
+
+    const rows = await lessonRows(slug);
+    const blocks = rows[0]!.blocks as Array<{ type: string; [key: string]: unknown }>;
+
+    const chartBlock = blocks.find((b) => b.type === 'chart');
+    expect(chartBlock).toEqual({
+      type: 'chart',
+      kind: 'bar',
+      caption: 'Lessons completed per module',
+      data: [
+        { label: 'MCP servers', value: 5 },
+        { label: 'Agents', value: 6 },
+      ],
+    });
+
+    const figureBlock = blocks.find((b) => b.type === 'figure');
+    expect(figureBlock!.caption).toBe('Two circles');
+    const svg = figureBlock!.svg as string;
+    expect(svg).not.toContain('<script');
+    expect(svg).not.toContain('onclick');
+    expect(svg).toContain('<circle');
+  });
+
+  it('resolves a chart CSV sidecar into inline rows before writing to the database (Phase 10, Task C)', async () => {
+    const slug = `${SLUG_PREFIX}-chart-csv`;
+    const dirPath = path.join(tmp, 'chart-csv');
+    await writeCourse(dirPath, {
+      slug,
+      modules: [
+        {
+          id: 'intro',
+          title: 'Introduction',
+          lessons: [
+            {
+              file: 'm/one.md',
+              body:
+                '---\ntitle: Chart From CSV\n---\n\n```chart\nkind: line\ncaption: Weekly enrollment\ndata: ./enrollment.csv\n```\n',
+            },
+          ],
+        },
+      ],
+    });
+    await writeFile(path.join(dirPath, 'm', 'enrollment.csv'), 'label,value\nWeek 1,5\nWeek 2,9\n');
+
+    const result = await importDir(dirPath);
+    expect(result.counts.lessons.created).toBe(1);
+
+    const rows = await lessonRows(slug);
+    const chartBlock = (rows[0]!.blocks as Array<{ type: string; data?: unknown }>).find((b) => b.type === 'chart');
+    expect(chartBlock).toEqual({
+      type: 'chart',
+      kind: 'line',
+      caption: 'Weekly enrollment',
+      data: [
+        { label: 'Week 1', value: 5 },
+        { label: 'Week 2', value: 9 },
+      ],
+    });
+  });
+
+  it('fails import with a clear message naming a missing chart CSV sidecar', async () => {
+    const slug = `${SLUG_PREFIX}-chart-csv-missing`;
+    const dirPath = path.join(tmp, 'chart-csv-missing');
+    await writeCourse(dirPath, {
+      slug,
+      modules: [
+        {
+          id: 'intro',
+          title: 'Introduction',
+          lessons: [
+            {
+              file: 'm/one.md',
+              body:
+                '---\ntitle: Chart From Missing CSV\n---\n\n```chart\nkind: line\ncaption: X\ndata: ./missing.csv\n```\n',
+            },
+          ],
+        },
+      ],
+    });
+
+    await expect(importDir(dirPath)).rejects.toThrow(/missing\.csv/);
+
+    const rows = await pool.query(`select 1 from courses where slug = $1`, [slug]);
+    expect(rows.rowCount).toBe(0);
+  });
+
   it('rejects two lessons that would collide on the same identity', async () => {
     const slug = `${SLUG_PREFIX}-dupe`;
     const dirPath = path.join(tmp, 'dupe');

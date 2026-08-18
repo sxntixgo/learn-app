@@ -1,0 +1,9 @@
+schema: 1
+slug: chart-missing-csv-course
+title: Chart Missing CSV Course
+subtitle: a hand-written fixture proving a chart with a missing CSV sidecar fails import naming the file
+modules:
+  - id: intro
+    title: Introduction
+    lessons:
+      - modules/01-intro/chart.md

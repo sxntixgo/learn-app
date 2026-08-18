@@ -2,8 +2,9 @@ import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import { parseChartCsv } from './csv.ts';
 import { parseLesson } from './parse.ts';
-import type { ParsedLesson } from './parse.ts';
+import type { Block, ParsedLesson } from './parse.ts';
 import { validateCourseManifest } from './validate.ts';
 
 // Types below mirror schemas/course.schema.json (design §6.1). That JSON
@@ -231,6 +232,92 @@ export function resolveLessonPath(courseDir: string, srcPath: string): string {
   return candidate;
 }
 
+// ---------------------------------------------------------------------------
+// Chart CSV sidecars (design §6.3, Task C).
+//
+// parse.ts has no filesystem access, so a chart block's `data: ./x.csv`
+// leaves parseLesson as a raw, unresolved string (see ChartBlock's doc
+// comment). This is the ONE place that string is ever turned into rows: it
+// runs on every lesson right after parseLesson, before that lesson's blocks
+// reach validateBlocks (schemas/blocks.schema.json expects the final array
+// form — see its own top-level description) or the database.
+//
+// The sidecar path is resolved through `resolveLessonPath` — the SAME
+// chokepoint every other manifest-referenced path goes through — so path
+// traversal and symlink defenses (design §8.1) apply for free; this
+// function does not open a second way to reach a file.
+// ---------------------------------------------------------------------------
+
+function isChartBlockWithUnresolvedData(block: Block): block is Block & { type: 'chart'; data: string } {
+  return block.type === 'chart' && typeof block.data === 'string';
+}
+
+/**
+ * Resolves every `chart` block's CSV sidecar reference in `blocks` into
+ * inline {label, value} rows, relative to the LESSON's own directory (not
+ * the course root) — `data: ./enrollment.csv` in a lesson at
+ * `modules/01-intro/lesson.md` means `modules/01-intro/enrollment.csv`.
+ * Blocks with inline `data` (already an array) pass through unchanged.
+ *
+ * Throws a message naming the sidecar path exactly as the author wrote it,
+ * for a path that is refused (traversal/symlink/absolute — resolveLessonPath),
+ * missing, or malformed CSV — design §8's "every failure names ... the
+ * expectation". The caller (loadCourse, validateCourseDir) prefixes the
+ * lesson's own srcPath, matching how a parseLesson failure is already
+ * reported.
+ */
+export async function resolveChartSidecars(courseDir: string, lessonSrcPath: string, blocks: Block[]): Promise<Block[]> {
+  const lessonDir = path.dirname(lessonSrcPath);
+
+  const resolved: Block[] = [];
+  for (const block of blocks) {
+    if (!isChartBlockWithUnresolvedData(block)) {
+      resolved.push(block);
+      continue;
+    }
+
+    const sidecarPath = block.data;
+    // path.join normalizes ".." segments against lessonDir, so a sidecar
+    // that stays inside the course directory never trips resolveLessonPath's
+    // literal ".." check even when it climbs out of the LESSON's own
+    // directory (e.g. "../shared/x.csv" reaching a sibling module) — only a
+    // sidecar that actually escapes the course root still has a literal
+    // ".." left after normalization, and resolveLessonPath refuses that.
+    const manifestRelativePath = path.join(lessonDir, sidecarPath);
+
+    let absPath: string;
+    try {
+      absPath = resolveLessonPath(courseDir, manifestRelativePath);
+    } catch (err) {
+      throw new Error(`${sidecarPath}: chart data sidecar ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    if (!existsSync(absPath)) {
+      throw new Error(`${sidecarPath}: chart data sidecar not found (resolved to ${manifestRelativePath}).`);
+    }
+
+    let csvText: string;
+    try {
+      csvText = await readFile(absPath, 'utf8');
+    } catch (err) {
+      throw new Error(
+        `${sidecarPath}: chart data sidecar could not be read — ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    let rows;
+    try {
+      rows = parseChartCsv(csvText);
+    } catch (err) {
+      throw new Error(`${sidecarPath}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    resolved.push({ ...block, data: rows });
+  }
+
+  return resolved;
+}
+
 export interface LoadedLesson extends ParsedLesson {
   /** The manifest-relative source path this lesson was loaded from. */
   srcPath: string;
@@ -289,6 +376,12 @@ export async function loadCourse(dir: string): Promise<LoadedCourse> {
       let parsed: ParsedLesson;
       try {
         parsed = parseLesson(markdown);
+      } catch (err) {
+        throw new Error(`${srcPath}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+
+      try {
+        parsed = { ...parsed, blocks: await resolveChartSidecars(dir, srcPath, parsed.blocks) };
       } catch (err) {
         throw new Error(`${srcPath}: ${err instanceof Error ? err.message : String(err)}`);
       }

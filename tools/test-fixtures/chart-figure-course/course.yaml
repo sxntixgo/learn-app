@@ -1,0 +1,14 @@
+schema: 1
+slug: chart-figure-fixture-course
+title: Chart & Figure Fixture Course
+subtitle: a hand-written fixture exercising chart, figure, and CSV sidecars (design §6.3/§14.1, Phase 10)
+tracks:
+  - { id: cx, name: Complexity, hue: blue }
+tags: [fixture, chart, figure]
+modules:
+  - id: intro
+    title: Introduction
+    lessons:
+      - modules/01-intro/chart-inline.md
+      - modules/01-intro/chart-csv.md
+      - modules/01-intro/figure.md

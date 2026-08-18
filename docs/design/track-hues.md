@@ -88,6 +88,15 @@ label. Never a text colour, never a fill. Implemented in:
   carries a track get a 3px **left-edge rule** in that hue. Chip background/text
   stay the palette's teal tag colours in both cases — the hue never becomes a fill
   or a text colour.
+- **Phase 10's `chart` block is the one deliberate exception.** A bar's fill
+  and a line's stroke are their only marks — there is no non-fill form for
+  "this chart's colour" the way a chip or a TOC row has a border/rule to
+  spend hue on instead. `Chart.tsx` uses `--color-track-blue` (slot 1 of the
+  five) as the single-series mark colour, on the explicit understanding that
+  "a chart is fill": the constraint this rule protects is palette rule 1
+  (the one yellow is never a fill), not that the track ramp itself can never
+  paint an area. Text (axis ticks, value labels, the caption) still never
+  wears the track hue — only the bar/line mark does.
 
 ## In-gamut / contrast check
 

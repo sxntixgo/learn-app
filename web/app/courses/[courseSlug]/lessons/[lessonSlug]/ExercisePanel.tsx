@@ -41,6 +41,8 @@ import type { components } from '../../../../../src/lib/api-types';
 import type { Annotation, AuthorAnnotationInput } from '../../../../../src/lib/annotations';
 import { fromGradedAnnotations, toSubmissionAnnotationInputs } from '../../../../../src/lib/annotations';
 import AnnotatableCode from './AnnotatableCode';
+import Chart from './Chart';
+import Figure from './Figure';
 import Quiz from './Quiz';
 import RubricDisplay from './RubricDisplay';
 import { saveSubmissionDraftAction, submitExerciseAction } from './actions';
@@ -212,6 +214,12 @@ export default function ExercisePanel({
                 />
               </div>
             );
+          }
+          if (block.type === 'chart') {
+            return <Chart key={index} kind={block.kind} caption={block.caption} data={block.data} />;
+          }
+          if (block.type === 'figure') {
+            return <Figure key={index} svg={block.svg} caption={block.caption} />;
           }
           if (block.type === 'rubric') {
             // Design §9.4: "students read the criteria before submitting" —

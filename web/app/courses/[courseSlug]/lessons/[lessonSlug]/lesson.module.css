@@ -452,3 +452,167 @@
 .navTitle {
   color: var(--color-link);
 }
+
+/*
+ * The `chart` block (design §6.3/§14.1, Phase 10 Task A). A breakout
+ * container like `.code` — the same reasoning applies: a bar chart's row
+ * labels and a line chart's tick labels need more room than the 46ch prose
+ * measure gives them. `max-width` is additionally capped well under the
+ * breakout ceiling (see Chart.tsx's form-decision comment): the SVG's own
+ * viewBox is sized as a mobile-first reference, so stretching it across a
+ * 100ch desktop column would enlarge the marks and text past their design
+ * size for no legibility gain — a chart reads better at a comfortable fixed
+ * width, centred in the wider column, than full-bleed.
+ */
+.chart {
+  max-width: min(var(--measure-breakout, 70ch), 30rem);
+  width: 100%;
+  margin: 1.75rem auto;
+  padding: 0;
+}
+
+.chartSvg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Text NEVER wears the mark's series colour (marks-and-anatomy.md) — every
+   label below uses a text token, never --color-track-*. */
+.chartRowLabel,
+.chartValueLabel,
+.chartXTickLabel,
+.chartYTickLabel {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 10.5px;
+  fill: var(--color-text-secondary);
+}
+
+.chartRowLabel {
+  text-anchor: end;
+  dominant-baseline: middle;
+  fill: var(--color-text);
+}
+
+.chartValueLabel {
+  dominant-baseline: middle;
+  fill: var(--color-text);
+}
+
+.chartXTickLabel,
+.chartYTickLabel {
+  dominant-baseline: middle;
+}
+
+.chartYTickLabel {
+  text-anchor: end;
+}
+
+/* Baseline / gridlines: hairline, one step off the surface, recessive (marks-and-anatomy.md — never dashed). */
+.chartAxisLine,
+.chartGridline {
+  stroke: var(--color-border-hairline);
+  stroke-width: 1;
+}
+
+/* The single-series mark colour: slot 1 of the track ramp — see Chart.tsx's
+   doc comment for why a chart is the one place this hue is a fill/stroke. */
+.chartBar {
+  fill: var(--color-track-blue);
+}
+
+.chartLine {
+  fill: none;
+  stroke: var(--color-track-blue);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chartPoint {
+  fill: var(--color-track-blue);
+}
+
+/* The 2px "surface ring" spec (marks-and-anatomy.md) — a ring in the page
+   colour so a marker stays legible where it crosses the line or a gridline. */
+.chartPointRing {
+  fill: var(--color-page);
+}
+
+/*
+ * The accessible table twin every chart ships (dataviz skill's
+ * anti-patterns.md: "no table view / colour-only encoding on a continuous
+ * scale"). A native <details> disclosure: keyboard- and tap-operable with
+ * zero JavaScript, so it works with the same "no client script" constraint
+ * the chart itself has, and it is never gated behind hover (design §14.2).
+ */
+.chartTable {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.chartTable summary {
+  cursor: pointer;
+  color: var(--color-link);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 0.85rem;
+  padding: 0.35rem 0;
+}
+
+.chartTable table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.chartTable th,
+.chartTable td {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border-top: 1px solid var(--color-border-hairline);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--color-text);
+}
+
+.chartTable td {
+  font-variant-numeric: tabular-nums;
+}
+
+.chartCaption {
+  margin-top: 0.6rem;
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+/*
+ * The `figure` block (design §6.3, Phase 10 Task B): static SVG only, the
+ * one sanctioned escape hatch for bespoke visuals. Same breakout width as
+ * `.code`/`.chart` — an author's own SVG may need more than 46ch.
+ */
+.figure {
+  max-width: var(--measure-breakout, 70ch);
+  width: 100%;
+  margin: 1.75rem auto;
+}
+
+.figureSvg {
+  display: flex;
+  justify-content: center;
+  color: var(--color-text);
+}
+
+.figureSvg :global(svg) {
+  max-width: 100%;
+  height: auto;
+}
+
+.figureCaption {
+  margin-top: 0.6rem;
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+}

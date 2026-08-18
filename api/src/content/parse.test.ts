@@ -343,6 +343,207 @@ describe('parseLesson', () => {
     });
   });
 
+  describe('chart blocks (design §6.3/§14.1, Task A: tagged fenced blocks with YAML)', () => {
+    const validChartMarkdown = [
+      '# Title',
+      '',
+      '```chart',
+      'kind: bar',
+      'caption: Lessons completed per module',
+      'data:',
+      '  - { label: MCP servers, value: 5 }',
+      '  - { label: Agents, value: 6 }',
+      '```',
+      '',
+    ].join('\n');
+
+    it('parses a ```chart fence into a typed chart block', () => {
+      const { blocks } = parseLesson(validChartMarkdown);
+      expect(blocks).toEqual([
+        {
+          type: 'chart',
+          kind: 'bar',
+          caption: 'Lessons completed per module',
+          data: [
+            { label: 'MCP servers', value: 5 },
+            { label: 'Agents', value: 6 },
+          ],
+        },
+      ]);
+    });
+
+    it('produces output that validates against the blocks schema', () => {
+      const { blocks } = parseLesson(validChartMarkdown);
+      expect(validateBlocks(blocks)).toEqual({ valid: true, errors: [] });
+    });
+
+    it('parses a `kind: line` chart the same way', () => {
+      const markdown = validChartMarkdown.replace('kind: bar', 'kind: line');
+      const { blocks } = parseLesson(markdown);
+      expect((blocks[0] as { kind: string }).kind).toBe('line');
+    });
+
+    it('leaves a CSV sidecar path as an unresolved string — resolution is manifest.ts\'s job', () => {
+      const markdown = [
+        '# Title',
+        '',
+        '```chart',
+        'kind: bar',
+        'caption: Enrollment over time',
+        'data: ./enrollment.csv',
+        '```',
+        '',
+      ].join('\n');
+      const { blocks } = parseLesson(markdown);
+      expect(blocks).toEqual([
+        { type: 'chart', kind: 'bar', caption: 'Enrollment over time', data: './enrollment.csv' },
+      ]);
+    });
+
+    it('preserves document order alongside prose and code', () => {
+      const markdown = ['# Title', '', 'Some prose.', '', validChartMarkdown.split('\n').slice(2).join('\n')].join(
+        '\n',
+      );
+      const { blocks } = parseLesson(markdown);
+      expect(blocks.map((b) => b.type)).toEqual(['prose', 'chart']);
+    });
+
+    it('throws a clear error naming the file line for malformed YAML inside the fence', () => {
+      const markdown = [
+        '# Title',
+        '', // line 2
+        '```chart', // line 3 — fence opens
+        'kind: bar', // line 4
+        'caption: Bad indentation ahead', // line 5
+        'data:', // line 6
+        '  - { label: a, value: 1 }', // line 7
+        '   - { label: b, value: 2 }', // line 8 — bad indent, malformed YAML
+        '```',
+        '',
+      ].join('\n');
+
+      expect(() => parseLesson(markdown)).toThrow(/line 8/);
+    });
+
+    it('throws a clear error when the fence content is not a YAML mapping', () => {
+      const markdown = ['# Title', '', '```chart', '- just', '- a', '- list', '```', ''].join('\n');
+      expect(() => parseLesson(markdown)).toThrow(/chart/i);
+    });
+  });
+
+  describe('figure blocks (design §6.3, Task B: the sanctioned static-SVG escape hatch)', () => {
+    const validFigureMarkdown = [
+      '# Title',
+      '',
+      '```figure',
+      'caption: A diagram of the pipeline',
+      'svg: |',
+      '  <svg viewBox="0 0 100 40"><rect width="100" height="40" fill="currentColor" /></svg>',
+      '```',
+      '',
+    ].join('\n');
+
+    it('parses a ```figure fence into a typed figure block', () => {
+      const { blocks } = parseLesson(validFigureMarkdown);
+      expect(blocks).toEqual([
+        {
+          type: 'figure',
+          caption: 'A diagram of the pipeline',
+          svg: '<svg viewBox="0 0 100 40"><rect width="100" height="40" fill="currentColor"></rect></svg>\n',
+        },
+      ]);
+    });
+
+    it('produces output that validates against the blocks schema', () => {
+      const { blocks } = parseLesson(validFigureMarkdown);
+      expect(validateBlocks(blocks)).toEqual({ valid: true, errors: [] });
+    });
+
+    it('strips a <script> element from the figure SVG (sanitize.ts\'s first caller, design §8.1)', () => {
+      const markdown = [
+        '# Title',
+        '',
+        '```figure',
+        'caption: Hostile figure',
+        'svg: |',
+        '  <svg viewBox="0 0 10 10"><script>alert(1)</script><circle cx="5" cy="5" r="4" /></svg>',
+        '```',
+        '',
+      ].join('\n');
+
+      const { blocks } = parseLesson(markdown);
+      const figure = blocks[0] as { type: 'figure'; svg: string };
+      expect(figure.svg).not.toContain('<script');
+      expect(figure.svg).not.toContain('alert(1)');
+      expect(figure.svg).toContain('<circle');
+    });
+
+    it('strips an onload event handler from the figure SVG, keeping the rest of the element', () => {
+      const markdown = [
+        '# Title',
+        '',
+        '```figure',
+        'caption: Hostile figure',
+        'svg: |',
+        '  <svg onload="steal()" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" onclick="steal()" /></svg>',
+        '```',
+        '',
+      ].join('\n');
+
+      const { blocks } = parseLesson(markdown);
+      const figure = blocks[0] as { type: 'figure'; svg: string };
+      expect(figure.svg).not.toContain('onload');
+      expect(figure.svg).not.toContain('onclick');
+      expect(figure.svg).not.toContain('steal()');
+      expect(figure.svg).toContain('<circle');
+    });
+
+    it('the block imported cleanly still validates once the hostile SVG is stripped', () => {
+      const markdown = [
+        '# Title',
+        '',
+        '```figure',
+        'caption: Hostile figure',
+        'svg: |',
+        '  <svg viewBox="0 0 10 10"><script>alert(1)</script><circle cx="5" cy="5" r="4" /></svg>',
+        '```',
+        '',
+      ].join('\n');
+      const { blocks } = parseLesson(markdown);
+      expect(validateBlocks(blocks)).toEqual({ valid: true, errors: [] });
+    });
+
+    it('preserves document order alongside prose and code', () => {
+      const markdown = ['# Title', '', 'Some prose.', '', validFigureMarkdown.split('\n').slice(2).join('\n')].join(
+        '\n',
+      );
+      const { blocks } = parseLesson(markdown);
+      expect(blocks.map((b) => b.type)).toEqual(['prose', 'figure']);
+    });
+
+    it('throws a clear error naming the file line for malformed YAML inside the fence', () => {
+      const markdown = [
+        '# Title',
+        '', // line 2
+        '```figure', // line 3 — fence opens
+        'caption: Bad indentation ahead', // line 4
+        'svg: "<svg></svg>"', // line 5
+        'bogus:', // line 6
+        '   nested: true', // line 7
+        '  also: true', // line 8 — bad indent, malformed YAML
+        '```',
+        '',
+      ].join('\n');
+
+      expect(() => parseLesson(markdown)).toThrow(/line 8/);
+    });
+
+    it('throws a clear error when the fence content is not a YAML mapping', () => {
+      const markdown = ['# Title', '', '```figure', '- just', '- a', '- list', '```', ''].join('\n');
+      expect(() => parseLesson(markdown)).toThrow(/figure/i);
+    });
+  });
+
   describe('prose sanitization', () => {
     function prose(markdown: string): string {
       return parseLesson(markdown)

@@ -1,0 +1,9 @@
+schema: 1
+slug: figure-no-caption-course
+title: Figure No Caption Course
+subtitle: a hand-written fixture proving a figure with no caption fails import
+modules:
+  - id: intro
+    title: Introduction
+    lessons:
+      - modules/01-intro/figure.md

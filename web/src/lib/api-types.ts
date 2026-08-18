@@ -592,8 +592,44 @@ export interface components {
             type: "rubric";
             criteria: components["schemas"]["RubricCriterion"][];
         };
-        /** @description A content block, which may be prose, code, a quiz, or a rubric */
-        Block: components["schemas"]["ProseBlock"] | components["schemas"]["CodeBlock"] | components["schemas"]["QuizBlock"] | components["schemas"]["RubricBlock"];
+        /** @description One data point in a chart block — a category label and its numeric value. */
+        ChartDatum: {
+            /** @description The category label */
+            label: string;
+            /** @description The value plotted for this category */
+            value: number;
+        };
+        /** @description A chart block (design §6.3/§14.1): a small, honest set of server-rendered chart kinds (bar, line) — never a client-side charting library, never a general charting DSL. `data` is always the resolved inline form here: a CSV sidecar reference (design §6.3's escape hatch, `data: ./enrollment.csv`) is resolved to these same rows at import time, so a client never sees an unresolved sidecar path. */
+        ChartBlock: {
+            /**
+             * @description The block type discriminator (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "chart";
+            /**
+             * @description The chart kind
+             * @enum {string}
+             */
+            kind: "bar" | "line";
+            /** @description A caption naming what the chart shows — required, and doubles as the chart's accessible name */
+            caption: string;
+            /** @description The chart's data points, in order */
+            data: components["schemas"]["ChartDatum"][];
+        };
+        /** @description A figure block (design §6.3): the one sanctioned escape hatch for bespoke static SVG. `svg` is already sanitized (scripts, event handlers, and foreignObject stripped) by the time a lesson reaches this response — see api/src/content/sanitize.ts's sanitizeSvg, applied at import time. */
+        FigureBlock: {
+            /**
+             * @description The block type discriminator (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "figure";
+            /** @description Sanitized inline SVG markup */
+            svg: string;
+            /** @description A required caption */
+            caption: string;
+        };
+        /** @description A content block, which may be prose, code, a quiz, a rubric, a chart, or a figure */
+        Block: components["schemas"]["ProseBlock"] | components["schemas"]["CodeBlock"] | components["schemas"]["QuizBlock"] | components["schemas"]["RubricBlock"] | components["schemas"]["ChartBlock"] | components["schemas"]["FigureBlock"];
         /** @description A minimal pointer to an adjacent lesson, for prev/next navigation. */
         LessonNavStub: {
             /** @description The adjacent lesson's slug (unique within the course) */

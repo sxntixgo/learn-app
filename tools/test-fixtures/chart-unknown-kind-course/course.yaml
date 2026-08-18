@@ -1,0 +1,9 @@
+schema: 1
+slug: chart-unknown-kind-course
+title: Chart Unknown Kind Course
+subtitle: a hand-written fixture proving an unrecognised chart kind fails import
+modules:
+  - id: intro
+    title: Introduction
+    lessons:
+      - modules/01-intro/chart.md

@@ -89,6 +89,74 @@ describe('validate CLI', () => {
     }
   });
 
+  it('exits 0 for a fixture course exercising an inline chart, a CSV-sidecar chart, and a figure (Phase 10)', async () => {
+    const { stdout } = await runValidate(path.join(fixturesDir, 'chart-figure-course'));
+    expect(stdout).toContain('chart-figure-fixture-course');
+    expect(stdout).toMatch(/1 module/);
+    expect(stdout).toMatch(/3 lesson/);
+  });
+
+  it('exits 1 naming the chart with no data', async () => {
+    try {
+      await runValidate(path.join(fixturesDir, 'chart-no-data-course'));
+      expect.unreachable('expected non-zero exit');
+    } catch (err) {
+      const { code, stderr } = err as ExecFileError;
+      expect(code).toBe(1);
+      expect(stderr).toContain('modules/01-intro/chart.md');
+      expect(stderr).toContain('/0/data');
+    }
+  });
+
+  it('exits 1 naming the non-numeric chart value', async () => {
+    try {
+      await runValidate(path.join(fixturesDir, 'chart-bad-value-course'));
+      expect.unreachable('expected non-zero exit');
+    } catch (err) {
+      const { code, stderr } = err as ExecFileError;
+      expect(code).toBe(1);
+      expect(stderr).toContain('modules/01-intro/chart.md');
+      expect(stderr).toContain('/0/data/0/value');
+    }
+  });
+
+  it('exits 1 naming the unknown chart kind', async () => {
+    try {
+      await runValidate(path.join(fixturesDir, 'chart-unknown-kind-course'));
+      expect.unreachable('expected non-zero exit');
+    } catch (err) {
+      const { code, stderr } = err as ExecFileError;
+      expect(code).toBe(1);
+      expect(stderr).toContain('modules/01-intro/chart.md');
+      expect(stderr).toContain('/0/kind');
+    }
+  });
+
+  it('exits 1 naming the figure with no caption', async () => {
+    try {
+      await runValidate(path.join(fixturesDir, 'figure-no-caption-course'));
+      expect.unreachable('expected non-zero exit');
+    } catch (err) {
+      const { code, stderr } = err as ExecFileError;
+      expect(code).toBe(1);
+      expect(stderr).toContain('modules/01-intro/figure.md');
+      expect(stderr).toMatch(/caption/i);
+    }
+  });
+
+  it('exits 1 naming the missing chart CSV sidecar', async () => {
+    try {
+      await runValidate(path.join(fixturesDir, 'chart-missing-csv-course'));
+      expect.unreachable('expected non-zero exit');
+    } catch (err) {
+      const { code, stderr } = err as ExecFileError;
+      expect(code).toBe(1);
+      expect(stderr).toContain('modules/01-intro/chart.md');
+      expect(stderr).toContain('enrollment.csv');
+      expect(stderr).toMatch(/not found/i);
+    }
+  });
+
   it('prints EVERY problem, not just the first, when a course has more than one broken lesson', async () => {
     try {
       await runValidate(path.join(fixturesDir, 'multi-problem-course'));
