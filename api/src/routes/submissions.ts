@@ -1183,4 +1183,69 @@ export function registerSubmissionRoutes(fastify: FastifyInstance, deps: Submiss
       }
     },
   );
+
+  // -------------------------------------------------------------------------
+  // GET /api/v1/grading/queue — submissions awaiting review across every
+  // course the actor owns (design §9.4: "Teachers get a queue of submissions
+  // awaiting review across the courses they own"). Gated by
+  // `submission:queue:read`, a role floor (see can.ts's comment on that
+  // cell) — the real scoping is `c.owner_id = actor.id` below, not a
+  // resource `can()` checks, because there is no single course to name.
+  // -------------------------------------------------------------------------
+  fastify.get('/api/v1/grading/queue', async (request, reply) => {
+    const actor = actorFor(request, deps);
+
+    if (!can(actor, 'submission:queue:read')) {
+      return reply.code(403).send({ message: 'Forbidden' });
+    }
+
+    // Only `submitted` — not yet `returned` — is "awaiting review": a
+    // returned submission has already been graded. Joined through modules
+    // to exclude archived content, the same visibility findLiveLesson gives
+    // every other lesson-scoped route, so a queue entry always resolves when
+    // the teacher clicks into it. Oldest submitted first — the order a
+    // queue is worked — with `submission_id` as a final, stable tiebreaker.
+    const { rows } = await getPool().query<{
+      submission_id: string;
+      course_slug: string;
+      course_title: string;
+      lesson_slug: string;
+      lesson_title: string;
+      user_id: string;
+      display_name: string | null;
+      handle: string | null;
+      submitted_at: string;
+    }>(
+      `select es.id as submission_id,
+              c.slug as course_slug, c.title as course_title,
+              l.slug as lesson_slug, l.title as lesson_title,
+              u.id as user_id, u.display_name, u.handle,
+              es.submitted_at
+         from exercise_submissions es
+         join lessons l on l.id = es.lesson_id
+         join modules m on m.id = l.module_id
+         join courses c on c.id = l.course_id
+         join users u on u.id = es.user_id
+        where c.owner_id = $1
+          and es.status = 'submitted'
+          and l.archived_at is null
+          and m.archived_at is null
+        order by es.submitted_at asc, es.id asc`,
+      [actor.id],
+    );
+
+    return reply.code(200).send(
+      rows.map((row) => ({
+        submissionId: row.submission_id,
+        courseSlug: row.course_slug,
+        courseTitle: row.course_title,
+        lessonSlug: row.lesson_slug,
+        lessonTitle: row.lesson_title,
+        userId: row.user_id,
+        studentDisplayName: row.display_name,
+        studentHandle: row.handle,
+        submittedAt: row.submitted_at,
+      })),
+    );
+  });
 }

@@ -820,6 +820,42 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/v1/grading/queue:
+    get:
+      summary: List submissions awaiting review across the courses the actor owns
+      description: >-
+        Design §9.4: "Teachers get a queue of submissions awaiting review
+        across the courses they own." Every `submitted` (not yet
+        `returned`) exercise submission on a course the actor owns,
+        oldest submitted first — the order a queue is worked. Spans
+        every course the actor owns, not one course at a time; a
+        submission on a course the actor does not own never appears
+        here. Gated by `submission:queue:read`, a role floor for
+        teachers — the actual per-course scoping happens in the query,
+        keyed off the actor's own id, not off a single course's
+        ownership like `submission:grade`. Empty, never an error, for a
+        teacher who owns no courses or none awaiting review, and for an
+        archived lesson's submissions (the same visibility every other
+        lesson-scoped route in this API already gives archived content).
+      operationId: getGradingQueue
+      tags:
+        - grading
+      responses:
+        '200':
+          description: Submissions awaiting review, oldest submitted first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GradingQueueItem'
+        '403':
+          description: The policy denied this request (e.g. no session, or not a teacher)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/v1/courses/{courseSlug}/progress:
     get:
       summary: Get the actor's progress summary for a course
@@ -2277,6 +2313,50 @@ components:
         - returnedAt
         - createdAt
         - updatedAt
+
+    GradingQueueItem:
+      type: object
+      description: >-
+        One submission awaiting review, from GET /api/v1/grading/queue
+        (design §9.4). Carries enough to list the queue and link straight
+        into the grading view without a second fetch per row.
+      properties:
+        submissionId:
+          type: string
+        courseSlug:
+          type: string
+        courseTitle:
+          type: string
+        lessonSlug:
+          type: string
+        lessonTitle:
+          type: string
+        userId:
+          type: string
+          description: The student's user id.
+        studentDisplayName:
+          type:
+            - string
+            - "null"
+          nullable: true
+        studentHandle:
+          type:
+            - string
+            - "null"
+          nullable: true
+        submittedAt:
+          type: string
+          format: date-time
+      required:
+        - submissionId
+        - courseSlug
+        - courseTitle
+        - lessonSlug
+        - lessonTitle
+        - userId
+        - studentDisplayName
+        - studentHandle
+        - submittedAt
 
     Error:
       type: object

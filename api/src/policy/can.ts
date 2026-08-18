@@ -383,6 +383,16 @@ const MATRIX = {
   // ---- Grade submissions, score rubrics (§9.4) -----------------------------
   'submission:grade': { row: 'Grade submissions, score rubrics', teacher: OWN_COURSE },
   'rubric:score': { row: 'Grade submissions, score rubrics', teacher: OWN_COURSE },
+  // The grading QUEUE (§9.4: "across the courses they own") is not a
+  // single-course decision the way `submission:grade` is — there is no one
+  // `{ course: { ownerId } }` to check, because the whole point is spanning
+  // every course the actor owns at once. So this is a role floor, same shape
+  // as `import:history:read`: `can()` only answers "is this actor a
+  // teacher", and the route's own SQL does the actual scoping, keyed off the
+  // actor's id (`courses.owner_id = actor.id`) rather than off a resource
+  // this function could check. Not OWNERSHIP_SCOPED in can.test.ts for that
+  // reason — there is no per-call course context to forget.
+  'submission:queue:read': { row: 'Grade submissions, score rubrics', teacher: ALLOW },
 
   // ---- Invite to a course (§12) --------------------------------------------
   'invite:course:create': { row: 'Invite to a course', teacher: OWN_COURSE },

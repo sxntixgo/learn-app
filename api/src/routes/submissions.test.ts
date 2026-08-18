@@ -1246,5 +1246,155 @@ describe('exercise submissions', () => {
 
       await teacher.close();
     });
+
+    // =========================================================================
+    // THE GRADING QUEUE (design §9.4: "Teachers get a queue of submissions
+    // awaiting review across the courses they own."). Nested inside this
+    // describe block so it can reuse `owner`/`otherTeacher`/RUBRIC_SLUG — the
+    // point being tested is specifically that the queue spans MULTIPLE
+    // courses owned by the same teacher, so a second, separate course is
+    // imported and given to `owner` too.
+    // =========================================================================
+    describe('grading queue: GET /api/v1/grading/queue', () => {
+      const SECOND_COURSE_SLUG = `queue-second-course-${RUN_ID}`;
+      const SECOND_EXERCISE_SLUG = 'exercises-ex01';
+      const queueUrl = '/api/v1/grading/queue';
+
+      interface QueueItemBody {
+        submissionId: string;
+        courseSlug: string;
+        courseTitle: string;
+        lessonSlug: string;
+        lessonTitle: string;
+        userId: string;
+        studentDisplayName: string | null;
+        studentHandle: string | null;
+        submittedAt: string;
+      }
+
+      beforeAll(async () => {
+        const dir = path.join(tmpRoot, 'queue-second-course');
+        await importDir(
+          await writeCourseDir(dir, SECOND_COURSE_SLUG, [
+            { file: 'modules/exercises/ex01.md', body: exerciseMarkdown('Second Course Exercise', ORIGINAL_CODE) },
+          ]),
+        );
+        await pool.query(`update courses set visibility = 'open', owner_id = $2 where slug = $1`, [
+          SECOND_COURSE_SLUG,
+          owner.id,
+        ]);
+      });
+
+      it('spans every course the actor owns, oldest submitted first, excluding drafts and returned work', async () => {
+        // Submitted on the rubric course — belongs in the queue.
+        const queuedStudent = await newStudent('Queue Student One');
+        const queuedServer = await buildServer({ actor: queuedStudent });
+        await queuedServer.inject({
+          method: 'PUT',
+          url: submissionUrl(RUBRIC_SLUG, RUBRIC_EXERCISE_SLUG),
+          payload: { annotations: [] },
+        });
+        const queuedSubmitted = await queuedServer.inject({
+          method: 'POST',
+          url: `${submissionUrl(RUBRIC_SLUG, RUBRIC_EXERCISE_SLUG)}/submit`,
+        });
+        const queuedBody = JSON.parse(queuedSubmitted.payload) as SubmissionBody;
+        await queuedServer.close();
+
+        // Submitted on the SECOND course, owned by the same teacher — proves
+        // the queue is not scoped to one course at a time.
+        const secondStudent = await newStudent('Queue Student Two');
+        const secondServer = await buildServer({ actor: secondStudent });
+        await secondServer.inject({
+          method: 'PUT',
+          url: submissionUrl(SECOND_COURSE_SLUG, SECOND_EXERCISE_SLUG),
+          payload: { annotations: [] },
+        });
+        const secondSubmitted = await secondServer.inject({
+          method: 'POST',
+          url: `${submissionUrl(SECOND_COURSE_SLUG, SECOND_EXERCISE_SLUG)}/submit`,
+        });
+        const secondBody = JSON.parse(secondSubmitted.payload) as SubmissionBody;
+        await secondServer.close();
+
+        // A draft, never submitted — must never appear in a queue of work
+        // "awaiting review".
+        const draftStudent = await newStudent('Draft Not Submitted');
+        const draftServer = await buildServer({ actor: draftStudent });
+        await draftServer.inject({
+          method: 'PUT',
+          url: submissionUrl(RUBRIC_SLUG, RUBRIC_EXERCISE_SLUG),
+          payload: { annotations: [] },
+        });
+        await draftServer.close();
+
+        // Already graded and returned — reviewed, so it must drop off the queue.
+        const { student: returnedStudent, submission: returnedSubmission } = await freshSubmission();
+        const grader = await buildServer({ actor: owner });
+        await grader.inject({
+          method: 'POST',
+          url: gradeUrl(returnedStudent.id),
+          payload: {
+            rubricScores: [
+              { criterion: 'Spotted the shallow module', points: 5 },
+              { criterion: 'Review tone', points: 3 },
+            ],
+          },
+        });
+        await grader.close();
+
+        const teacher = await buildServer({ actor: owner });
+        const response = await teacher.inject({ method: 'GET', url: queueUrl });
+        expect(response.statusCode).toBe(200);
+        const items = JSON.parse(response.payload) as QueueItemBody[];
+        const ids = items.map((i) => i.submissionId);
+
+        expect(ids).toContain(queuedBody.id);
+        expect(ids).toContain(secondBody.id);
+        expect(ids).not.toContain(returnedSubmission.id);
+        expect(items.some((i) => i.userId === draftStudent.id)).toBe(false);
+
+        expect(items.find((i) => i.submissionId === queuedBody.id)).toMatchObject({
+          courseSlug: RUBRIC_SLUG,
+          lessonSlug: RUBRIC_EXERCISE_SLUG,
+          userId: queuedStudent.id,
+          studentDisplayName: 'Queue Student One',
+          studentHandle: null,
+        });
+        expect(items.find((i) => i.submissionId === secondBody.id)).toMatchObject({
+          courseSlug: SECOND_COURSE_SLUG,
+          lessonSlug: SECOND_EXERCISE_SLUG,
+          userId: secondStudent.id,
+        });
+
+        // Oldest submitted first — the order a queue is worked.
+        expect(ids.indexOf(queuedBody.id)).toBeLessThan(ids.indexOf(secondBody.id));
+
+        await teacher.close();
+      });
+
+      it('a teacher who owns no courses sees an empty queue, never another teacher\'s work', async () => {
+        const outsider = await buildServer({ actor: otherTeacher });
+        const response = await outsider.inject({ method: 'GET', url: queueUrl });
+        expect(response.statusCode).toBe(200);
+        expect(JSON.parse(response.payload) as unknown[]).toEqual([]);
+        await outsider.close();
+      });
+
+      it('a student is refused — 403', async () => {
+        const student = await newStudent('Not A Teacher');
+        const server = await buildServer({ actor: student });
+        const response = await server.inject({ method: 'GET', url: queueUrl });
+        expect(response.statusCode).toBe(403);
+        await server.close();
+      });
+
+      it('an anonymous caller is refused — 403', async () => {
+        const server = await buildServer({ actor: undefined });
+        const response = await server.inject({ method: 'GET', url: queueUrl });
+        expect(response.statusCode).toBe(403);
+        await server.close();
+      });
+    });
   });
 });

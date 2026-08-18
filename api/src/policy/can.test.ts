@@ -297,6 +297,17 @@ const MATRIX: readonly MatrixCase[] = [
     resource: ownedCourse,
     expected: [DENY, DENY, ALLOW, DENY, DENY],
   },
+  // The queue is a role floor, not an ownership check (see can.ts's comment
+  // on this cell): BOTH teacher subjects pass here, because `can()` cannot
+  // see which courses a call's results will be scoped to — that scoping is
+  // the route's own SQL, exercised for real in submissions.test.ts's queue
+  // describe block, not by this table.
+  {
+    row: 'Grade submissions, score rubrics',
+    action: 'submission:queue:read',
+    resource: noResource,
+    expected: [DENY, DENY, ALLOW, ALLOW, DENY],
+  },
 
   // ---------------------------------------------------------------------------
   // Row: "Invite to a course" — teacher own courses (§12)

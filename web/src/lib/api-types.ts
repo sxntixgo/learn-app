@@ -316,6 +316,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/grading/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List submissions awaiting review across the courses the actor owns
+         * @description Design §9.4: "Teachers get a queue of submissions awaiting review across the courses they own." Every `submitted` (not yet `returned`) exercise submission on a course the actor owns, oldest submitted first — the order a queue is worked. Spans every course the actor owns, not one course at a time; a submission on a course the actor does not own never appears here. Gated by `submission:queue:read`, a role floor for teachers — the actual per-course scoping happens in the query, keyed off the actor's own id, not off a single course's ownership like `submission:grade`. Empty, never an error, for a teacher who owns no courses or none awaiting review, and for an archived lesson's submissions (the same visibility every other lesson-scoped route in this API already gives archived content).
+         */
+        get: operations["getGradingQueue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{courseSlug}/progress": {
         parameters: {
             query?: never;
@@ -926,6 +946,20 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @description One submission awaiting review, from GET /api/v1/grading/queue (design §9.4). Carries enough to list the queue and link straight into the grading view without a second fetch per row. */
+        GradingQueueItem: {
+            submissionId: string;
+            courseSlug: string;
+            courseTitle: string;
+            lessonSlug: string;
+            lessonTitle: string;
+            /** @description The student's user id. */
+            userId: string;
+            studentDisplayName: ((string | null) | null) | null;
+            studentHandle: ((string | null) | null) | null;
+            /** Format: date-time */
+            submittedAt: string;
         };
         /** @description An error response */
         Error: {
@@ -1878,6 +1912,35 @@ export interface operations {
             };
             /** @description This lesson is not kind "exercise", or the submission is still a draft (not yet submitted) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getGradingQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Submissions awaiting review, oldest submitted first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GradingQueueItem"][];
+                };
+            };
+            /** @description The policy denied this request (e.g. no session, or not a teacher) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
