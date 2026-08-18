@@ -996,6 +996,79 @@ paths:
               schema:
                 $ref: '#/components/schemas/Heatmap'
 
+  /api/v1/me/badges:
+    get:
+      summary: The actor's badges, earned and locked
+      description: >-
+        Every badge visible to the actor (design §9.3), each carrying
+        whether it has been AWARDED and how far the actor is toward it.
+
+        Locked badges are returned alongside earned ones rather than
+        hidden: a badge nobody can see is not a goal. `progress` is a
+        scalar current/target pair derived from the badge's criterion —
+        lessons completed, exercises passed, quiz attempts at 100 %, streak
+        days, a track percentage, or a 0/1 for the "one named thing"
+        criteria (`course_completed`, `degree_earned`).
+
+        An awarded badge always reports `earned: true` regardless of what
+        `progress` currently says. Design §9.3: "badges are never revoked" —
+        editing a course, archiving a lesson, or retuning the criteria
+        changes who will earn it NEXT, never who has earned it, so a badge
+        may legitimately read `earned: true` with `progress.current` below
+        `progress.target`.
+      operationId: getMyBadges
+      tags:
+        - progression
+      responses:
+        '200':
+          description: Every visible badge, earned first, then locked
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BadgeProgress'
+        '403':
+          description: The actor may not read a learner's badges (design §5.1 — admin is exclusive)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/me/degrees:
+    get:
+      summary: The actor's degrees, earned and in progress
+      description: >-
+        Every degree declared on this instance (design §9.2), with the
+        actor's progress toward it: which required courses are complete,
+        how many electives out of `electives.choose` are done, and whether
+        it has been awarded.
+
+        `satisfiable` is false when a degree names a course this instance
+        has not imported (design §6.1, §8: "cross-repo references never
+        fail an import" — curriculum spans repos, so partial states are
+        normal). `missingCourses` names them. An unsatisfiable degree is
+        still listed, because the student's progress toward the courses it
+        DOES name is real.
+      operationId: getMyDegrees
+      tags:
+        - progression
+      responses:
+        '200':
+          description: Every degree, with the actor's progress toward it
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DegreeProgress'
+        '403':
+          description: The actor may not read a learner's degrees (design §5.1 — admin is exclusive)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/v1/courses/{courseSlug}/lessons/{lessonSlug}:
     get:
       summary: Get a lesson within a course
@@ -1116,6 +1189,242 @@ paths:
                   $ref: '#/components/schemas/ImportRunSummary'
         '403':
           description: The actor is not permitted to read import history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/admin/badges:
+    get:
+      summary: Every badge definition, both sources
+      description: >-
+        Design §9.3's TWO SOURCES in one list: git-sourced badges (synced
+        from a curriculum repo, read-only here) and admin-sourced ones
+        (mutable gamification/global badges). `source` says which, and
+        `awardCount` says how many people have earned it — the number that
+        makes a delete refusable rather than surprising.
+      operationId: listAdminBadges
+      tags:
+        - admin
+      responses:
+        '200':
+          description: Every badge definition, by slug
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminBadge'
+        '403':
+          description: The actor may not read badge definitions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Create an admin-sourced badge
+      description: >-
+        Creates a mutable, admin-sourced badge (design §9.3). `criteria` is
+        validated against schemas/badge.schema.json — the closed vocabulary
+        — before any write, so an unknown criterion type or a misspelt
+        field is a 400 rather than a badge that can never be earned.
+
+        Slugs are globally unique ACROSS BOTH SOURCES, so creating one that
+        collides with a git-sourced badge is a 409.
+      operationId: createAdminBadge
+      tags:
+        - admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BadgeCreateRequest'
+      responses:
+        '201':
+          description: The badge was created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminBadge'
+        '400':
+          description: Malformed body, or criteria that do not validate against the badge schema
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The actor may not define badges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A badge with this slug already exists (either source)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/admin/badges/{badgeSlug}:
+    patch:
+      summary: Edit an admin-sourced badge
+      description: >-
+        Retunes an admin-sourced badge — a threshold set against real data,
+        typically. A GIT-SOURCED badge is READ-ONLY here and answers 409:
+        editing it would be silently undone by the next sync of its repo.
+        Promote a tuned threshold into git with the export action instead.
+
+        Editing criteria never touches `user_badges` (design §9.3: "badges
+        are never revoked"). It changes who will earn the badge next.
+      operationId: updateAdminBadge
+      tags:
+        - admin
+      parameters:
+        - name: badgeSlug
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BadgeUpdateRequest'
+      responses:
+        '200':
+          description: The updated badge
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminBadge'
+        '400':
+          description: Malformed body, or criteria that do not validate against the badge schema
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The actor may not define badges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No badge with this slug
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The badge is git-sourced and therefore read-only here
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      summary: Delete an admin-sourced badge
+      description: >-
+        Refused (409) for a git-sourced badge, and refused (409) for ANY
+        badge somebody has earned — `user_badges.badge_id` is `on delete
+        restrict` in the schema, so deleting a definition can never become
+        a way to revoke an award (design §9.3).
+      operationId: deleteAdminBadge
+      tags:
+        - admin
+      parameters:
+        - name: badgeSlug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: The badge was deleted
+        '403':
+          description: The actor may not define badges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No badge with this slug
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The badge is git-sourced, or somebody has earned it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/admin/badges/{badgeSlug}/export:
+    get:
+      summary: Export a badge as course.yaml YAML
+      description: >-
+        Design §9.3: "an admin action EXPORTS A BADGE TO YAML so a
+        threshold tuned against real data can be promoted into git."
+
+        Returns the exact YAML fragment to paste under a course.yaml
+        `badges:` key — one list item, validating against
+        schemas/badge.schema.json. Works for both sources; exporting a
+        git-sourced badge is how you diff what the instance has against
+        what the repo says.
+      operationId: exportAdminBadge
+      tags:
+        - admin
+      parameters:
+        - name: badgeSlug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The badge as a YAML list item
+          content:
+            application/yaml:
+              schema:
+                type: string
+        '403':
+          description: The actor may not export badges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No badge with this slug
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/admin/degrees:
+    get:
+      summary: Every degree, with its satisfiability
+      description: >-
+        Design §6.1: "a degree whose requirements are not all imported
+        shows as UNSATISFIABLE in admin rather than appearing broken to
+        students." This is that screen's data: every degree, its required
+        and elective course slugs, which of those slugs have no imported
+        course, and how many people hold it.
+      operationId: listAdminDegrees
+      tags:
+        - admin
+      responses:
+        '200':
+          description: Every degree definition
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminDegree'
+        '403':
+          description: The actor may not read degree definitions
           content:
             application/json:
               schema:
@@ -2666,11 +2975,17 @@ components:
           $ref: '#/components/schemas/ImportEntityCounts'
         lessons:
           $ref: '#/components/schemas/ImportEntityCounts'
+        degrees:
+          $ref: '#/components/schemas/ImportEntityCounts'
+        badges:
+          $ref: '#/components/schemas/ImportEntityCounts'
       required:
         - courses
         - tracks
         - modules
         - lessons
+        - degrees
+        - badges
 
     ImportProgressEvent:
       type: object
@@ -2960,3 +3275,369 @@ components:
           $ref: '#/components/schemas/AuthUser'
       required:
         - user
+
+    BadgeCriterionType:
+      type: string
+      enum:
+        - lessons_completed
+        - exercises_passed
+        - course_completed
+        - courses_completed
+        - degree_earned
+        - track_score
+        - streak_days
+        - perfect_quiz
+      description: >-
+        THE CLOSED VOCABULARY (design §9.3). Exactly eight types; "adding a
+        ninth is a deliberate platform change" — schemas/badge.schema.json,
+        api/src/progression/criteria.ts, and this enum move together or not
+        at all.
+
+    BadgeCriteria:
+      description: >-
+        One badge's award condition, as declared in a curriculum repo's
+        course.yaml or in the admin UI. The authoritative contract is
+        schemas/badge.schema.json, which the API validates every write
+        against; this mirrors it so generated clients get the same union.
+      oneOf:
+        - type: object
+          title: lessons_completed
+          required: [type, count]
+          properties:
+            type: { const: lessons_completed }
+            count: { type: integer, minimum: 1 }
+            course:
+              type: string
+              description: Optional course slug to scope the count to.
+        - type: object
+          title: exercises_passed
+          required: [type, count]
+          properties:
+            type: { const: exercises_passed }
+            count: { type: integer, minimum: 1 }
+            course: { type: string }
+        - type: object
+          title: course_completed
+          required: [type, course]
+          properties:
+            type: { const: course_completed }
+            course: { type: string }
+        - type: object
+          title: courses_completed
+          required: [type, count]
+          properties:
+            type: { const: courses_completed }
+            count: { type: integer, minimum: 1 }
+        - type: object
+          title: degree_earned
+          required: [type, degree]
+          properties:
+            type: { const: degree_earned }
+            degree: { type: string }
+        - type: object
+          title: track_score
+          required: [type, track, min]
+          properties:
+            type: { const: track_score }
+            track: { type: string }
+            course: { type: string }
+            min: { type: number, minimum: 0, maximum: 100 }
+        - type: object
+          title: streak_days
+          required: [type, days]
+          properties:
+            type: { const: streak_days }
+            days: { type: integer, minimum: 1 }
+        - type: object
+          title: perfect_quiz
+          required: [type]
+          properties:
+            type: { const: perfect_quiz }
+            count: { type: integer, minimum: 1 }
+            course: { type: string }
+            lesson: { type: string }
+
+    BadgeSource:
+      type: string
+      enum:
+        - git
+        - admin
+      description: >-
+        Which of design §9.3's two sources declared this badge. `git` rows
+        are derived state, rewritten by the next sync of their repo and
+        read-only in admin; `admin` rows are source of truth and the
+        importer REFUSES to overwrite one.
+
+    CriterionProgress:
+      type: object
+      description: >-
+        How far the actor is toward a badge, as a scalar. `unit` names what
+        is being counted so the UI can say "3 of 5 lessons" without knowing
+        the criterion vocabulary.
+      properties:
+        current:
+          type: number
+          description: The actor's current value, clamped to at most `target`.
+        target:
+          type: number
+          description: The value the criterion requires.
+        percent:
+          type: integer
+          description: current/target as a whole percentage, 0-100.
+        unit:
+          type: string
+          description: What is counted — e.g. "lessons", "exercises", "courses", "days", "percent", "quizzes".
+      required:
+        - current
+        - target
+        - percent
+        - unit
+
+    BadgeProgress:
+      type: object
+      description: One badge as a learner sees it (design §9.3).
+      properties:
+        slug:
+          type: string
+        title:
+          type: string
+        description:
+          type: [string, "null"]
+        courseSlug:
+          type: [string, "null"]
+          description: The course this badge is scoped to, or null for a global badge.
+        criteria:
+          $ref: '#/components/schemas/BadgeCriteria'
+        earned:
+          type: boolean
+          description: >-
+            Whether `user_badges` holds an award. Never recomputed from
+            criteria — an award is a fact about a moment (design §9.3).
+        awardedAt:
+          type: [string, "null"]
+          format: date-time
+        progress:
+          $ref: '#/components/schemas/CriterionProgress'
+      required:
+        - slug
+        - title
+        - description
+        - courseSlug
+        - criteria
+        - earned
+        - awardedAt
+        - progress
+
+    DegreeRequirement:
+      type: object
+      description: One course a degree names, by GLOBAL slug (design §6.1).
+      properties:
+        slug:
+          type: string
+        title:
+          type: [string, "null"]
+          description: The imported course's title, or null when this instance has not imported it.
+        imported:
+          type: boolean
+          description: Whether a course with this slug exists on this instance.
+        completed:
+          type: boolean
+          description: Whether the actor has completed it (all non-optional lessons, design §9.1).
+      required:
+        - slug
+        - title
+        - imported
+        - completed
+
+    DegreeElectives:
+      type: object
+      description: '`choose: N` out of `from: [slugs]` (design §6.1).'
+      properties:
+        choose:
+          type: integer
+        from:
+          type: array
+          items:
+            $ref: '#/components/schemas/DegreeRequirement'
+        completed:
+          type: integer
+          description: How many of `from` the actor has completed.
+      required:
+        - choose
+        - from
+        - completed
+
+    DegreeProgress:
+      type: object
+      description: One degree as a learner sees it (design §9.2).
+      properties:
+        slug:
+          type: string
+        title:
+          type: string
+        description:
+          type: [string, "null"]
+        earned:
+          type: boolean
+        awardedAt:
+          type: [string, "null"]
+          format: date-time
+        required:
+          type: array
+          items:
+            $ref: '#/components/schemas/DegreeRequirement'
+        electives:
+          description: Null when the degree declares no electives.
+          oneOf:
+            - $ref: '#/components/schemas/DegreeElectives'
+            - type: "null"
+        satisfiable:
+          type: boolean
+          description: False when a named course is not imported on this instance.
+        missingCourses:
+          type: array
+          items:
+            type: string
+          description: The named course slugs with no imported course.
+        percent:
+          type: integer
+          description: Whole-percentage progress across required courses plus the chosen electives.
+      required:
+        - slug
+        - title
+        - description
+        - earned
+        - awardedAt
+        - required
+        - electives
+        - satisfiable
+        - missingCourses
+        - percent
+
+    AdminBadge:
+      type: object
+      description: One badge definition on the admin screen.
+      properties:
+        slug:
+          type: string
+        title:
+          type: string
+        description:
+          type: [string, "null"]
+        source:
+          $ref: '#/components/schemas/BadgeSource'
+        courseSlug:
+          type: [string, "null"]
+        criteria:
+          $ref: '#/components/schemas/BadgeCriteria'
+        awardCount:
+          type: integer
+          description: How many people hold this badge. Non-zero makes deletion a 409.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - slug
+        - title
+        - description
+        - source
+        - courseSlug
+        - criteria
+        - awardCount
+        - createdAt
+        - updatedAt
+
+    BadgeCreateRequest:
+      type: object
+      description: A new admin-sourced badge.
+      properties:
+        slug:
+          type: string
+          description: Globally unique across BOTH sources; lowercase kebab-case.
+        title:
+          type: string
+        description:
+          type: string
+        course:
+          type: string
+          description: Optional course slug to scope the badge to.
+        criteria:
+          $ref: '#/components/schemas/BadgeCriteria'
+      required:
+        - slug
+        - title
+        - criteria
+
+    BadgeUpdateRequest:
+      type: object
+      description: >-
+        A partial edit of an admin-sourced badge. `slug` is not editable —
+        it is the identity awards and manifests refer to.
+      properties:
+        title:
+          type: string
+        description:
+          type: [string, "null"]
+        course:
+          type: [string, "null"]
+        criteria:
+          $ref: '#/components/schemas/BadgeCriteria'
+
+    AdminDegree:
+      type: object
+      description: One degree definition on the admin screen (design §6.1, §9.2).
+      properties:
+        slug:
+          type: string
+        title:
+          type: string
+        description:
+          type: [string, "null"]
+        repoUrl:
+          type: [string, "null"]
+          description: The content repo that declared it, when it came from one.
+        required:
+          type: array
+          items:
+            type: string
+          description: Required course slugs, as written in the manifest.
+        electives:
+          description: Null when the degree declares no electives.
+          oneOf:
+            - type: object
+              properties:
+                choose:
+                  type: integer
+                from:
+                  type: array
+                  items:
+                    type: string
+              required:
+                - choose
+                - from
+            - type: "null"
+        satisfiable:
+          type: boolean
+          description: >-
+            False when any named course slug has no imported course. Design
+            §8 — a cross-repo reference never fails an import; it surfaces
+            here instead.
+        missingCourses:
+          type: array
+          items:
+            type: string
+        awardCount:
+          type: integer
+      required:
+        - slug
+        - title
+        - description
+        - repoUrl
+        - required
+        - electives
+        - satisfiable
+        - missingCourses
+        - awardCount

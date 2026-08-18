@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://learn-app.example/schemas/course.schema.json",
   "title": "Course manifest (course.yaml)",
-  "description": "The manifest a content repo's course.yaml must satisfy — design doc §6.1. This is the contract between content repos and the platform: an importer (in any language) only needs to produce data that validates against this schema. Phase 2 does not support the optional `degrees` block described in §6.1 — that ships with badges/degrees in a later phase — so it is deliberately not accepted here.",
+  "description": "The manifest a content repo's course.yaml must satisfy — design doc §6.1. This is the contract between content repos and the platform: an importer (in any language) only needs to produce data that validates against this schema. The optional `degrees` and `badges` blocks (§6.1, §9.2, §9.3) are accepted as of Phase 11; a badge item is defined by schemas/badge.schema.json, which is also the contract the admin UI's export-to-YAML action produces.",
   "type": "object",
   "required": ["schema", "slug", "title", "modules"],
   "additionalProperties": false,
@@ -40,9 +40,52 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/module" }
+    },
+    "degrees": {
+      "description": "Degrees declared by this curriculum repo (design §6.1, §9.2). Courses are referenced by GLOBAL slug, so a degree may span repos — and a degree naming a course this instance has not imported is recorded as unsatisfiable rather than failing the import (design §8: \"cross-repo references never fail an import\").",
+      "type": "array",
+      "items": { "$ref": "#/$defs/degree" }
+    },
+    "badges": {
+      "description": "Badges declared by this curriculum repo — the git-sourced half of design §9.3's two sources. The importer REFUSES to overwrite an admin-created badge with the same slug rather than clobbering a hand-tuned one.",
+      "type": "array",
+      "items": { "$ref": "https://learn-app.example/schemas/badge.schema.json" }
     }
   },
   "$defs": {
+    "degree": {
+      "type": "object",
+      "required": ["slug", "title"],
+      "additionalProperties": false,
+      "properties": {
+        "slug": {
+          "description": "Globally-unique degree handle.",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "required": {
+          "description": "Course slugs that must ALL be complete.",
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" }
+        },
+        "electives": {
+          "description": "`choose: N` out of `from: [slugs]`. `choose` may not exceed the size of `from` — a degree nobody could ever earn is a manifest bug.",
+          "type": "object",
+          "required": ["choose", "from"],
+          "additionalProperties": false,
+          "properties": {
+            "choose": { "type": "integer", "minimum": 1 },
+            "from": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" }
+            }
+          }
+        }
+      }
+    },
     "track": {
       "type": "object",
       "required": ["id", "name", "hue"],

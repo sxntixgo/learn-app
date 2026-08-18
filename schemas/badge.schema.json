@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://learn-app.example/schemas/badge.schema.json",
+  "title": "Badge definition",
+  "description": "One badge, as declared in a curriculum repo's course.yaml (design §9.3) or exported back out of the admin UI. THE CRITERIA VOCABULARY IS CLOSED: exactly the eight types below, each with its own required fields, and `additionalProperties: false` on every branch so a misspelt field is a validation error rather than a silently ignored one. Design §9.3: \"adding a ninth type is a deliberate platform change\" — which means editing this file, api/src/progression/criteria.ts, and the evaluator that reads it, together.",
+  "type": "object",
+  "required": ["slug", "title", "criteria"],
+  "additionalProperties": false,
+  "properties": {
+    "slug": {
+      "description": "Globally-unique badge handle — unique across BOTH sources (git and admin), design §9.3.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "title": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "course": {
+      "description": "Optional course scope, by global course slug (§5's \"create course-scoped badges\"). Absent for a global badge.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "criteria": { "$ref": "#/$defs/criteria" }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+    "count": { "type": "integer", "minimum": 1 },
+    "criteria": {
+      "description": "The closed vocabulary. `oneOf` rather than a bare `type` enum so each type's OWN fields are required and checked.",
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        {
+          "title": "lessons_completed — N lessons completed, optionally within one course.",
+          "type": "object",
+          "required": ["type", "count"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "lessons_completed" },
+            "count": { "$ref": "#/$defs/count" },
+            "course": { "$ref": "#/$defs/slug" }
+          }
+        },
+        {
+          "title": "exercises_passed — N exercise lessons completed (design §9.1: an exercise completes on SUBMIT), optionally within one course.",
+          "type": "object",
+          "required": ["type", "count"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "exercises_passed" },
+            "count": { "$ref": "#/$defs/count" },
+            "course": { "$ref": "#/$defs/slug" }
+          }
+        },
+        {
+          "title": "course_completed — one named course complete (all non-optional lessons).",
+          "type": "object",
+          "required": ["type", "course"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "course_completed" },
+            "course": { "$ref": "#/$defs/slug" }
+          }
+        },
+        {
+          "title": "courses_completed — any N courses complete.",
+          "type": "object",
+          "required": ["type", "count"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "courses_completed" },
+            "count": { "$ref": "#/$defs/count" }
+          }
+        },
+        {
+          "title": "degree_earned — one named degree awarded.",
+          "type": "object",
+          "required": ["type", "degree"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "degree_earned" },
+            "degree": { "$ref": "#/$defs/slug" }
+          }
+        },
+        {
+          "title": "track_score — a percentage across one track, pooling quiz answers and rubric points (see api/src/progression/track-score.ts).",
+          "type": "object",
+          "required": ["type", "track", "min"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "track_score" },
+            "track": { "$ref": "#/$defs/slug" },
+            "course": { "$ref": "#/$defs/slug" },
+            "min": {
+              "description": "Minimum percentage, 0-100 inclusive.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        },
+        {
+          "title": "streak_days — a run of consecutive active days in the student's own timezone (design §10, §15).",
+          "type": "object",
+          "required": ["type", "days"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "streak_days" },
+            "days": { "$ref": "#/$defs/count" }
+          }
+        },
+        {
+          "title": "perfect_quiz — N quiz attempts scored 100%, optionally within one course or on one named lesson.",
+          "type": "object",
+          "required": ["type"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "perfect_quiz" },
+            "count": { "$ref": "#/$defs/count" },
+            "course": { "$ref": "#/$defs/slug" },
+            "lesson": { "$ref": "#/$defs/slug" }
+          }
+        }
+      ]
+    }
+  }
+}

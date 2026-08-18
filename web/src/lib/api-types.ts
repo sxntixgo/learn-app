@@ -420,6 +420,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/badges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The actor's badges, earned and locked
+         * @description Every badge visible to the actor (design §9.3), each carrying whether it has been AWARDED and how far the actor is toward it.
+         *     Locked badges are returned alongside earned ones rather than hidden: a badge nobody can see is not a goal. `progress` is a scalar current/target pair derived from the badge's criterion — lessons completed, exercises passed, quiz attempts at 100 %, streak days, a track percentage, or a 0/1 for the "one named thing" criteria (`course_completed`, `degree_earned`).
+         *     An awarded badge always reports `earned: true` regardless of what `progress` currently says. Design §9.3: "badges are never revoked" — editing a course, archiving a lesson, or retuning the criteria changes who will earn it NEXT, never who has earned it, so a badge may legitimately read `earned: true` with `progress.current` below `progress.target`.
+         */
+        get: operations["getMyBadges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/degrees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The actor's degrees, earned and in progress
+         * @description Every degree declared on this instance (design §9.2), with the actor's progress toward it: which required courses are complete, how many electives out of `electives.choose` are done, and whether it has been awarded.
+         *     `satisfiable` is false when a degree names a course this instance has not imported (design §6.1, §8: "cross-repo references never fail an import" — curriculum spans repos, so partial states are normal). `missingCourses` names them. An unsatisfiable degree is still listed, because the student's progress toward the courses it DOES name is real.
+         */
+        get: operations["getMyDegrees"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{courseSlug}/lessons/{lessonSlug}": {
         parameters: {
             query?: never;
@@ -472,6 +515,97 @@ export interface paths {
          * @description UNAUTHENTICATED UNTIL PHASE 6, same note as POST /api/v1/admin/imports. Every import_runs row, newest first, with the repo URL it came from (if any — a local-directory import has none) and, for a finished run, either its per-entity counts or its error/problem list.
          */
         get: operations["listAdminImportRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/badges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every badge definition, both sources
+         * @description Design §9.3's TWO SOURCES in one list: git-sourced badges (synced from a curriculum repo, read-only here) and admin-sourced ones (mutable gamification/global badges). `source` says which, and `awardCount` says how many people have earned it — the number that makes a delete refusable rather than surprising.
+         */
+        get: operations["listAdminBadges"];
+        put?: never;
+        /**
+         * Create an admin-sourced badge
+         * @description Creates a mutable, admin-sourced badge (design §9.3). `criteria` is validated against schemas/badge.schema.json — the closed vocabulary — before any write, so an unknown criterion type or a misspelt field is a 400 rather than a badge that can never be earned.
+         *     Slugs are globally unique ACROSS BOTH SOURCES, so creating one that collides with a git-sourced badge is a 409.
+         */
+        post: operations["createAdminBadge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/badges/{badgeSlug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete an admin-sourced badge
+         * @description Refused (409) for a git-sourced badge, and refused (409) for ANY badge somebody has earned — `user_badges.badge_id` is `on delete restrict` in the schema, so deleting a definition can never become a way to revoke an award (design §9.3).
+         */
+        delete: operations["deleteAdminBadge"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit an admin-sourced badge
+         * @description Retunes an admin-sourced badge — a threshold set against real data, typically. A GIT-SOURCED badge is READ-ONLY here and answers 409: editing it would be silently undone by the next sync of its repo. Promote a tuned threshold into git with the export action instead.
+         *     Editing criteria never touches `user_badges` (design §9.3: "badges are never revoked"). It changes who will earn the badge next.
+         */
+        patch: operations["updateAdminBadge"];
+        trace?: never;
+    };
+    "/api/v1/admin/badges/{badgeSlug}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export a badge as course.yaml YAML
+         * @description Design §9.3: "an admin action EXPORTS A BADGE TO YAML so a threshold tuned against real data can be promoted into git."
+         *     Returns the exact YAML fragment to paste under a course.yaml `badges:` key — one list item, validating against schemas/badge.schema.json. Works for both sources; exporting a git-sourced badge is how you diff what the instance has against what the repo says.
+         */
+        get: operations["exportAdminBadge"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/degrees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every degree, with its satisfiability
+         * @description Design §6.1: "a degree whose requirements are not all imported shows as UNSATISFIABLE in admin rather than appearing broken to students." This is that screen's data: every degree, its required and elective course slugs, which of those slugs have no imported course, and how many people hold it.
+         */
+        get: operations["listAdminDegrees"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1100,6 +1234,8 @@ export interface components {
             tracks: components["schemas"]["ImportEntityCounts"];
             modules: components["schemas"]["ImportEntityCounts"];
             lessons: components["schemas"]["ImportEntityCounts"];
+            degrees: components["schemas"]["ImportEntityCounts"];
+            badges: components["schemas"]["ImportEntityCounts"];
         };
         /** @description One line of the newline-delimited progress stream POST /api/v1/admin/imports returns. Only the fields relevant to `stage` are present on a given line — e.g. `problems` only appears on a 'failed' line, `counts` only on 'done'. */
         ImportProgressEvent: {
@@ -1205,6 +1341,168 @@ export interface components {
         /** @description The body of a successful login or refresh. */
         AuthSessionResponse: {
             user: components["schemas"]["AuthUser"];
+        };
+        /**
+         * @description THE CLOSED VOCABULARY (design §9.3). Exactly eight types; "adding a ninth is a deliberate platform change" — schemas/badge.schema.json, api/src/progression/criteria.ts, and this enum move together or not at all.
+         * @enum {string}
+         */
+        BadgeCriterionType: "lessons_completed" | "exercises_passed" | "course_completed" | "courses_completed" | "degree_earned" | "track_score" | "streak_days" | "perfect_quiz";
+        /** @description One badge's award condition, as declared in a curriculum repo's course.yaml or in the admin UI. The authoritative contract is schemas/badge.schema.json, which the API validates every write against; this mirrors it so generated clients get the same union. */
+        BadgeCriteria: {
+            /** @constant */
+            type: "lessons_completed";
+            count: number;
+            /** @description Optional course slug to scope the count to. */
+            course?: string;
+        } | {
+            /** @constant */
+            type: "exercises_passed";
+            count: number;
+            course?: string;
+        } | {
+            /** @constant */
+            type: "course_completed";
+            course: string;
+        } | {
+            /** @constant */
+            type: "courses_completed";
+            count: number;
+        } | {
+            /** @constant */
+            type: "degree_earned";
+            degree: string;
+        } | {
+            /** @constant */
+            type: "track_score";
+            track: string;
+            course?: string;
+            min: number;
+        } | {
+            /** @constant */
+            type: "streak_days";
+            days: number;
+        } | {
+            /** @constant */
+            type: "perfect_quiz";
+            count?: number;
+            course?: string;
+            lesson?: string;
+        };
+        /**
+         * @description Which of design §9.3's two sources declared this badge. `git` rows are derived state, rewritten by the next sync of their repo and read-only in admin; `admin` rows are source of truth and the importer REFUSES to overwrite one.
+         * @enum {string}
+         */
+        BadgeSource: "git" | "admin";
+        /** @description How far the actor is toward a badge, as a scalar. `unit` names what is being counted so the UI can say "3 of 5 lessons" without knowing the criterion vocabulary. */
+        CriterionProgress: {
+            /** @description The actor's current value, clamped to at most `target`. */
+            current: number;
+            /** @description The value the criterion requires. */
+            target: number;
+            /** @description current/target as a whole percentage, 0-100. */
+            percent: number;
+            /** @description What is counted — e.g. "lessons", "exercises", "courses", "days", "percent", "quizzes". */
+            unit: string;
+        };
+        /** @description One badge as a learner sees it (design §9.3). */
+        BadgeProgress: {
+            slug: string;
+            title: string;
+            description: string | null;
+            /** @description The course this badge is scoped to, or null for a global badge. */
+            courseSlug: string | null;
+            criteria: components["schemas"]["BadgeCriteria"];
+            /** @description Whether `user_badges` holds an award. Never recomputed from criteria — an award is a fact about a moment (design §9.3). */
+            earned: boolean;
+            /** Format: date-time */
+            awardedAt: string | null;
+            progress: components["schemas"]["CriterionProgress"];
+        };
+        /** @description One course a degree names, by GLOBAL slug (design §6.1). */
+        DegreeRequirement: {
+            slug: string;
+            /** @description The imported course's title, or null when this instance has not imported it. */
+            title: string | null;
+            /** @description Whether a course with this slug exists on this instance. */
+            imported: boolean;
+            /** @description Whether the actor has completed it (all non-optional lessons, design §9.1). */
+            completed: boolean;
+        };
+        /** @description `choose: N` out of `from: [slugs]` (design §6.1). */
+        DegreeElectives: {
+            choose: number;
+            from: components["schemas"]["DegreeRequirement"][];
+            /** @description How many of `from` the actor has completed. */
+            completed: number;
+        };
+        /** @description One degree as a learner sees it (design §9.2). */
+        DegreeProgress: {
+            slug: string;
+            title: string;
+            description: string | null;
+            earned: boolean;
+            /** Format: date-time */
+            awardedAt: string | null;
+            required: components["schemas"]["DegreeRequirement"][];
+            /** @description Null when the degree declares no electives. */
+            electives: components["schemas"]["DegreeElectives"] | null;
+            /** @description False when a named course is not imported on this instance. */
+            satisfiable: boolean;
+            /** @description The named course slugs with no imported course. */
+            missingCourses: string[];
+            /** @description Whole-percentage progress across required courses plus the chosen electives. */
+            percent: number;
+        };
+        /** @description One badge definition on the admin screen. */
+        AdminBadge: {
+            slug: string;
+            title: string;
+            description: string | null;
+            source: components["schemas"]["BadgeSource"];
+            courseSlug: string | null;
+            criteria: components["schemas"]["BadgeCriteria"];
+            /** @description How many people hold this badge. Non-zero makes deletion a 409. */
+            awardCount: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A new admin-sourced badge. */
+        BadgeCreateRequest: {
+            /** @description Globally unique across BOTH sources; lowercase kebab-case. */
+            slug: string;
+            title: string;
+            description?: string;
+            /** @description Optional course slug to scope the badge to. */
+            course?: string;
+            criteria: components["schemas"]["BadgeCriteria"];
+        };
+        /** @description A partial edit of an admin-sourced badge. `slug` is not editable — it is the identity awards and manifests refer to. */
+        BadgeUpdateRequest: {
+            title?: string;
+            description?: string | null;
+            course?: string | null;
+            criteria?: components["schemas"]["BadgeCriteria"];
+        };
+        /** @description One degree definition on the admin screen (design §6.1, §9.2). */
+        AdminDegree: {
+            slug: string;
+            title: string;
+            description: string | null;
+            /** @description The content repo that declared it, when it came from one. */
+            repoUrl: string | null;
+            /** @description Required course slugs, as written in the manifest. */
+            required: string[];
+            /** @description Null when the degree declares no electives. */
+            electives: {
+                choose: number;
+                from: string[];
+            } | null;
+            /** @description False when any named course slug has no imported course. Design §8 — a cross-repo reference never fails an import; it surfaces here instead. */
+            satisfiable: boolean;
+            missingCourses: string[];
+            awardCount: number;
         };
     };
     responses: never;
@@ -2117,6 +2415,64 @@ export interface operations {
             };
         };
     };
+    getMyBadges: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every visible badge, earned first, then locked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BadgeProgress"][];
+                };
+            };
+            /** @description The actor may not read a learner's badges (design §5.1 — admin is exclusive) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMyDegrees: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every degree, with the actor's progress toward it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DegreeProgress"][];
+                };
+            };
+            /** @description The actor may not read a learner's degrees (design §5.1 — admin is exclusive) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     getCourseLesson: {
         parameters: {
             query?: never;
@@ -2215,6 +2571,264 @@ export interface operations {
                 };
             };
             /** @description The actor is not permitted to read import history */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listAdminBadges: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every badge definition, by slug */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminBadge"][];
+                };
+            };
+            /** @description The actor may not read badge definitions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createAdminBadge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BadgeCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description The badge was created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminBadge"];
+                };
+            };
+            /** @description Malformed body, or criteria that do not validate against the badge schema */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The actor may not define badges */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description A badge with this slug already exists (either source) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteAdminBadge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                badgeSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The badge was deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The actor may not define badges */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No badge with this slug */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The badge is git-sourced, or somebody has earned it */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateAdminBadge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                badgeSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BadgeUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated badge */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminBadge"];
+                };
+            };
+            /** @description Malformed body, or criteria that do not validate against the badge schema */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The actor may not define badges */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No badge with this slug */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The badge is git-sourced and therefore read-only here */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    exportAdminBadge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                badgeSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The badge as a YAML list item */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/yaml": string;
+                };
+            };
+            /** @description The actor may not export badges */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No badge with this slug */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listAdminDegrees: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every degree definition */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminDegree"][];
+                };
+            };
+            /** @description The actor may not read degree definitions */
             403: {
                 headers: {
                     [name: string]: unknown;

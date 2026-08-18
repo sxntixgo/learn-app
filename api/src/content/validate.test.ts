@@ -74,9 +74,20 @@ describe('validateCourseManifest', () => {
   });
 
   it('rejects an unknown top-level property', () => {
-    const manifest = { ...validCourseManifest(), degrees: [{ slug: 'x', title: 'X', required: [] }] };
+    // This used `degrees` as its example until Phase 11 made degrees a real
+    // top-level key, at which point the test failed for being out of date
+    // rather than for a regression. Use a name nothing will ever claim.
+    const manifest = { ...validCourseManifest(), notAThingTheSchemaKnows: true };
     const result = validateCourseManifest(manifest);
     expect(result.valid).toBe(false);
+  });
+
+  it('accepts the degrees key now that Phase 11 declares it', () => {
+    const manifest = {
+      ...validCourseManifest(),
+      degrees: [{ slug: 'secure-code-review', title: 'Secure Code Review', required: [] }],
+    };
+    expect(validateCourseManifest(manifest).valid).toBe(true);
   });
 });
 

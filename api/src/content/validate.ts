@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 // namespace rather than the Ajv2020 class under that configuration. The
 // named export sidesteps the interop ambiguity.
 import { Ajv2020 } from 'ajv/dist/2020.js';
-import type { ErrorObject } from 'ajv';
+import type { ErrorObject, ValidateFunction } from 'ajv';
 
 // schemas/*.json live at the repo root (design §6.2: "that schema is the
 // real contract between content repos and the platform, and nothing in it
@@ -30,8 +30,62 @@ function loadSchema(filename: string): object {
 // otherwise flags as likely a mistake.
 const ajv = new Ajv2020({ allErrors: true, strict: true, strictRequired: false, discriminator: true });
 
+// badge.schema.json is ADDED before course.schema.json is compiled, not
+// compiled on its own first: course.schema.json's `badges` array `$ref`s it
+// by $id (design §9.3 — a badge item has the same shape wherever it is
+// declared), and ajv resolves that reference out of its schema registry.
+// Without this line, compiling the course schema throws
+// "can't resolve reference https://learn-app.example/schemas/badge.schema.json".
+const badgeSchema = loadSchema('badge.schema.json');
+ajv.addSchema(badgeSchema);
+
 const validateCourseSchema = ajv.compile(loadSchema('course.schema.json'));
 const validateBlocksSchema = ajv.compile(loadSchema('blocks.schema.json'));
+
+const validateBadgeSchema = ajv.compile({
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $ref: 'https://learn-app.example/schemas/badge.schema.json',
+});
+
+// ---------------------------------------------------------------------------
+// The criteria sub-schema, compiled ONE BRANCH AT A TIME rather than as the
+// whole `oneOf`.
+//
+// Validating `{type: "streak_days", dayz: 7}` against the eight-branch oneOf
+// produces 23 ajv errors — one set per branch that failed, plus "must match
+// exactly one schema in oneOf" — none of which says the useful thing
+// ("streak_days does not take `dayz`"). Design §8: "every failure names
+// file, line, and expectation. Worth over-investing in early."
+//
+// So `type` is read first and dispatched on: an unknown type gets ONE error
+// naming the closed vocabulary (design §9.3 — "adding a ninth type is a
+// deliberate platform change", so an unrecognised one is never a near-miss
+// worth guessing at), and a known type is checked against ITS OWN branch,
+// whose errors are about the fields that type actually has. The branches are
+// discovered from the schema file itself, so adding that ninth type means
+// editing schemas/badge.schema.json and api/src/progression/criteria.ts —
+// never this file.
+// ---------------------------------------------------------------------------
+interface CriteriaBranch {
+  properties?: { type?: { const?: unknown } };
+}
+
+const CRITERIA_BRANCHES: ReadonlyArray<{ type: string; index: number }> = (
+  (badgeSchema as { $defs?: { criteria?: { oneOf?: CriteriaBranch[] } } }).$defs?.criteria?.oneOf ?? []
+).map((branch, index) => ({ type: String(branch.properties?.type?.const), index }));
+
+const validateCriteriaBranch = new Map<string, ValidateFunction>(
+  CRITERIA_BRANCHES.map(({ type, index }) => [
+    type,
+    ajv.compile({
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      $ref: `https://learn-app.example/schemas/badge.schema.json#/$defs/criteria/oneOf/${index}`,
+    }),
+  ]),
+);
+
+/** The eight type names, read off the schema — never a second hand-kept list. */
+export const BADGE_CRITERION_TYPES: readonly string[] = Object.freeze(CRITERIA_BRANCHES.map((b) => b.type));
 
 export interface ValidationError {
   /** JSON Pointer (RFC 6901) to the offending location, e.g. "/tracks/0/hue". */
@@ -65,4 +119,48 @@ export function validateCourseManifest(obj: unknown): ValidationResult {
 export function validateBlocks(arr: unknown): ValidationResult {
   const valid = validateBlocksSchema(arr);
   return toResult(valid, validateBlocksSchema.errors);
+}
+
+/**
+ * Validates one badge definition (design §9.3) against
+ * schemas/badge.schema.json — the same contract for a badge declared in a
+ * curriculum repo's `course.yaml` and for one created through the admin
+ * CRUD, so a badge cannot exist in the database in a shape the exporter
+ * could not write back out as valid YAML.
+ */
+export function validateBadge(obj: unknown): ValidationResult {
+  const valid = validateBadgeSchema(obj);
+  return toResult(valid, validateBadgeSchema.errors);
+}
+
+/**
+ * Validates a bare criteria object — THE CLOSED VOCABULARY of design §9.3.
+ * A `jsonb` column cannot express "exactly these eight types, each with its
+ * own required fields", so every write path (importer and admin route
+ * alike) runs a value through here before it reaches `badges.criteria`.
+ */
+export function validateBadgeCriteria(obj: unknown): ValidationResult {
+  if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
+    return { valid: false, errors: [{ path: '/', message: 'must be a criteria object' }] };
+  }
+
+  const type = (obj as { type?: unknown }).type;
+  if (typeof type !== 'string') {
+    return { valid: false, errors: [{ path: '/type', message: 'is required and must be a string' }] };
+  }
+
+  const validate = validateCriteriaBranch.get(type);
+  if (!validate) {
+    return {
+      valid: false,
+      errors: [
+        {
+          path: '/type',
+          message: `"${type}" is not one of the eight badge criteria types: ${BADGE_CRITERION_TYPES.join(', ')}`,
+        },
+      ],
+    };
+  }
+
+  return toResult(validate(obj), validate.errors);
 }
