@@ -345,6 +345,23 @@ const MATRIX: readonly MatrixCase[] = [
     resource: () => ({ budget: { remaining: 3 } }),
     expected: [DENY, DENY, ALLOW, ALLOW, ALLOW],
   },
+  // Listing and revoking are role floors, like `submission:queue:read`:
+  // BOTH teacher subjects pass here, because the scoping — a teacher sees
+  // and revokes only what they issued, an admin sees everything (§12: "a
+  // screen listing every invite with issuer and status") — is the route's
+  // own SQL, exercised for real in routes/invites.test.ts.
+  {
+    row: 'Invite to a course / to the platform (list)',
+    action: 'invite:list',
+    resource: noResource,
+    expected: [DENY, DENY, ALLOW, ALLOW, ALLOW],
+  },
+  {
+    row: 'Invite to a course / to the platform (revoke)',
+    action: 'invite:revoke',
+    resource: noResource,
+    expected: [DENY, DENY, ALLOW, ALLOW, ALLOW],
+  },
 
   // ---------------------------------------------------------------------------
   // Row: "Define degrees, global badges" — admin ✅
@@ -408,6 +425,12 @@ const MATRIX: readonly MatrixCase[] = [
   {
     row: 'Assign roles, grant invite budgets',
     action: 'invite:budget:grant',
+    resource: noResource,
+    expected: [DENY, DENY, DENY, DENY, ALLOW],
+  },
+  {
+    row: 'Assign roles, grant invite budgets (the roster they act on)',
+    action: 'user:list',
     resource: noResource,
     expected: [DENY, DENY, DENY, DENY, ALLOW],
   },
@@ -487,6 +510,22 @@ const MATRIX: readonly MatrixCase[] = [
   {
     row: 'Public profile (§11, not a §5 row)',
     action: 'profile:public:read',
+    resource: noResource,
+    expected: [ALLOW, ALLOW, ALLOW, ALLOW, ALLOW],
+  },
+  // Accepting an invitation (§12, §13): an invitee has no account yet, so
+  // there is no role to check. The invite token is the authorization —
+  // hashed, single-use, expiring, bound to one address — exactly as the
+  // setup token is for the bootstrap above.
+  {
+    row: 'Accept an invitation (§12, not a §5 row)',
+    action: 'invite:preview',
+    resource: noResource,
+    expected: [ALLOW, ALLOW, ALLOW, ALLOW, ALLOW],
+  },
+  {
+    row: 'Accept an invitation (§12, not a §5 row)',
+    action: 'invite:accept',
     resource: noResource,
     expected: [ALLOW, ALLOW, ALLOW, ALLOW, ALLOW],
   },
@@ -767,11 +806,20 @@ describe('the anonymous actor', () => {
     expect(isAnonymous(student)).toBe(false);
   });
 
-  it('may do nothing except the three explicitly public actions', () => {
+  it('may do nothing except the five explicitly public actions', () => {
     // Written out rather than imported from can.ts: this list is the whole
     // unauthenticated attack surface of the instance, and a test that read it
     // from the module under test would agree with any future addition.
-    const PUBLIC: readonly Action[] = ['instance:setup:status', 'instance:bootstrap', 'profile:public:read'];
+    const PUBLIC: readonly Action[] = [
+      'instance:setup:status',
+      'instance:bootstrap',
+      'profile:public:read',
+      // Phase 13 (§12): reaching these is not the same as being able to use
+      // them — both are gated by a 256-bit token the anonymous caller must
+      // already hold, and the acceptance additionally by the atomic claim.
+      'invite:preview',
+      'invite:accept',
+    ];
     for (const action of ACTIONS) {
       const expected = PUBLIC.includes(action);
       expect(can(ANONYMOUS_ACTOR, action, { course: { ownerId: null }, userId: ANONYMOUS_ACTOR.id }), action).toBe(

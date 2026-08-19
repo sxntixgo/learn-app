@@ -23,6 +23,10 @@ import type { AuthRouteDeps } from './routes/auth.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
 import type { ProfileRouteDeps } from './routes/profiles.ts';
 import { registerProfileRoutes } from './routes/profiles.ts';
+import type { InviteRouteDeps } from './routes/invites.ts';
+import { registerInviteRoutes } from './routes/invites.ts';
+import type { AdminPeopleRouteDeps } from './routes/admin-people.ts';
+import { registerAdminPeopleRoutes } from './routes/admin-people.ts';
 import { registerActorHook } from './auth/actor.ts';
 import { getSigningKeys } from './auth/keys.ts';
 import { hashPassword } from './auth/password.ts';
@@ -43,6 +47,8 @@ export type BuildServerOptions = CourseRouteDeps &
   SetupRouteDeps &
   AuthRouteDeps &
   ProfileRouteDeps &
+  InviteRouteDeps &
+  AdminPeopleRouteDeps &
   SubmissionRouteDeps & {
     /**
      * Whether to believe `X-Forwarded-For`. OFF unless explicitly enabled,
@@ -91,6 +97,12 @@ export async function buildServer(options: BuildServerOptions = {}) {
   registerAuthRoutes(fastify, options);
   registerSubmissionRoutes(fastify, options);
   registerProfileRoutes(fastify, options);
+  // Phase 13 (design §12). Invitations create accounts, so the accept route
+  // gets the same real Argon2id hasher the bootstrap does — a seam left open
+  // here would mean invited accounts with `password_hash = NULL`, i.e. no
+  // credential at all.
+  registerInviteRoutes(fastify, { ...options, hashPassword: options.hashPassword ?? hashPassword });
+  registerAdminPeopleRoutes(fastify, options);
 
   return fastify;
 }

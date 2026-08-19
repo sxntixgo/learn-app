@@ -409,7 +409,24 @@ const MATRIX = {
   // "A teacher's platform-invite budget defaults to 0 — creating accounts is
   // granted deliberately, not assumed." So the teacher cell is decided by the
   // budget the caller reports, and a caller that reports none is refused.
+  //
+  // Phase 13 asks this cell for ANY invite that would create an account,
+  // including a COURSE invite to an address that has no account yet (§12's
+  // "one action issues one link that both registers the person and enrolls
+  // them"). Creating an account is the budgeted power; which screen it was
+  // reached from is not a licence to skip the budget.
   'invite:platform:create': { row: 'Invite to the platform', teacher: FROM_BUDGET, admin: ALLOW },
+
+  // Phase 13, both role floors in the same sense `submission:queue:read` is
+  // one: the resource is "the invites this actor may see/act on", which
+  // spans many courses and cannot be reduced to a single
+  // `{ course: { ownerId } }` for `can()` to check. The scoping is the
+  // route's own SQL — `issued_by = actor.id` for a teacher, unscoped for an
+  // admin — keyed off the actor's id rather than off a resource. §12 is
+  // explicit that the unscoped view is an ADMIN screen: "admins get a screen
+  // listing every invite with issuer and status".
+  'invite:list': { row: 'Invite to a course / to the platform', teacher: ALLOW, admin: ALLOW },
+  'invite:revoke': { row: 'Invite to a course / to the platform', teacher: ALLOW, admin: ALLOW },
 
   // ---- Define degrees, global badges (§9.2, §9.3) --------------------------
   'degree:define': { row: 'Define degrees, global badges', admin: ALLOW },
@@ -440,6 +457,13 @@ const MATRIX = {
   // ---- Assign roles, grant invite budgets ----------------------------------
   'role:assign': { row: 'Assign roles, grant invite budgets', admin: ALLOW },
   'invite:budget:grant': { row: 'Assign roles, grant invite budgets', admin: ALLOW },
+  // Phase 13: the roster those two mutations act on. Not folded into either
+  // of them, because "who is on this instance" is a read an audit log should
+  // be able to tell apart from a grant — and not folded into
+  // `instance:settings:read` either, because a list of people is not a
+  // setting. Admin only: §5's row is admin-only, and a teacher has no reason
+  // to enumerate every account on the instance.
+  'user:list': { row: 'Assign roles, grant invite budgets', admin: ALLOW },
 
   // ---- Read audit log, instance settings -----------------------------------
   'audit:read': { row: 'Read audit log, instance settings', admin: ALLOW },
@@ -485,6 +509,21 @@ const MATRIX = {
   // above is what the route then asks to find out whether this viewer is the
   // owner and gets the unfiltered view.
   'profile:public:read': { row: 'Public profile (§11, not a §5 row)', student: ALLOW, teacher: ALLOW, admin: ALLOW },
+
+  // ---- NOT A §5 ROW: accepting an invitation (§12, §13) --------------------
+  // The second and third unauthenticated endpoints on the instance, and for
+  // the same reason as the bootstrap: an invitee has no account yet, so
+  // there is no role to check. What gates them is the invite token — 256
+  // bits of randomness, stored only as a SHA-256, bound to one email address,
+  // single-use, expiring — and the atomic `where accepted_at is null` claim
+  // (invites/accept.ts). A role cell here would be meaningless; the token IS
+  // the authorization, exactly as the setup token is for the bootstrap.
+  //
+  // `invite:preview` reveals what a link is for (which course, which
+  // address) to whoever holds the link — which is the invitee, by
+  // construction. It reveals nothing to anyone who does not.
+  'invite:preview': { row: 'Accept an invitation (§12, not a §5 row)', student: ALLOW, teacher: ALLOW, admin: ALLOW },
+  'invite:accept': { row: 'Accept an invitation (§12, not a §5 row)', student: ALLOW, teacher: ALLOW, admin: ALLOW },
 } satisfies Record<string, ActionPolicy>;
 
 /** The complete action vocabulary. `can()` denies anything outside it. */
@@ -506,6 +545,10 @@ const PUBLIC_ACTIONS: ReadonlySet<Action> = new Set<Action>([
   // Phase 12 (§11): the profile page is an unauthenticated ROUTE, not
   // unauthenticated DATA. See the action's entry in MATRIX.
   'profile:public:read',
+  // Phase 13 (§12, §13): an invitee has no account yet. Gated by the invite
+  // token and the atomic claim, not by a role.
+  'invite:preview',
+  'invite:accept',
 ]);
 
 // Indexed lookup, deliberately typed as possibly-undefined: `action` is a

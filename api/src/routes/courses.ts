@@ -385,6 +385,35 @@ export function registerCourseRoutes(fastify: FastifyInstance, deps: CourseRoute
         nextOwnerId,
       ]);
 
+      // Design §12: "all privileged actions — role changes, budget grants,
+      // invite issuance, COURSE PUBLISHING — are written to audit_log."
+      // Publishing and transferring ownership are two different acts and get
+      // two different entries, so an admin reading the log can tell "this
+      // course went public" from "this course changed hands" without parsing
+      // a diff.
+      if (hasVisibility && nextVisibility !== courseRow.visibility) {
+        await getPool().query(
+          `insert into audit_log (actor_id, action, target, meta)
+           values ($1, 'course.visibility_set', $2, $3::jsonb)`,
+          [
+            actor.id,
+            courseRow.slug,
+            JSON.stringify({ from: courseRow.visibility, to: nextVisibility, courseId: courseRow.id }),
+          ],
+        );
+      }
+      if (hasOwnerId && nextOwnerId !== courseRow.owner_id) {
+        await getPool().query(
+          `insert into audit_log (actor_id, action, target, meta)
+           values ($1, 'course.ownership_transferred', $2, $3::jsonb)`,
+          [
+            actor.id,
+            courseRow.slug,
+            JSON.stringify({ from: courseRow.owner_id, to: nextOwnerId, courseId: courseRow.id }),
+          ],
+        );
+      }
+
       return reply.code(200).send({ slug: courseRow.slug, visibility: nextVisibility, ownerId: nextOwnerId });
     },
   );

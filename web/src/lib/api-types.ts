@@ -687,6 +687,178 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Invitations, newest first
+         * @description Design §12: "admins get a screen listing every invite with issuer and status". An admin sees every invite on the instance; a teacher sees only the ones they issued. That scoping is the route's SQL, not a parameter — there is no way to ask for someone else's.
+         *     Expired invites that took a unit of budget are refunded before the list is built, so `status` and the issuer's remaining budget are never out of step with each other.
+         */
+        get: operations["listInvites"];
+        put?: never;
+        /**
+         * Issue an invitation
+         * @description Design §12. A COURSE invite grants access to one course and may be issued by that course's owner (or an admin). A PLATFORM invite creates an account: unlimited for an admin, and out of a budget for a teacher.
+         *     The budget is charged for ANY invite that would create an account — including a course invite to an address with no account yet, which is the "one link registers AND enrols" case — and it is charged on ISSUE, not on acceptance, so invites cannot be hoarded or spammed. It is refunded on expiry or revocation.
+         *     The response carries the plaintext token EXACTLY ONCE. Only its SHA-256 is stored; a lost link is revoked and re-issued, never recovered.
+         */
+        post: operations["createInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invites/{inviteId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke an invitation
+         * @description Marks the invitation revoked and returns its unit of budget to the issuer if it took one (design §12). Idempotent in the safe direction: a second revocation is a 409, never a second refund. A teacher may revoke only what they issued; an admin may revoke anything.
+         */
+        post: operations["revokeInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invites/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What an invitation link is for
+         * @description Unauthenticated, like the setup status endpoint — an invitee has no account yet. It reveals what the link is for to whoever holds the link, which is the invitee by construction: the token is 256 bits of randomness stored only as a SHA-256.
+         *     `needsAccount` tells the accept page which form to render: a registration (handle + password) or a "sign in as this address to accept" prompt.
+         */
+        get: operations["previewInvite"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept an invitation — register and enrol in one step
+         * @description Design §12: "one action issues one link that both registers the person and enrolls them in the course."
+         *     The claim is atomic: `UPDATE invites SET accepted_at = now() WHERE token_hash = $1 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > now()` inside the registration transaction. Two simultaneous acceptances of one token yield exactly one account; the loser gets 410. A failure after the claim (a taken handle) rolls it back, so a typo never burns the link.
+         *     When the invited address already has an account the invitation grants course access only, and the caller must be signed in as that account: a link found in a mailbox may not become someone else's enrolment, and may not mint an account the budget never paid for.
+         */
+        post: operations["acceptInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The audit log, newest first
+         * @description Design §12: "all privileged actions — role changes, budget grants, invite issuance, course publishing — are written to `audit_log`." Append-only, enforced by trigger (migration 0005), with no carve-out for admin tooling.
+         */
+        get: operations["listAuditLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every account, with roles and invite budget
+         * @description The roster the role-assignment and budget-grant screens act on (design §5, §12). Admin only.
+         */
+        get: operations["listAdminUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{userId}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Grant or revoke one role
+         * @description Design §5: roles are a SET, not a ladder — `student` and `teacher` combine freely, and `admin` combines with neither. The exclusivity is enforced by the database (migration 0005's exclusion constraint), so a grant that would mix the two classes is refused as a 409 rather than papered over here.
+         *     Writes `role.assigned` to `audit_log`.
+         */
+        post: operations["assignRole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{userId}/invite-budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set an account's platform-invite budget
+         * @description Design §12: "a teacher's platform-invite budget defaults to 0 — creating accounts is granted deliberately, not assumed." This is the deliberate grant. The value is absolute, not a delta, so two admins acting on the same account cannot compound each other's intent.
+         *     Writes `invite.budget_granted` to `audit_log`, with the previous value alongside the new one.
+         */
+        post: operations["grantInviteBudget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1701,6 +1873,129 @@ export interface components {
             satisfiable: boolean;
             missingCourses: string[];
             awardCount: number;
+        };
+        /**
+         * @description Design §12. A `platform` invite creates an account; a `course` invite grants access to exactly one course (and creates an account too when the address has none yet).
+         * @enum {string}
+         */
+        InviteKind: "platform" | "course";
+        /**
+         * @description Derived, not stored: an invite row carries `accepted_at`, `revoked_at` and `expires_at`, and this is what they add up to.
+         * @enum {string}
+         */
+        InviteStatus: "pending" | "accepted" | "revoked" | "expired";
+        /** @description One invitation as an admin or its issuer sees it. Never carries the token. */
+        Invite: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["InviteKind"];
+            status: components["schemas"]["InviteStatus"];
+            email: string;
+            courseSlug: string | null;
+            courseTitle: string | null;
+            /** Format: uuid */
+            issuedById: string | null;
+            /** @description Design §12's "listing every invite with ISSUER and status". Null only for an issuer whose account has since been deleted — the row survives it (`on delete set null`). */
+            issuedByHandle: string | null;
+            issuedByDisplayName: string | null;
+            budgetConsumed: boolean;
+            refunded: boolean;
+            createsAccount: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            acceptedAt: string | null;
+            /** Format: date-time */
+            revokedAt: string | null;
+        };
+        InviteCreateRequest: {
+            kind: components["schemas"]["InviteKind"];
+            /** @description Lower-cased before storage. The token is bound to it (§13). */
+            email: string;
+            /** @description Required for a course invite, and refused on a platform invite. */
+            courseSlug?: string | null;
+            /** @description Defaults to 14. */
+            expiresInDays?: number;
+        };
+        /** @description The issue response. `token` and `acceptPath` appear HERE AND NOWHERE ELSE — not in the invite list, not in the audit log — because only the SHA-256 is stored and there is no way to show them again. */
+        IssuedInvite: {
+            invite: components["schemas"]["Invite"];
+            token: string;
+            /** @description The relative link to hand to the invitee, e.g. `/invite/abc123`. */
+            acceptPath: string;
+            /** @description The issuer's platform-invite budget after this issue. */
+            remainingBudget: number;
+        };
+        RevokedInvite: {
+            invite: components["schemas"]["Invite"];
+            /** @description Whether a unit of budget went back to the issuer. */
+            refunded: boolean;
+        };
+        /** @description What the holder of a link is told before accepting it. */
+        InvitePreview: {
+            kind: components["schemas"]["InviteKind"];
+            email: string;
+            courseSlug: string | null;
+            courseTitle: string | null;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @description True when accepting will register a new account (show the handle/password form); false when the address already has one (show "sign in as this address to accept"). */
+            needsAccount: boolean;
+        };
+        InviteAcceptRequest: {
+            token: string;
+            /** @description Required when the invitation registers an account. */
+            handle?: string | null;
+            /** @description At least 12 characters. Required when the invitation registers an account. */
+            password?: string | null;
+            displayName?: string | null;
+            /** @description An IANA time zone name (design §15). */
+            timezone?: string | null;
+        };
+        InviteAcceptResult: {
+            user: components["schemas"]["AuthUser"];
+            courseSlug: string | null;
+            enrolled: boolean;
+        };
+        /** @description One append-only row of `audit_log` (design §12). */
+        AuditEntry: {
+            /** Format: uuid */
+            id: string;
+            action: string;
+            /** Format: uuid */
+            actorId: string | null;
+            /** @description Resolved at read time where the account still exists. `actor_id` is deliberately not a foreign key — the record must outlive the account it describes — so this can be null while `meta` still carries who it was. */
+            actorHandle: string | null;
+            target: string | null;
+            meta: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            occurredAt: string;
+        };
+        /** @description An account as the admin roster shows it (design §5, §12). */
+        AdminUser: {
+            /** Format: uuid */
+            id: string;
+            email: string | null;
+            handle: string | null;
+            displayName: string | null;
+            roles: string[];
+            inviteBudget: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        RoleAssignRequest: {
+            /** @enum {string} */
+            role: "student" | "teacher" | "admin";
+            /** @description True to grant, false to revoke. */
+            granted: boolean;
+        };
+        InviteBudgetRequest: {
+            /** @description The absolute new budget, not a delta. */
+            budget: number;
         };
     };
     responses: never;
@@ -3238,6 +3533,407 @@ export interface operations {
             };
             /** @description The instance was already set up before this request arrived. Permanent. */
             410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listInvites: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invitations this actor may see */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Invite"][];
+                };
+            };
+            /** @description The actor may not list invitations */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description The invitation was issued */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuedInvite"];
+                };
+            };
+            /** @description Malformed body — bad email, unknown kind, or a TTL outside 1..90 days */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Refused by the policy: a teacher inviting to a course they do not own, or issuing an account-creating invite with an exhausted budget. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No such course */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description A platform invite for an address that already has an account */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    revokeInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                inviteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invitation is revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevokedInvite"];
+                };
+            };
+            /** @description The actor may not revoke invitations */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Already accepted, already revoked, or not this actor's to revoke */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    previewInvite: {
+        parameters: {
+            query: {
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invitation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitePreview"];
+                };
+            };
+            /** @description No token supplied */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown, expired, revoked, or already accepted — one answer for all four */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    acceptInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteAcceptRequest"];
+            };
+        };
+        responses: {
+            /** @description The invitation is accepted */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteAcceptResult"];
+                };
+            };
+            /** @description Malformed body, or credentials missing on an invitation that registers an account */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The handle is taken, or this address already has an account and is not the one signed in */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown, expired, revoked, or already accepted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listAuditLog: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Exact action string to filter by, e.g. `invite.issued`. */
+                action?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Audit entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEntry"][];
+                };
+            };
+            /** @description The actor may not read the audit log */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listAdminUsers: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accounts, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"][];
+                };
+            };
+            /** @description The actor may not list accounts */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    assignRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleAssignRequest"];
+            };
+        };
+        responses: {
+            /** @description The account's roles after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description Unknown role, or a malformed body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The actor may not assign roles */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No such account */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The grant would make an account both an operator and a learner (design §5.1: admin is exclusive). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    grantInviteBudget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteBudgetRequest"];
+            };
+        };
+        responses: {
+            /** @description The account, with its new budget */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUser"];
+                };
+            };
+            /** @description The budget is not an integer in 0..1000 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The actor may not grant invite budgets */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No such account */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -1,6 +1,13 @@
 import type pg from 'pg';
 import { isValidTimeZone } from '../time/timezone.ts';
 import { hashSetupToken } from './setup-token.ts';
+import {
+  EMAIL_PATTERN,
+  MAX_DISPLAY_NAME_LENGTH,
+  MAX_EMAIL_LENGTH,
+  parseHandle,
+  parsePassword,
+} from './account-fields.ts';
 
 // First-run bootstrap (design §5.2).
 //
@@ -24,42 +31,10 @@ import { hashSetupToken } from './setup-token.ts';
 const ADMIN_ROLE = 'admin';
 const STUDENT_ROLE = 'student';
 
-const MIN_PASSWORD_LENGTH = 12;
-// Bounded so that a future Argon2id call site cannot be turned into a CPU
-// exhaustion primitive by a megabyte-long "password".
-const MAX_PASSWORD_LENGTH = 200;
-const MAX_EMAIL_LENGTH = 254;
-const MAX_DISPLAY_NAME_LENGTH = 80;
-
-const HANDLE_PATTERN = /^[a-z0-9][a-z0-9_-]{1,30}$/;
-// Deliberately loose: real address validation is delivery, not a regex. This
-// only rejects what is obviously not an address (design has no SMTP at all —
-// §13's "password recovery without SMTP").
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// Handles appear at `/u/<handle>` (design §11) and in the API surface. These
-// are held back so a first-run operator cannot claim a name that reads as
-// platform infrastructure to another student.
-const RESERVED_HANDLES = new Set([
-  'admin',
-  'administrator',
-  'api',
-  'assets',
-  'help',
-  'login',
-  'logout',
-  'me',
-  'moderator',
-  'public',
-  'register',
-  'root',
-  'settings',
-  'setup',
-  'static',
-  'support',
-  'system',
-  'u',
-]);
+// The field rules live in auth/account-fields.ts: the bootstrap and an
+// invited registration (invites/accept.ts) hold a new account to exactly the
+// same shape, and a second copy of these constants would be the way that
+// stops being true.
 
 /** Hashes a password for storage. Argon2id (design §13) is wired in separately. */
 export type HashPassword = (plaintext: string) => Promise<string>;
@@ -130,27 +105,15 @@ function parseAccount(raw: unknown, label: string): { ok: true; value: AccountIn
     return invalid(`${label}.email is not a valid email address.`);
   }
 
-  const rawHandle = account.handle;
-  if (typeof rawHandle !== 'string') return invalid(`${label}.handle is required.`);
   // Normalized, then validated against the same shape the database enforces
   // (db/migrations/0005: users_handle_url_safe).
-  const handle = rawHandle.trim().toLowerCase();
-  if (!HANDLE_PATTERN.test(handle)) {
-    return invalid(
-      `${label}.handle must be 2-31 characters of a-z, 0-9, hyphen or underscore, starting with a letter or digit.`,
-    );
-  }
-  if (RESERVED_HANDLES.has(handle)) {
-    return invalid(`${label}.handle "${handle}" is reserved.`);
-  }
+  const parsedHandle = parseHandle(label, account.handle);
+  if (!parsedHandle.ok) return invalid(parsedHandle.message);
+  const handle = parsedHandle.value;
 
-  const password = account.password;
-  if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
-    return invalid(`${label}.password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
-  }
-  if (password.length > MAX_PASSWORD_LENGTH) {
-    return invalid(`${label}.password must be at most ${MAX_PASSWORD_LENGTH} characters.`);
-  }
+  const parsedPassword = parsePassword(label, account.password);
+  if (!parsedPassword.ok) return invalid(parsedPassword.message);
+  const password = parsedPassword.value;
 
   const rawDisplayName = account.displayName;
   if (rawDisplayName !== undefined && rawDisplayName !== null && typeof rawDisplayName !== 'string') {

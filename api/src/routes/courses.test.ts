@@ -942,6 +942,57 @@ describe('courses routes', () => {
         await pool.query(`update courses set visibility = 'hidden' where slug = $1`, [OWNED_HIDDEN_SLUG]);
         await fastify.close();
       });
+
+      // Design §12 (Phase 13): "all privileged actions — role changes, budget
+      // grants, invite issuance, COURSE PUBLISHING — are written to
+      // audit_log." Publishing and transferring ownership are two acts and
+      // get two entries.
+      it('writes course.visibility_set and course.ownership_transferred to the audit log', async () => {
+        // `audit_log` is append-only by trigger (migration 0005) — nothing,
+        // including this test, may delete from it — so entries from earlier
+        // tests and earlier runs are still there. Everything below is scoped
+        // to what happened after this line.
+        const since = new Date();
+        const fastify = await buildServer({ can: () => true, actor: ownerStudent });
+
+        const published = await fastify.inject({
+          method: 'PATCH',
+          url: `/api/v1/courses/${OWNED_HIDDEN_SLUG}`,
+          payload: { visibility: 'open' },
+        });
+        expect(published.statusCode).toBe(200);
+
+        const transferred = await fastify.inject({
+          method: 'PATCH',
+          url: `/api/v1/courses/${OWNED_HIDDEN_SLUG}`,
+          payload: { ownerId: null },
+        });
+        expect(transferred.statusCode).toBe(200);
+
+        // A PATCH that changes nothing writes nothing: an audit log full of
+        // no-ops is one nobody reads.
+        await fastify.inject({
+          method: 'PATCH',
+          url: `/api/v1/courses/${OWNED_HIDDEN_SLUG}`,
+          payload: { visibility: 'open' },
+        });
+        await fastify.close();
+
+        // Restored before the assertions, so a failure here does not leave a
+        // published, unowned course behind for the rest of the file.
+        await pool.query(`update courses set visibility = 'hidden', owner_id = $2 where slug = $1`, [
+          OWNED_HIDDEN_SLUG,
+          ownerId,
+        ]);
+
+        const { rows } = await pool.query<{ action: string; meta: Record<string, unknown> }>(
+          'select action, meta from audit_log where target = $1 and occurred_at >= $2 order by occurred_at',
+          [OWNED_HIDDEN_SLUG, since],
+        );
+        expect(rows.map((r) => r.action)).toEqual(['course.visibility_set', 'course.ownership_transferred']);
+        expect(rows[0]!.meta).toMatchObject({ from: 'hidden', to: 'open' });
+        expect(rows[1]!.meta).toMatchObject({ from: ownerId, to: null });
+      });
     });
 
     // -------------------------------------------------------------------
