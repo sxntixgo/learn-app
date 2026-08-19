@@ -141,6 +141,40 @@ describe('me routes', () => {
       await fastify.close();
     });
 
+    it('reports the actor’s platform-invite budget, defaulting to 0 (design §12)', async () => {
+      const fastify = await buildServer({ actor });
+      const response = await fastify.inject({ method: 'GET', url: '/api/v1/me' });
+
+      expect(response.statusCode).toBe(200);
+      expect((JSON.parse(response.payload) as { inviteBudget: number }).inviteBudget).toBe(0);
+
+      await fastify.close();
+    });
+
+    it('REFUNDS AN EXPIRED INVITATION ON READ — there is no sweeper job (§4, §12)', async () => {
+      // §12: the budget "is refunded on expiry or revocation", and this
+      // design has no job queue, so reading the budget is what applies it.
+      // One granted unit, spent on an invitation that then expires: the
+      // reader must see 1 again, and must not see 2 on a second read.
+      await pool.query('update users set platform_invite_budget = 1 where id = $1', [actor.id]);
+      await pool.query(
+        `insert into invites (kind, issued_by, email, token_hash, expires_at, budget_consumed, creates_account)
+         values ('platform', $1, $2, $3, now() - interval '1 day', true, true)`,
+        [actor.id, `expired-${RUN_ID}@example.test`, `hash-expired-${RUN_ID}`],
+      );
+      await pool.query('update users set platform_invite_budget = 0 where id = $1', [actor.id]);
+
+      const fastify = await buildServer({ actor });
+      const first = await fastify.inject({ method: 'GET', url: '/api/v1/me' });
+      const second = await fastify.inject({ method: 'GET', url: '/api/v1/me' });
+
+      expect((JSON.parse(first.payload) as { inviteBudget: number }).inviteBudget).toBe(1);
+      expect((JSON.parse(second.payload) as { inviteBudget: number }).inviteBudget).toBe(1);
+
+      await pool.query('update users set platform_invite_budget = 0 where id = $1', [actor.id]);
+      await fastify.close();
+    });
+
     it('calls can() with a "me:read" action — the seam guard', async () => {
       const canSpy = vi.fn().mockReturnValue(true);
       const fastify = await buildServer({ actor, can: canSpy });

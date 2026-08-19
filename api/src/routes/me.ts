@@ -9,6 +9,7 @@ import type { StreakEvent } from '../activity/streaks.ts';
 import { buildHeatmapDays, clampWeeks } from '../activity/heatmap.ts';
 import { localDateKey } from '../activity/streaks.ts';
 import { listBadgeProgress, listDegreeProgress } from '../progression/views.ts';
+import { remainingBudget } from '../invites/issue.ts';
 
 export interface MeRouteDeps {
   // Injectable policy function (CLAUDE.md rule 2), same seam as
@@ -30,6 +31,8 @@ interface MeResponse {
   displayName: string | null;
   timezone: string;
   timezoneSource: TimezoneSource;
+  /** Design §12's platform-invite budget, 0 for everyone it was never granted to. */
+  inviteBudget: number;
 }
 
 interface MeUpdateBody {
@@ -58,13 +61,29 @@ async function findUser(actorId: string): Promise<UserRow | null> {
 }
 
 /** Shapes a users row into the public Me response (design §15's UTC fallback). */
-function toMeResponse(row: UserRow): MeResponse {
+function toMeResponse(row: UserRow, inviteBudget: number): MeResponse {
   return {
     id: row.id,
     displayName: row.display_name,
     timezone: row.timezone ?? DEFAULT_TIMEZONE,
     timezoneSource: row.timezone ? 'set' : 'default',
+    inviteBudget,
   };
+}
+
+/**
+ * The actor's spendable invite budget (design §12).
+ *
+ * `remainingBudget` sweeps expired invitations before reading, which is how
+ * "refunded on expiry" happens at all: §4 keeps Postgres as the only
+ * stateful service, so there is no cron and no worker to do it, and a
+ * read is the moment the number has to be right. The sweep's UPDATE is
+ * guarded by `refunded_at is null` and served by a partial index over the
+ * few refundable rows, so for the overwhelming majority of readers — who
+ * have never issued an invitation — it matches nothing.
+ */
+async function inviteBudgetFor(actorId: string): Promise<number> {
+  return remainingBudget(getPool(), actorId);
 }
 
 /** Parses and clamps the `?limit=` query param for the activity feed. */
@@ -99,7 +118,7 @@ export function registerMeRoutes(fastify: FastifyInstance, deps: MeRouteDeps = {
       return reply.code(404).send({ message: `User not found: ${actor.id}` });
     }
 
-    return reply.code(200).send(toMeResponse(userRow));
+    return reply.code(200).send(toMeResponse(userRow, await inviteBudgetFor(actor.id)));
   });
 
   fastify.patch<{ Body: MeUpdateBody }>('/api/v1/me', async (request, reply) => {
@@ -132,7 +151,7 @@ export function registerMeRoutes(fastify: FastifyInstance, deps: MeRouteDeps = {
       return reply.code(404).send({ message: `User not found: ${actor.id}` });
     }
 
-    return reply.code(200).send(toMeResponse(userRow));
+    return reply.code(200).send(toMeResponse(userRow, await inviteBudgetFor(actor.id)));
   });
 
   fastify.get<{ Querystring: { limit?: string } }>('/api/v1/me/activity', async (request, reply) => {

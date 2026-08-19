@@ -3346,11 +3346,27 @@ components:
             "UTC" when unset (design §15).
         timezoneSource:
           $ref: '#/components/schemas/TimezoneSource'
+        inviteBudget:
+          type: integer
+          description: >-
+            The actor's remaining platform-invite budget (design §12), 0 for
+            anyone who has never been granted one — which is everyone by
+            default, "creating accounts is granted deliberately, not
+            assumed". Read here rather than only on the invitations screen
+            so a teacher can be told what they have before they start
+            typing.
+
+
+            Computed AFTER the lazy expiry refund: this design has no job
+            queue (§4, Postgres is the only stateful service), so an expired
+            invitation's unit comes back when someone next reads the budget.
+            Reading it is exactly when it matters.
       required:
         - id
         - displayName
         - timezone
         - timezoneSource
+        - inviteBudget
 
     MeUpdateRequest:
       type: object

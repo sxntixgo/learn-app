@@ -1373,6 +1373,12 @@ export interface components {
             /** @description The actor's effective IANA timezone — their stored value, or "UTC" when unset (design §15). */
             timezone: string;
             timezoneSource: components["schemas"]["TimezoneSource"];
+            /**
+             * @description The actor's remaining platform-invite budget (design §12), 0 for anyone who has never been granted one — which is everyone by default, "creating accounts is granted deliberately, not assumed". Read here rather than only on the invitations screen so a teacher can be told what they have before they start typing.
+             *
+             *     Computed AFTER the lazy expiry refund: this design has no job queue (§4, Postgres is the only stateful service), so an expired invitation's unit comes back when someone next reads the budget. Reading it is exactly when it matters.
+             */
+            inviteBudget: number;
         };
         /** @description A request to set the actor's timezone. */
         MeUpdateRequest: {

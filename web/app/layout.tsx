@@ -3,7 +3,8 @@ import { ReactNode } from 'react';
 import { cookies } from 'next/headers';
 import { IBM_Plex_Mono, Libre_Franklin, Source_Serif_4 } from 'next/font/google';
 import { resolveThemePreference, THEME_COOKIE_NAME, themeDataAttribute } from '../src/lib/theme';
-import { fetchIsTeacher, fetchMeOrNull } from '../src/lib/api';
+import { fetchCanInvite, fetchIsAdmin, fetchIsTeacher, fetchMeOrNull } from '../src/lib/api';
+import type { NavAudience } from '../src/lib/nav';
 import Shell from './_shell/Shell';
 import './globals.css';
 
@@ -45,6 +46,13 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 };
 
+/** The three role probes behind Nav's restricted destinations (see above). */
+async function navAudience(signedIn: boolean): Promise<NavAudience> {
+  if (!signedIn) return { isTeacher: false, canInvite: false, isAdmin: false };
+  const [isTeacher, canInvite, isAdmin] = await Promise.all([fetchIsTeacher(), fetchCanInvite(), fetchIsAdmin()]);
+  return { isTeacher, canInvite, isAdmin };
+}
+
 export default async function RootLayout({
   children,
 }: {
@@ -74,7 +82,14 @@ export default async function RootLayout({
   // grading queue at all. Skipped entirely when signed out — Nav renders
   // nothing for that visitor regardless (see Shell), so the extra request
   // would be pure waste.
-  const isTeacher = user !== null && (await fetchIsTeacher());
+  //
+  // Phase 13 asks two more questions of the same shape — may this actor
+  // issue invitations (§12), and is it an operator account (§5.1) — because
+  // the answers are independent: admin is exclusive of teacher, so one
+  // boolean cannot stand in for the others. All three go out at once rather
+  // than in sequence; they are three independent probes and the shell
+  // renders on every page.
+  const audience = await navAudience(user !== null);
 
   return (
     <html
@@ -83,7 +98,7 @@ export default async function RootLayout({
       className={`${libreFranklin.variable} ${sourceSerif4.variable} ${ibmPlexMono.variable}`}
     >
       <body>
-        <Shell theme={theme} user={user} isTeacher={isTeacher}>
+        <Shell theme={theme} user={user} audience={audience}>
           {children}
         </Shell>
       </body>

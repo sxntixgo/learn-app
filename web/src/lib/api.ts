@@ -48,6 +48,18 @@ export type ImportRunSummary = components['schemas']['ImportRunSummary'];
 export type ImportProgressEvent = components['schemas']['ImportProgressEvent'];
 export type ImportCounts = components['schemas']['ImportCounts'];
 export type AuthUser = components['schemas']['AuthUser'];
+export type Invite = components['schemas']['Invite'];
+export type InviteKind = components['schemas']['InviteKind'];
+export type InviteStatus = components['schemas']['InviteStatus'];
+export type InviteCreateRequest = components['schemas']['InviteCreateRequest'];
+export type IssuedInvite = components['schemas']['IssuedInvite'];
+export type RevokedInvite = components['schemas']['RevokedInvite'];
+export type InvitePreview = components['schemas']['InvitePreview'];
+export type InviteAcceptRequest = components['schemas']['InviteAcceptRequest'];
+export type InviteAcceptResult = components['schemas']['InviteAcceptResult'];
+export type AuditEntry = components['schemas']['AuditEntry'];
+export type AdminUser = components['schemas']['AdminUser'];
+export type RoleAssignRequest = components['schemas']['RoleAssignRequest'];
 
 // Re-exported so callers (Server Components deciding whether to redirect to
 // /login) never need to import from ./api-errors directly — api.ts is the
@@ -359,6 +371,197 @@ export async function fetchImportRuns(limit?: number): Promise<ImportRunSummary[
     throw new Error(`Failed to fetch import runs: ${res.status}`);
   }
   return (await res.json()) as ImportRunSummary[];
+}
+
+// =============================================================================
+// INVITATIONS AND ADMINISTRATION (design §12, §5).
+//
+// The list, the roster and the audit log go through `apiFetch`, so a
+// student who types /invites into the address bar meets the same
+// AuthRequiredError redirect every other role-gated page uses. The three
+// MUTATIONS do not: "your budget is 0", "you do not own that course" and
+// "that invitation was already accepted" are ordinary outcomes the form
+// must show WITHOUT throwing away what the issuer typed — the same reason
+// gradeSubmission and saveSubmissionDraft bypass it.
+// =============================================================================
+
+/**
+ * Every invite for an admin; a teacher's own for a teacher (design §12:
+ * "admins get a screen listing every invite with issuer and status").
+ * Expired invites are refunded by the API in passing.
+ */
+export async function fetchInvites(limit?: number): Promise<Invite[]> {
+  const query = limit !== undefined ? `?limit=${encodeURIComponent(String(limit))}` : '';
+  const res = await apiFetch(`/api/v1/invites${query}`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch invitations: ${res.status}`);
+  }
+  return (await res.json()) as Invite[];
+}
+
+/**
+ * Whether this actor may see the invitations screen at all — the layout's
+ * answer to "should Nav's Invitations destination render". Same shape as
+ * `fetchIsTeacher`: ask the API's own `invite:list` floor and treat a
+ * refusal as "no", never as an error, because the shell renders for
+ * everybody.
+ */
+export async function fetchCanInvite(): Promise<boolean> {
+  try {
+    await fetchInvites(1);
+    return true;
+  } catch (err) {
+    if (err instanceof AuthRequiredError) return false;
+    throw err;
+  }
+}
+
+export type IssueInviteResult = { ok: true; issued: IssuedInvite } | { ok: false; message: string };
+
+/** Issues one invitation. The token comes back exactly once, in `issued.token`. */
+export async function createInvite(body: InviteCreateRequest): Promise<IssueInviteResult> {
+  const res = await fetch(`${apiBase()}/api/v1/invites`, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    return { ok: false, message: await errorMessage(res, `Could not issue that invitation: ${res.status}`) };
+  }
+  return { ok: true, issued: (await res.json()) as IssuedInvite };
+}
+
+export type RevokeInviteResult = { ok: true; revoked: RevokedInvite } | { ok: false; message: string };
+
+/** Revokes an invitation, returning its unit of budget if it took one (design §12). */
+export async function revokeInvite(inviteId: string): Promise<RevokeInviteResult> {
+  const res = await fetch(`${apiBase()}/api/v1/invites/${encodeURIComponent(inviteId)}/revoke`, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: await authHeaders(),
+  });
+  if (!res.ok) {
+    return { ok: false, message: await errorMessage(res, `Could not revoke that invitation: ${res.status}`) };
+  }
+  return { ok: true, revoked: (await res.json()) as RevokedInvite };
+}
+
+/**
+ * What a link is for, before anyone accepts it. Unauthenticated by design
+ * (the token is the credential), so this is NOT routed through `apiFetch`:
+ * a dead link answers 410 and the accept page says so, rather than
+ * bouncing a signed-out invitee to /login.
+ */
+export async function previewInvite(token: string): Promise<InvitePreview | null> {
+  const res = await fetch(`${apiBase()}/api/v1/invites/lookup?token=${encodeURIComponent(token)}`, {
+    cache: 'no-store',
+    headers: { ...(await authHeaders()), ...(await forwardedHeaders()) },
+  });
+  if (res.status === 410 || res.status === 400) {
+    return null;
+  }
+  if (!res.ok) {
+    throw new Error(`Failed to look up that invitation: ${res.status}`);
+  }
+  return (await res.json()) as InvitePreview;
+}
+
+export type AcceptInviteResult = { ok: true; result: InviteAcceptResult } | { ok: false; message: string };
+
+/**
+ * Accepts an invitation: registers the account and enrols it where a course
+ * is attached, in one call (design §12). No session comes back — acceptance
+ * is not a login — so the accept page signs the new account in afterwards
+ * with the credentials it just set, which is what makes it one flow.
+ */
+export async function acceptInvite(body: InviteAcceptRequest): Promise<AcceptInviteResult> {
+  const res = await fetch(`${apiBase()}/api/v1/invites/accept`, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()), ...(await forwardedHeaders()) },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    return { ok: false, message: await errorMessage(res, `Could not accept that invitation: ${res.status}`) };
+  }
+  return { ok: true, result: (await res.json()) as InviteAcceptResult };
+}
+
+/** The audit log, newest first (design §12), optionally filtered to one action. */
+export async function fetchAuditLog(options: { limit?: number; action?: string } = {}): Promise<AuditEntry[]> {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) params.set('limit', String(options.limit));
+  if (options.action) params.set('action', options.action);
+  const query = params.toString();
+  const res = await apiFetch(`/api/v1/admin/audit${query ? `?${query}` : ''}`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch the audit log: ${res.status}`);
+  }
+  return (await res.json()) as AuditEntry[];
+}
+
+/** Every account with its roles and invite budget — the roster the two admin mutations act on. */
+export async function fetchAdminUsers(limit?: number): Promise<AdminUser[]> {
+  const query = limit !== undefined ? `?limit=${encodeURIComponent(String(limit))}` : '';
+  const res = await apiFetch(`/api/v1/admin/users${query}`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch accounts: ${res.status}`);
+  }
+  return (await res.json()) as AdminUser[];
+}
+
+/**
+ * Whether this actor holds the operator role (design §5.1) — the shell's
+ * answer to "should Nav's Admin destination render". Asked the same way as
+ * `fetchIsTeacher` and `fetchCanInvite`: put the API's own `user:list`
+ * floor, an admin-only cell of the §5 matrix, and treat a refusal as "no".
+ */
+export async function fetchIsAdmin(): Promise<boolean> {
+  try {
+    await fetchAdminUsers(1);
+    return true;
+  } catch (err) {
+    if (err instanceof AuthRequiredError) return false;
+    throw err;
+  }
+}
+
+export type AdminUserResult = { ok: true; user: AdminUser } | { ok: false; message: string };
+
+async function adminUserMutation(path: string, body: unknown, fallback: string): Promise<AdminUserResult> {
+  const res = await fetch(`${apiBase()}${path}`, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    return { ok: false, message: await errorMessage(res, `${fallback}: ${res.status}`) };
+  }
+  return { ok: true, user: (await res.json()) as AdminUser };
+}
+
+/**
+ * Grants or revokes one role (design §5). A 409 here is §5.1's exclusivity —
+ * "admin is exclusive of student and teacher" — and the API's own sentence
+ * explaining it is what the screen shows.
+ */
+export async function setUserRole(userId: string, body: RoleAssignRequest): Promise<AdminUserResult> {
+  return adminUserMutation(
+    `/api/v1/admin/users/${encodeURIComponent(userId)}/roles`,
+    body,
+    'Could not change that role',
+  );
+}
+
+/** Sets an account's platform-invite budget to an absolute number (design §12). */
+export async function setInviteBudget(userId: string, budget: number): Promise<AdminUserResult> {
+  return adminUserMutation(
+    `/api/v1/admin/users/${encodeURIComponent(userId)}/invite-budget`,
+    { budget },
+    'Could not set that budget',
+  );
 }
 
 /**

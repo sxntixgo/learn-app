@@ -25,6 +25,20 @@ const migrationsDir = path.resolve(
 const ALL_TABLES = ['import_runs', 'lessons', 'modules', 'tracks', 'courses', 'content_repos', 'schema_migrations'];
 
 async function resetDatabase() {
+  // Course invites (migration 0005) reference `courses`, and 0005 re-adds
+  // that FK on every re-run precisely BECAUSE this function drops `courses`
+  // with CASCADE while leaving `invites` in place. A course invite left
+  // behind by an interrupted test file therefore makes the repair fail with
+  // "violates foreign key constraint invites_course_id_fkey", and every test
+  // in this file goes red for a reason that has nothing to do with
+  // migrations — which is exactly what happened while Phase 13 was being
+  // built, and cost an hour. A row pointing at a table we are about to drop
+  // is debris by definition, so it goes first.
+  const invites = await pool.query<{ exists: string | null }>(`select to_regclass('public.invites')::text as exists`);
+  if (invites.rows[0]?.exists) {
+    await pool.query('DELETE FROM invites WHERE course_id IS NOT NULL');
+  }
+
   // Drop everything the migrations might create so each run starts from empty,
   // letting this test suite run repeatedly against the same test database.
   for (const table of ALL_TABLES) {

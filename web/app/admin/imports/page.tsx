@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { fetchImportRuns, fetchMe } from '../../../src/lib/api';
 import { withAuthRedirect } from '../../../src/lib/require-auth';
+import AdminNav from '../AdminNav';
 import ImportForm from './ImportForm';
 import ImportHistory from './ImportHistory';
 import styles from './imports.module.css';
@@ -27,6 +28,7 @@ export default async function AdminImportsPage() {
 
   return (
     <main className={styles.page}>
+      <AdminNav current="/admin/imports" />
       <div className={styles.heading}>
         <h1 className={styles.title}>Import content</h1>
         <span className={styles.adminBadge}>Admin</span>

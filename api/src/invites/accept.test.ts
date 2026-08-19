@@ -75,6 +75,23 @@ function inDays(days: number): Date {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 }
 
+/**
+ * Opens `n` connections and releases them back to the pool.
+ *
+ * Same reason as routes/setup.test.ts's warmPool: without it the "parallel"
+ * acceptances are not parallel where it counts. The first caller gets a warm
+ * idle client and finishes its whole transaction in a few sub-millisecond
+ * round trips while the second is still waiting on a TCP connect + auth
+ * handshake, so the second arrives to find the invite already spent — which
+ * is a SEQUENCE, not a race, and a read-then-write claim passes it. Verified:
+ * with the claim swapped for `select … then update`, this test passes without
+ * the warm-up and fails with it (two accounts, two handles, both `ok`).
+ */
+async function warmPool(n: number): Promise<void> {
+  const clients = await Promise.all(Array.from({ length: n }, () => pool.connect()));
+  for (const client of clients) client.release();
+}
+
 interface IssuedFixture {
   token: string;
   id: string;
@@ -116,6 +133,9 @@ describe('accepting an invite (design §12, §13)', () => {
 
   afterAll(async () => {
     await pool.query('delete from enrollments where course_id = $1', [courseId]);
+    // audit_log rows are deliberately left behind: migration 0005 makes the
+    // table append-only with a BEFORE DELETE trigger, so a test that tidied
+    // up after itself would be testing a table nobody else has.
     await pool.query('delete from invites where email like $1', [`${PREFIX}%`]);
     await pool.query('delete from courses where slug like $1', [`${PREFIX}%`]);
     await pool.query('delete from user_roles where user_id in (select id from users where handle like $1)', [
@@ -175,6 +195,7 @@ describe('accepting an invite (design §12, §13)', () => {
     const invite = await issue(issuer, { kind: 'course' });
     const handleA = next();
     const handleB = next();
+    await warmPool(2);
 
     const [a, b] = await Promise.all([
       acceptInvite(
@@ -204,6 +225,45 @@ describe('accepting an invite (design §12, §13)', () => {
 
     const enrolments = await pool.query('select 1 from enrollments where course_id = $1 and user_id = (select id from users where email = $2)', [courseId, invite.email]);
     expect(enrolments.rowCount).toBe(1);
+
+    // One acceptance, one audit entry. Two would mean the link was spent
+    // twice even though only one account came out of it.
+    const audit = await pool.query(`select 1 from audit_log where action = 'invite.accepted' and target = $1`, [
+      invite.id,
+    ]);
+    expect(audit.rowCount).toBe(1);
+  });
+
+  it('a SINGLE-USE link stays single-use when two signed-in acceptances collide', async () => {
+    // The unique index on users.email is a second line of defence for the
+    // registering shape — two racing registrations for one address collide
+    // there whatever the claim does. This shape has no such backstop: the
+    // account already exists, so nothing but the claim itself stops one link
+    // being redeemed twice. Under a read-then-write claim BOTH calls return
+    // ok and the invite is accepted twice.
+    const suffix = next();
+    const email = `${suffix}@example.test`;
+    const { rows } = await pool.query<{ id: string }>(
+      'insert into users (email, handle, display_name) values ($1, $2, $3) returning id',
+      [email, suffix, 'Already Has An Account'],
+    );
+    const userId = rows[0]!.id;
+    const invite = await issue(issuer, { kind: 'course', createsAccount: false, email });
+
+    await warmPool(2);
+    const attempt = () =>
+      acceptInvite(
+        pool,
+        { token: invite.token, handle: null, password: null, displayName: null, timezone: null, actorId: userId },
+        { hashPassword },
+      );
+    const [a, b] = await Promise.all([attempt(), attempt()]);
+
+    expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+    const audit = await pool.query(`select 1 from audit_log where action = 'invite.accepted' and target = $1`, [
+      invite.id,
+    ]);
+    expect(audit.rowCount).toBe(1);
   });
 
   it('refuses a revoked invite', async () => {

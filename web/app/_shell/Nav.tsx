@@ -17,6 +17,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
+import type { NavAudience } from '../../src/lib/nav';
 import { isNavActive, visibleNavDestinations } from '../../src/lib/nav';
 import styles from './nav.module.css';
 
@@ -42,6 +43,12 @@ const ICONS: Record<string, React.ReactNode> = {
       <path d="m8.5 13 2.5 2.5L16 10" />
     </svg>
   ),
+  '/invites': (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="5.5" width="18" height="13" rx="2" />
+      <path d="m3.5 7 8.5 6 8.5-6" />
+    </svg>
+  ),
   '/admin/imports': (
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M12 3.5 4.5 7v6c0 4 3 6.7 7.5 7.8 4.5-1.1 7.5-3.8 7.5-7.8V7L12 3.5Z" />
@@ -50,7 +57,7 @@ const ICONS: Record<string, React.ReactNode> = {
   ),
 };
 
-export default function Nav({ signedIn, isTeacher }: { signedIn: boolean; isTeacher: boolean }) {
+export default function Nav({ signedIn, audience }: { signedIn: boolean; audience: NavAudience }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -65,7 +72,7 @@ export default function Nav({ signedIn, isTeacher }: { signedIn: boolean; isTeac
   // Design §9.4 / the grading UI brief: "a Grading destination for
   // teachers; do not show it to students." visibleNavDestinations is the
   // one tested place that decision lives (web/src/lib/nav.ts).
-  const destinations = visibleNavDestinations(isTeacher);
+  const destinations = visibleNavDestinations(audience);
 
   return (
     <nav className={styles.nav} data-collapsed={collapsed} aria-label="Primary">

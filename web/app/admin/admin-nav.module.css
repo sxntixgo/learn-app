@@ -1,0 +1,50 @@
+/*
+ * The admin section strip. Wraps rather than scrolls at 375px, and every
+ * target clears 44px — these are the same links on a phone as on a desktop.
+ */
+
+.nav {
+  margin: 0 0 1.75rem;
+  border-bottom: 1px solid var(--color-border-hairline);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+
+.link,
+.currentLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.15rem;
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.link {
+  color: var(--color-text-secondary);
+}
+
+.link:hover {
+  color: var(--color-text);
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+/* The current section is marked by weight and an underline, never by colour
+   alone (design §14.2, same rule as the primary nav's active item). */
+.currentLink {
+  color: var(--color-text);
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 0 var(--color-accent-yellow);
+}

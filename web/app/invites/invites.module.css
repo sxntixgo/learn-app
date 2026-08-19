@@ -1,0 +1,334 @@
+/*
+ * The invitations screen (design §12). Layout deliberately mirrors
+ * admin/imports/imports.module.css — a max-width column of stacked,
+ * bordered cards — because it is the same kind of page: a form over a list
+ * of past actions. Reusing that idiom rather than inventing a second one is
+ * the whole of CLAUDE.md's "do not introduce a second way of doing
+ * something".
+ *
+ * Every control keeps the 44px minimum touch target used everywhere else,
+ * and nothing is revealed on hover: the Revoke button is always present, so
+ * it works on the 375px layout this app is designed for first.
+ */
+
+.page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+}
+
+.heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: clamp(1.5rem, 4vw + 0.5rem, 2.25rem);
+  margin: 0;
+}
+
+.intro {
+  max-width: var(--measure-prose, 46ch);
+  margin: 0.75rem 0 2rem;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+}
+
+.sectionTitle {
+  font-size: 1.05rem;
+  margin: 0 0 0.75rem;
+}
+
+.section + .section {
+  margin-top: 2rem;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Form                                                                    */
+/* ---------------------------------------------------------------------- */
+
+.formSection {
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 10px;
+  background: var(--color-surface-raised);
+  padding: 1.25rem;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.legend {
+  padding: 0;
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.radioLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.radioLabel input {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.label {
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.optional {
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  max-width: var(--measure-prose, 46ch);
+}
+
+.input,
+.inputNarrow {
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 8px;
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 0.95rem;
+  width: 100%;
+}
+
+.inputNarrow {
+  max-width: 8rem;
+}
+
+.input:disabled,
+.inputNarrow:disabled {
+  opacity: 0.65;
+}
+
+.input:focus-visible,
+.inputNarrow:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 1px;
+}
+
+.submitButton,
+.dismissButton,
+.revokeButton {
+  align-self: flex-start;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.6rem 1.5rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 8px;
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.submitButton:hover:not(:disabled),
+.dismissButton:hover:not(:disabled),
+.revokeButton:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+}
+
+.submitButton:disabled,
+.dismissButton:disabled,
+.revokeButton:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.submitButton:focus-visible,
+.dismissButton:focus-visible,
+.revokeButton:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+.requestError {
+  margin: 1rem 0 0;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--color-accent-yellow);
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+/* The one-time link. Bordered rather than filled — yellow is structural
+   only (CHOSEN-PALETTE.md rule 1) — and the token wraps rather than
+   overflowing a 375px viewport. */
+.issued {
+  margin-top: 1.25rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--color-accent-yellow);
+  border-radius: 10px;
+  background: var(--color-page);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.issuedTitle {
+  margin: 0;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.issuedLink {
+  margin: 0;
+}
+
+.token {
+  display: block;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 8px;
+  background: var(--color-surface-raised);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------------- */
+/* List                                                                    */
+/* ---------------------------------------------------------------------- */
+
+.empty {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.item {
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 10px;
+  background: var(--color-surface-raised);
+  padding: 1rem 1.1rem;
+}
+
+.itemHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.email {
+  font-weight: 700;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.time {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+}
+
+/* Status is never colour alone: every pill carries its own word, and the
+   two that need attention also change weight. */
+.statusPill {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid var(--color-border-hairline);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-secondary);
+}
+
+.statusPill[data-status='accepted'] {
+  border-color: var(--color-link);
+  color: var(--color-link);
+}
+
+.statusPill[data-status='pending'] {
+  border-color: var(--color-accent-yellow);
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.statusPill[data-status='revoked'],
+.statusPill[data-status='expired'] {
+  color: var(--color-text-secondary);
+}
+
+.meta {
+  margin: 0 0 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.metaRow {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.metaRow dt {
+  color: var(--color-text-secondary);
+  min-width: 5.5rem;
+}
+
+.metaValue {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+}
+
+@media (min-width: 768px) {
+  .itemHead {
+    flex-wrap: nowrap;
+  }
+}

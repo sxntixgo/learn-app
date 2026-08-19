@@ -1,0 +1,118 @@
+/*
+ * The accept-invitation page. Deliberately the same narrow single-column
+ * shape as the login page (login.module.css) — it is the same moment in the
+ * same journey, and the two screens should not look like different products.
+ *
+ * 44px minimum on every control, nothing revealed on hover.
+ */
+
+.page {
+  max-width: 30rem;
+  margin: 0 auto;
+  padding: 3rem 1rem 4rem;
+}
+
+.title {
+  font-size: clamp(1.5rem, 4vw + 0.5rem, 2.25rem);
+  margin: 0 0 0.75rem;
+  line-height: 1.2;
+}
+
+.intro {
+  margin: 0 0 1.5rem;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+  max-width: var(--measure-prose, 46ch);
+}
+
+.link {
+  color: var(--color-link);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.label {
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.optional {
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.input {
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 8px;
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 1rem;
+  width: 100%;
+}
+
+.input:disabled {
+  opacity: 0.65;
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 1px;
+}
+
+.submitButton {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.6rem 1.5rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 8px;
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.submitButton:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+}
+
+.submitButton:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.submitButton:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+.error {
+  margin: 0;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--color-accent-yellow);
+  font-size: 0.9rem;
+  color: var(--color-text);
+  line-height: 1.5;
+}

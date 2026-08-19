@@ -13,6 +13,7 @@
 import type { ReactNode } from 'react';
 import type { ThemePreference } from '../../src/lib/theme';
 import type { Me } from '../../src/lib/api';
+import type { NavAudience } from '../../src/lib/nav';
 import TopBar from './TopBar';
 import Nav from './Nav';
 import Footer from './Footer';
@@ -21,7 +22,7 @@ import styles from './shell.module.css';
 export default function Shell({
   theme,
   user,
-  isTeacher,
+  audience,
   children,
 }: {
   theme: ThemePreference;
@@ -30,12 +31,11 @@ export default function Shell({
    *  shell needs to know whether one exists to decide what Nav renders. */
   user: Me | null;
   /**
-   * Whether the actor can reach the grading queue (design §9.4) — decides
-   * whether Nav's Grading destination renders at all ("do not show it to
-   * students"). Meaningless when signed out; the layout only computes it
+   * Which role-restricted destinations Nav should render (design §9.4,
+   * §12, §5.1). Meaningless when signed out; the layout only asks the API
    * when `user` is non-null.
    */
-  isTeacher: boolean;
+  audience: NavAudience;
   children: ReactNode;
 }) {
   const signedIn = user !== null;
@@ -43,7 +43,7 @@ export default function Shell({
     <div className={styles.root} data-nav-visible={signedIn}>
       <TopBar theme={theme} user={user} />
       <div className={styles.body}>
-        <Nav signedIn={signedIn} isTeacher={isTeacher} />
+        <Nav signedIn={signedIn} audience={audience} />
         <main className={styles.content}>{children}</main>
       </div>
       <Footer />

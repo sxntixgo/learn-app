@@ -1,0 +1,139 @@
+/*
+ * The audit log. Same column-of-cards shape as the rest of the admin
+ * section. The filter strip wraps at 375px rather than scrolling sideways,
+ * and each filter is a link with a 44px target — no dropdown, so it works
+ * with JavaScript switched off.
+ */
+
+.page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+}
+
+.heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: clamp(1.5rem, 4vw + 0.5rem, 2.25rem);
+  margin: 0;
+}
+
+.adminBadge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--color-accent-yellow);
+  border-radius: var(--radius-pill, 999px);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-secondary);
+}
+
+.intro {
+  max-width: var(--measure-prose, 46ch);
+  margin: 0.75rem 0 1.5rem;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.filter {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-pill, 999px);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+
+.filter:hover {
+  background: var(--color-surface-raised);
+}
+
+.filter:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+/* The selected filter is marked by weight and border, not colour alone. */
+.filter[data-active='true'] {
+  border-color: var(--color-accent-yellow);
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.empty {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.item {
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 10px;
+  background: var(--color-surface-raised);
+  padding: 0.85rem 1rem;
+}
+
+.itemHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 0.75rem;
+}
+
+.action {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.time {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+}
+
+.actor {
+  margin: 0.25rem 0 0;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.target {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.78rem;
+}
+
+.detail {
+  margin: 0.4rem 0 0;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}

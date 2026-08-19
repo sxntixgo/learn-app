@@ -39,18 +39,60 @@ export interface NavDestination {
    * enforces — answered rather than 403'd (see api.ts's `fetchIsTeacher`).
    */
   restrictedToTeacher?: boolean;
+  /**
+   * Phase 13. Like `restrictedToTeacher`, but for the two roles that can
+   * issue invitations at all — a teacher (course invites, plus platform
+   * invites from a budget) and an admin (design §12). It cannot reuse
+   * `restrictedToTeacher`: admin is EXCLUSIVE of teacher (§5.1), so a flag
+   * that means "teacher" would hide the invitations screen from precisely
+   * the role §12 builds it for. Derived the same way, from whether the API's
+   * own `invite:list` floor answered rather than 403'd (`fetchCanInvite`).
+   */
+  restrictedToInviter?: boolean;
+  /**
+   * Admin-only (design §5's last three rows). Shown to students since
+   * Phase 5 — /admin/imports has always been admin-gated on the API side,
+   * so the link was a promise the API refused to keep, and a student who
+   * followed it was bounced to /login while already signed in. Phase 13
+   * hangs two more screens off it, which is what made the wart worth
+   * fixing rather than living with.
+   */
+  restrictedToAdmin?: boolean;
+}
+
+/** What the shell knows about the actor, for deciding which destinations to render. */
+export interface NavAudience {
+  /** Can reach the grading queue (design §9.4). */
+  isTeacher: boolean;
+  /** Can issue invitations at all — teacher or admin (design §12). */
+  canInvite: boolean;
+  /** Holds the operator role (design §5.1). */
+  isAdmin: boolean;
 }
 
 export const NAV_DESTINATIONS: readonly NavDestination[] = [
   { href: '/', label: 'Catalog', activePrefixes: ['/courses'] },
   { href: '/me', label: 'Dashboard' },
   { href: '/grading', label: 'Grading', restrictedToTeacher: true },
-  { href: '/admin/imports', label: 'Admin' },
+  { href: '/invites', label: 'Invitations', restrictedToInviter: true },
+  // Phase 13 adds two more admin screens (people, audit) beside the import
+  // one, so Admin claims the whole `/admin` prefix rather than only the
+  // page it happens to land on.
+  { href: '/admin/imports', label: 'Admin', activePrefixes: ['/admin'], restrictedToAdmin: true },
 ];
 
-/** The destinations an actor should actually see — Grading dropped for anyone who is not a teacher. */
-export function visibleNavDestinations(isTeacher: boolean): readonly NavDestination[] {
-  return NAV_DESTINATIONS.filter((destination) => !destination.restrictedToTeacher || isTeacher);
+/**
+ * The destinations an actor should actually see. One tested place for
+ * "should this person ever see this link", rather than three conditions
+ * inside JSX.
+ */
+export function visibleNavDestinations(audience: NavAudience): readonly NavDestination[] {
+  return NAV_DESTINATIONS.filter(
+    (destination) =>
+      (!destination.restrictedToTeacher || audience.isTeacher) &&
+      (!destination.restrictedToInviter || audience.canInvite) &&
+      (!destination.restrictedToAdmin || audience.isAdmin),
+  );
 }
 
 /**
