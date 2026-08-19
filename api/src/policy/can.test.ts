@@ -191,6 +191,12 @@ const MATRIX: readonly MatrixCase[] = [
     resource: ownData,
     expected: [DENY, ALLOW, DENY, DENY, DENY],
   },
+  {
+    row: 'Own profile, badges, degrees',
+    action: 'profile:update',
+    resource: ownData,
+    expected: [DENY, ALLOW, DENY, DENY, DENY],
+  },
 
   // ---------------------------------------------------------------------------
   // Row: "Register content repos, run syncs" — teacher own courses,
@@ -474,6 +480,16 @@ const MATRIX: readonly MatrixCase[] = [
     resource: noResource,
     expected: [ALLOW, ALLOW, ALLOW, ALLOW, ALLOW],
   },
+  // The §11 profile page: reachable by anyone, including a stranger with no
+  // session. Reaching it is not the same as seeing anything — every section
+  // is private until its owner opens it, and an anonymous reader is served by
+  // the allowlist serializer in profile/serialize.ts.
+  {
+    row: 'Public profile (§11, not a §5 row)',
+    action: 'profile:public:read',
+    resource: noResource,
+    expected: [ALLOW, ALLOW, ALLOW, ALLOW, ALLOW],
+  },
 ];
 
 describe('the §5 permission matrix — one case per cell', () => {
@@ -751,9 +767,13 @@ describe('the anonymous actor', () => {
     expect(isAnonymous(student)).toBe(false);
   });
 
-  it('may do nothing except the two public bootstrap actions', () => {
+  it('may do nothing except the three explicitly public actions', () => {
+    // Written out rather than imported from can.ts: this list is the whole
+    // unauthenticated attack surface of the instance, and a test that read it
+    // from the module under test would agree with any future addition.
+    const PUBLIC: readonly Action[] = ['instance:setup:status', 'instance:bootstrap', 'profile:public:read'];
     for (const action of ACTIONS) {
-      const expected = action === 'instance:setup:status' || action === 'instance:bootstrap';
+      const expected = PUBLIC.includes(action);
       expect(can(ANONYMOUS_ACTOR, action, { course: { ownerId: null }, userId: ANONYMOUS_ACTOR.id }), action).toBe(
         expected,
       );

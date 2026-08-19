@@ -1430,6 +1430,135 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/v1/me/profile:
+    get:
+      summary: The actor's own profile settings
+      description: >-
+        The account holder's view of their §11 profile page: bio, the
+        `noindex` toggle, and the visibility of all five sections. A section
+        the actor has never touched reads `private` here, because
+        `profile_section_visibility` has no row for it and an absent row IS
+        private (migration 0014) — there is no backfill.
+      operationId: getMyProfileSettings
+      tags:
+        - profile
+      responses:
+        '200':
+          description: The actor's profile settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileSettings'
+        '403':
+          description: >-
+            The actor has no learner profile — an operator or teacher-only
+            account (design §5, §5.1).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: The actor has no users row
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      summary: Update the actor's own profile settings
+      description: >-
+        Sets any of bio, `noindex`, and per-section visibility. Fields left
+        out are unchanged; sections left out of `visibility` are unchanged.
+        An empty or blank bio stores NULL rather than an empty string.
+      operationId: updateMyProfileSettings
+      tags:
+        - profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileSettingsUpdateRequest'
+      responses:
+        '200':
+          description: The updated settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileSettings'
+        '400':
+          description: >-
+            An unknown section name, an unknown visibility value, a
+            non-boolean `noindex`, or a bio over 2000 characters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The actor may not change this profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: The actor has no users row
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/profiles/{handle}:
+    get:
+      summary: A learner's profile page (design §11)
+      description: >-
+        The data behind `/u/{handle}`, built from the VIEWER's identity.
+
+        Three viewers, three payloads. The owner sees every section
+        regardless of its setting, plus their own settings. Another
+        signed-in account sees the sections set to `signed_in` or `public`.
+        An unauthenticated reader is served by a separate deny-by-default
+        serializer with an explicit field allowlist, and sees only the
+        sections set to `public`.
+
+        A hidden section is ABSENT from `sections` — never sent for the
+        client to hide. The email address is absent for every viewer,
+        always. An unauthenticated feed entry carries no lesson slug,
+        because §12 keeps lesson content behind login.
+
+        Rate-limited per IP (the §13 limiter, reused). Reachable without a
+        session, which is what `noindex` and the Open Graph tags on the web
+        page are for.
+      operationId: getProfile
+      tags:
+        - profile
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          description: The student-chosen handle (never derived from an email, §11).
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The profile, filtered to this viewer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '404':
+          description: >-
+            No such handle, or the account has no learner profile (§5.1:
+            operator accounts have none).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many profile requests from this address
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/v1/setup:
     get:
       summary: First-run setup status
@@ -2927,6 +3056,368 @@ components:
         - maxCount
         - currentStreak
         - longestStreak
+
+    ProfileSection:
+      type: string
+      description: >-
+        One of design §11's five independently toggleable sections. The feed
+        and the heatmap are separate on purpose: one reveals WHAT you study,
+        the other WHEN you are at your desk.
+      enum:
+        - badges
+        - degrees
+        - courses
+        - activity_feed
+        - activity_heatmap
+
+    SectionVisibility:
+      type: string
+      description: >-
+        How far a section reaches. `private` is the default everywhere and is
+        also what an absent `profile_section_visibility` row means.
+      enum:
+        - private
+        - signed_in
+        - public
+
+    ProfileVisibility:
+      type: object
+      description: The visibility of all five sections. Every key is always present.
+      properties:
+        badges:
+          $ref: '#/components/schemas/SectionVisibility'
+        degrees:
+          $ref: '#/components/schemas/SectionVisibility'
+        courses:
+          $ref: '#/components/schemas/SectionVisibility'
+        activity_feed:
+          $ref: '#/components/schemas/SectionVisibility'
+        activity_heatmap:
+          $ref: '#/components/schemas/SectionVisibility'
+      required:
+        - badges
+        - degrees
+        - courses
+        - activity_feed
+        - activity_heatmap
+
+    ProfileSettings:
+      type: object
+      description: The account holder's own view of their profile configuration.
+      properties:
+        handle:
+          type: string
+        displayName:
+          type:
+            - string
+            - "null"
+          nullable: true
+        bio:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: Free text, at most 2000 characters. Blank is stored as null.
+        noindex:
+          type: boolean
+          description: >-
+            When true (the default for every account), the profile page emits
+            `<meta name="robots" content="noindex, nofollow">`.
+        avatar:
+          $ref: '#/components/schemas/ProfileAvatar'
+        visibility:
+          $ref: '#/components/schemas/ProfileVisibility'
+      required:
+        - handle
+        - displayName
+        - bio
+        - noindex
+        - avatar
+        - visibility
+
+    ProfileSettingsUpdateRequest:
+      type: object
+      description: >-
+        A partial update. Omitted fields are unchanged; sections omitted from
+        `visibility` are unchanged.
+      properties:
+        bio:
+          type:
+            - string
+            - "null"
+          nullable: true
+        noindex:
+          type: boolean
+        visibility:
+          type: object
+          description: Section → visibility, for the sections being changed.
+          additionalProperties:
+            $ref: '#/components/schemas/SectionVisibility'
+
+    ProfileViewer:
+      type: string
+      description: >-
+        Who this payload was built for, relative to its subject. Decided by
+        the API from the session, never sent by the client.
+      enum:
+        - owner
+        - signed_in
+        - anonymous
+
+    ProfileAvatar:
+      type: object
+      description: >-
+        A generated identicon (§11.1). `seed` is a one-way hash of the user
+        id, so the face is stable without publishing the row key. Uploads are
+        not implemented.
+      properties:
+        kind:
+          type: string
+          enum:
+            - identicon
+        seed:
+          type: string
+      required:
+        - kind
+        - seed
+
+    ProfileBadge:
+      type: object
+      description: One earned badge, as a profile shows it.
+      properties:
+        slug:
+          type: string
+        title:
+          type: string
+        description:
+          type:
+            - string
+            - "null"
+          nullable: true
+        courseSlug:
+          type:
+            - string
+            - "null"
+          nullable: true
+        awardedAt:
+          type:
+            - string
+            - "null"
+          nullable: true
+          format: date-time
+      required:
+        - slug
+        - title
+        - description
+        - courseSlug
+        - awardedAt
+
+    ProfileDegree:
+      type: object
+      description: One degree — earned, or with progress toward it (§11).
+      properties:
+        slug:
+          type: string
+        title:
+          type: string
+        description:
+          type:
+            - string
+            - "null"
+          nullable: true
+        earned:
+          type: boolean
+        awardedAt:
+          type:
+            - string
+            - "null"
+          nullable: true
+          format: date-time
+        percent:
+          type: integer
+          description: >-
+            0–100. The per-requirement breakdown of /api/v1/me/degrees is
+            deliberately not published here.
+      required:
+        - slug
+        - title
+        - description
+        - earned
+        - awardedAt
+        - percent
+
+    ProfileCourse:
+      type: object
+      properties:
+        slug:
+          type: string
+        title:
+          type: string
+        totalLessons:
+          type: integer
+        completedLessons:
+          type: integer
+      required:
+        - slug
+        - title
+        - totalLessons
+        - completedLessons
+
+    ProfileCourses:
+      type: object
+      description: >-
+        Completed and in-progress, shown separately (§11): "degrees earned is
+        something to show off, while courses in progress quietly reveals what
+        you don't yet know."
+      properties:
+        completed:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfileCourse'
+        inProgress:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfileCourse'
+      required:
+        - completed
+        - inProgress
+
+    ProfileActivityEvent:
+      type: object
+      description: >-
+        One feed entry. `lesson.slug` is present for signed-in viewers and
+        ABSENT for anonymous ones — §12 keeps lesson content behind login, so
+        an unauthenticated page carries nothing that could link into it.
+      properties:
+        type:
+          $ref: '#/components/schemas/ActivityEventType'
+        occurredAt:
+          type: string
+          format: date-time
+        course:
+          type:
+            - object
+            - "null"
+          nullable: true
+          properties:
+            slug:
+              type: string
+            title:
+              type:
+                - string
+                - "null"
+              nullable: true
+          required:
+            - slug
+            - title
+        lesson:
+          type:
+            - object
+            - "null"
+          nullable: true
+          properties:
+            slug:
+              type: string
+            title:
+              type:
+                - string
+                - "null"
+              nullable: true
+          required:
+            - title
+      required:
+        - type
+        - occurredAt
+        - course
+        - lesson
+
+    ProfileHeatmap:
+      type: object
+      description: The §10 heatmap, for a profile rather than the dashboard.
+      properties:
+        timezone:
+          type: string
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/HeatmapDay'
+        maxCount:
+          type: integer
+        currentStreak:
+          type: integer
+        longestStreak:
+          type: integer
+      required:
+        - timezone
+        - days
+        - maxCount
+        - currentStreak
+        - longestStreak
+
+    ProfileSections:
+      type: object
+      description: >-
+        The sections this viewer may see. A hidden section is ABSENT from
+        this object — never present-and-empty, never sent for the client to
+        hide (§11).
+      properties:
+        badges:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfileBadge'
+        degrees:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfileDegree'
+        courses:
+          $ref: '#/components/schemas/ProfileCourses'
+        activity_feed:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfileActivityEvent'
+        activity_heatmap:
+          $ref: '#/components/schemas/ProfileHeatmap'
+
+    Profile:
+      type: object
+      description: >-
+        A learner's profile, already filtered to the viewer it was built for.
+        There is no email field, for any viewer.
+      properties:
+        handle:
+          type: string
+        displayName:
+          type:
+            - string
+            - "null"
+          nullable: true
+        bio:
+          type:
+            - string
+            - "null"
+          nullable: true
+        joinedAt:
+          type: string
+          format: date-time
+        avatar:
+          $ref: '#/components/schemas/ProfileAvatar'
+        noindex:
+          type: boolean
+        viewer:
+          $ref: '#/components/schemas/ProfileViewer'
+        sections:
+          $ref: '#/components/schemas/ProfileSections'
+        visibility:
+          $ref: '#/components/schemas/ProfileVisibility'
+      required:
+        - handle
+        - displayName
+        - bio
+        - joinedAt
+        - avatar
+        - noindex
+        - viewer
+        - sections
 
     AdminImportRequest:
       type: object

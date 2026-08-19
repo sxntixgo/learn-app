@@ -337,6 +337,14 @@ const MATRIX = {
   'me:badges:read': { row: 'Own profile, badges, degrees', student: SELF },
   'me:degrees:read': { row: 'Own profile, badges, degrees', student: SELF },
   'profile:read': { row: 'Own profile, badges, degrees', student: SELF },
+  // Phase 12 (§11). Changing your own handle-page settings — bio, the five
+  // section toggles, the `noindex` switch. SELF for the same reason
+  // `profile:read` is: it is only ever about the account holder's own page,
+  // and there is deliberately no teacher or admin cell. A teacher-only
+  // account has no learner profile to configure (the §5 row above is
+  // student-only), and §5.1 is explicit that an operator account has "no
+  // public profile" at all.
+  'profile:update': { row: 'Own profile, badges, degrees', student: SELF },
 
   // ---- Register content repos, run syncs -----------------------------------
   // Two actions, because the two halves ask different questions.
@@ -460,6 +468,23 @@ const MATRIX = {
   // how an actor comes to exist, not decisions about one.
   'instance:setup:status': { row: 'First-run bootstrap (§5.2)', student: ALLOW, teacher: ALLOW, admin: ALLOW },
   'instance:bootstrap': { row: 'First-run bootstrap (§5.2)', student: ALLOW, teacher: ALLOW, admin: ALLOW },
+
+  // ---- NOT A §5 ROW: the public profile page (§11) -------------------------
+  // §11's `/u/:handle` is reachable without a session — that is what the
+  // per-section visibility, the rate limit, the `noindex` toggle and the Open
+  // Graph tags in §11 are all FOR. So this action is public in the same
+  // narrow sense the bootstrap ones are: it says "this endpoint may be
+  // reached", not "this reader may see anything". WHAT comes back is decided
+  // by profile/visibility.ts against the viewer, and the deny-by-default
+  // serializer means the answer for a stranger is, by default, a handle and
+  // nothing else.
+  //
+  // It carries no resource because it cannot: an anonymous reader is
+  // identified by nothing, and the subject of the page is resolved from a
+  // handle in the path AFTER this check. The self-scoped `profile:read`
+  // above is what the route then asks to find out whether this viewer is the
+  // owner and gets the unfiltered view.
+  'profile:public:read': { row: 'Public profile (§11, not a §5 row)', student: ALLOW, teacher: ALLOW, admin: ALLOW },
 } satisfies Record<string, ActionPolicy>;
 
 /** The complete action vocabulary. `can()` denies anything outside it. */
@@ -469,12 +494,19 @@ export type Action = keyof typeof MATRIX;
 export const ACTIONS: readonly Action[] = Object.freeze(Object.keys(MATRIX) as Action[]);
 
 /**
- * Actions reachable without a session — the first-run bootstrap and nothing
- * else (design §5.2). Held separately from MATRIX because "which roles may do
- * this" and "is a session required at all" are different questions, and the
- * second one must not be answerable by a role entry someone adds later.
+ * Actions reachable without a session: the first-run bootstrap (§5.2) and the
+ * public profile page (§11). Held separately from MATRIX because "which roles
+ * may do this" and "is a session required at all" are different questions, and
+ * the second one must not be answerable by a role entry someone adds later —
+ * adding a `student:` cell to an action does NOT make it reachable anonymously.
  */
-const PUBLIC_ACTIONS: ReadonlySet<Action> = new Set<Action>(['instance:setup:status', 'instance:bootstrap']);
+const PUBLIC_ACTIONS: ReadonlySet<Action> = new Set<Action>([
+  'instance:setup:status',
+  'instance:bootstrap',
+  // Phase 12 (§11): the profile page is an unauthenticated ROUTE, not
+  // unauthenticated DATA. See the action's entry in MATRIX.
+  'profile:public:read',
+]);
 
 // Indexed lookup, deliberately typed as possibly-undefined: `action` is a
 // compile-time union, but this module is also the last line of defence for a

@@ -614,6 +614,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The actor's own profile settings
+         * @description The account holder's view of their §11 profile page: bio, the `noindex` toggle, and the visibility of all five sections. A section the actor has never touched reads `private` here, because `profile_section_visibility` has no row for it and an absent row IS private (migration 0014) — there is no backfill.
+         */
+        get: operations["getMyProfileSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update the actor's own profile settings
+         * @description Sets any of bio, `noindex`, and per-section visibility. Fields left out are unchanged; sections left out of `visibility` are unchanged. An empty or blank bio stores NULL rather than an empty string.
+         */
+        patch: operations["updateMyProfileSettings"];
+        trace?: never;
+    };
+    "/api/v1/profiles/{handle}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A learner's profile page (design §11)
+         * @description The data behind `/u/{handle}`, built from the VIEWER's identity.
+         *     Three viewers, three payloads. The owner sees every section regardless of its setting, plus their own settings. Another signed-in account sees the sections set to `signed_in` or `public`. An unauthenticated reader is served by a separate deny-by-default serializer with an explicit field allowlist, and sees only the sections set to `public`.
+         *     A hidden section is ABSENT from `sections` — never sent for the client to hide. The email address is absent for every viewer, always. An unauthenticated feed entry carries no lesson slug, because §12 keeps lesson content behind login.
+         *     Rate-limited per IP (the §13 limiter, reused). Reachable without a session, which is what `noindex` and the Open Graph tags on the web page are for.
+         */
+        get: operations["getProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/setup": {
         parameters: {
             query?: never;
@@ -1212,6 +1259,129 @@ export interface components {
             currentStreak: number;
             /** @description Longest streak ever, in local calendar days, computed fresh from activity_events. */
             longestStreak: number;
+        };
+        /**
+         * @description One of design §11's five independently toggleable sections. The feed and the heatmap are separate on purpose: one reveals WHAT you study, the other WHEN you are at your desk.
+         * @enum {string}
+         */
+        ProfileSection: "badges" | "degrees" | "courses" | "activity_feed" | "activity_heatmap";
+        /**
+         * @description How far a section reaches. `private` is the default everywhere and is also what an absent `profile_section_visibility` row means.
+         * @enum {string}
+         */
+        SectionVisibility: "private" | "signed_in" | "public";
+        /** @description The visibility of all five sections. Every key is always present. */
+        ProfileVisibility: {
+            badges: components["schemas"]["SectionVisibility"];
+            degrees: components["schemas"]["SectionVisibility"];
+            courses: components["schemas"]["SectionVisibility"];
+            activity_feed: components["schemas"]["SectionVisibility"];
+            activity_heatmap: components["schemas"]["SectionVisibility"];
+        };
+        /** @description The account holder's own view of their profile configuration. */
+        ProfileSettings: {
+            handle: string;
+            displayName: ((string | null) | null) | null;
+            /** @description Free text, at most 2000 characters. Blank is stored as null. */
+            bio: ((string | null) | null) | null;
+            /** @description When true (the default for every account), the profile page emits `<meta name="robots" content="noindex, nofollow">`. */
+            noindex: boolean;
+            avatar: components["schemas"]["ProfileAvatar"];
+            visibility: components["schemas"]["ProfileVisibility"];
+        };
+        /** @description A partial update. Omitted fields are unchanged; sections omitted from `visibility` are unchanged. */
+        ProfileSettingsUpdateRequest: {
+            bio?: ((string | null) | null) | null;
+            noindex?: boolean;
+            /** @description Section → visibility, for the sections being changed. */
+            visibility?: {
+                [key: string]: components["schemas"]["SectionVisibility"];
+            };
+        };
+        /**
+         * @description Who this payload was built for, relative to its subject. Decided by the API from the session, never sent by the client.
+         * @enum {string}
+         */
+        ProfileViewer: "owner" | "signed_in" | "anonymous";
+        /** @description A generated identicon (§11.1). `seed` is a one-way hash of the user id, so the face is stable without publishing the row key. Uploads are not implemented. */
+        ProfileAvatar: {
+            /** @enum {string} */
+            kind: "identicon";
+            seed: string;
+        };
+        /** @description One earned badge, as a profile shows it. */
+        ProfileBadge: {
+            slug: string;
+            title: string;
+            description: ((string | null) | null) | null;
+            courseSlug: ((string | null) | null) | null;
+            /** Format: date-time */
+            awardedAt: ((string | null) | null) | null;
+        };
+        /** @description One degree — earned, or with progress toward it (§11). */
+        ProfileDegree: {
+            slug: string;
+            title: string;
+            description: ((string | null) | null) | null;
+            earned: boolean;
+            /** Format: date-time */
+            awardedAt: ((string | null) | null) | null;
+            /** @description 0–100. The per-requirement breakdown of /api/v1/me/degrees is deliberately not published here. */
+            percent: number;
+        };
+        ProfileCourse: {
+            slug: string;
+            title: string;
+            totalLessons: number;
+            completedLessons: number;
+        };
+        /** @description Completed and in-progress, shown separately (§11): "degrees earned is something to show off, while courses in progress quietly reveals what you don't yet know." */
+        ProfileCourses: {
+            completed: components["schemas"]["ProfileCourse"][];
+            inProgress: components["schemas"]["ProfileCourse"][];
+        };
+        /** @description One feed entry. `lesson.slug` is present for signed-in viewers and ABSENT for anonymous ones — §12 keeps lesson content behind login, so an unauthenticated page carries nothing that could link into it. */
+        ProfileActivityEvent: {
+            type: components["schemas"]["ActivityEventType"];
+            /** Format: date-time */
+            occurredAt: string;
+            course: (({
+                slug: string;
+                title: ((string | null) | null) | null;
+            } | null) | null) | null;
+            lesson: (({
+                slug?: string;
+                title: ((string | null) | null) | null;
+            } | null) | null) | null;
+        };
+        /** @description The §10 heatmap, for a profile rather than the dashboard. */
+        ProfileHeatmap: {
+            timezone: string;
+            days: components["schemas"]["HeatmapDay"][];
+            maxCount: number;
+            currentStreak: number;
+            longestStreak: number;
+        };
+        /** @description The sections this viewer may see. A hidden section is ABSENT from this object — never present-and-empty, never sent for the client to hide (§11). */
+        ProfileSections: {
+            badges?: components["schemas"]["ProfileBadge"][];
+            degrees?: components["schemas"]["ProfileDegree"][];
+            courses?: components["schemas"]["ProfileCourses"];
+            activity_feed?: components["schemas"]["ProfileActivityEvent"][];
+            activity_heatmap?: components["schemas"]["ProfileHeatmap"];
+        };
+        /** @description A learner's profile, already filtered to the viewer it was built for. There is no email field, for any viewer. */
+        Profile: {
+            handle: string;
+            displayName: ((string | null) | null) | null;
+            bio: ((string | null) | null) | null;
+            /** Format: date-time */
+            joinedAt: string;
+            avatar: components["schemas"]["ProfileAvatar"];
+            noindex: boolean;
+            viewer: components["schemas"]["ProfileViewer"];
+            sections: components["schemas"]["ProfileSections"];
+            visibility?: components["schemas"]["ProfileVisibility"];
         };
         /** @description A request to clone, validate, and import a content repo. */
         AdminImportRequest: {
@@ -2858,6 +3028,136 @@ export interface operations {
             };
             /** @description The actor may not read degree definitions */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMyProfileSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The actor's profile settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileSettings"];
+                };
+            };
+            /** @description The actor has no learner profile — an operator or teacher-only account (design §5, §5.1). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The actor has no users row */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateMyProfileSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileSettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The updated settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileSettings"];
+                };
+            };
+            /** @description An unknown section name, an unknown visibility value, a non-boolean `noindex`, or a bio over 2000 characters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The actor may not change this profile */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The actor has no users row */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The student-chosen handle (never derived from an email, §11). */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The profile, filtered to this viewer */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+            /** @description No such handle, or the account has no learner profile (§5.1: operator accounts have none). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many profile requests from this address */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

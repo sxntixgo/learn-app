@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { fetchActivity, fetchHeatmap, fetchMyBadges, fetchMyDegrees } from '../../src/lib/api';
 import { withAuthRedirect } from '../../src/lib/require-auth';
 import { HEATMAP_MAX_WEEKS } from '../../src/lib/heatmap';
@@ -36,6 +37,18 @@ export default async function MePage() {
   return (
     <main className={styles.page}>
       <h1 className={styles.title}>Your desk</h1>
+
+      {/*
+       * The way in to design §11's profile controls. Everything on this
+       * dashboard is private to the actor; the profile page is the one
+       * surface that can be shown to other people, so the link to decide
+       * what it shows belongs where the data itself is.
+       */}
+      <p className={styles.profileLinkRow}>
+        <Link className={styles.profileLink} href="/settings/profile">
+          Profile &amp; visibility settings
+        </Link>
+      </p>
 
       <section className={styles.activity} aria-labelledby="activity-heading">
         <div className={styles.activityHead}>

@@ -1,0 +1,15 @@
+/*
+ * The identicon's frame (design §11.1, §14). The face itself is drawn by
+ * Identicon.tsx; everything visual that is not a filled cell lives here.
+ */
+
+.identicon {
+  display: block;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  /* Cells are 1×1 in a 5×5 viewBox, so the edges must stay crisp when the
+     SVG is scaled up to 96px — the browser's default smoothing turns them
+     into a blur otherwise. */
+  shape-rendering: crispEdges;
+}

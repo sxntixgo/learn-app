@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import type { components } from './api-types';
 import { AuthRequiredError, classifyStatus } from './api-errors';
 import { relaySetCookies } from './auth-cookies';
@@ -33,6 +33,17 @@ export type AwardNotice = components['schemas']['AwardNotice'];
 export type AwardedBadge = components['schemas']['AwardedBadge'];
 export type AwardedDegree = components['schemas']['AwardedDegree'];
 export type Me = components['schemas']['Me'];
+export type Profile = components['schemas']['Profile'];
+export type ProfileSections = components['schemas']['ProfileSections'];
+export type ProfileSettings = components['schemas']['ProfileSettings'];
+export type ProfileSettingsUpdateRequest = components['schemas']['ProfileSettingsUpdateRequest'];
+export type ProfileVisibility = components['schemas']['ProfileVisibility'];
+export type ProfileSection = components['schemas']['ProfileSection'];
+export type SectionVisibility = components['schemas']['SectionVisibility'];
+export type ProfileBadge = components['schemas']['ProfileBadge'];
+export type ProfileDegree = components['schemas']['ProfileDegree'];
+export type ProfileCourse = components['schemas']['ProfileCourse'];
+export type ProfileActivityEvent = components['schemas']['ProfileActivityEvent'];
 export type ImportRunSummary = components['schemas']['ImportRunSummary'];
 export type ImportProgressEvent = components['schemas']['ImportProgressEvent'];
 export type ImportCounts = components['schemas']['ImportCounts'];
@@ -75,6 +86,33 @@ async function authHeaders(): Promise<HeadersInit> {
 }
 
 /**
+ * Forwards the VISITOR's address to the API.
+ *
+ * Every call in this module is server-to-server: the browser talks to Next,
+ * Next talks to the API. Without this, every request the API sees comes from
+ * one address — web's — and every per-IP rate limit in api/src/auth/
+ * rate-limit.ts degrades from "this visitor" to "everyone at once". For the
+ * public profile route (design §11) that would mean one busy afternoon
+ * locking the page for the whole instance; for the login route it silently
+ * weakened the per-IP half of §13's two-key limiter in the same way.
+ *
+ * `x-forwarded-for` is appended to, not replaced, so the chain Caddy built
+ * survives. The API only believes any of it when API_TRUST_PROXY is on
+ * (api/src/index.ts) — off by default precisely so an unproxied deployment
+ * cannot be told what address a request came from.
+ */
+async function forwardedHeaders(): Promise<HeadersInit> {
+  const store = await headers();
+  const forwardedFor = store.get('x-forwarded-for');
+  const realIp = store.get('x-real-ip');
+  const out: Record<string, string> = {};
+  if (forwardedFor) out['x-forwarded-for'] = forwardedFor;
+  else if (realIp) out['x-forwarded-for'] = realIp;
+  if (realIp) out['x-real-ip'] = realIp;
+  return out;
+}
+
+/**
  * The one place every authenticated request to the API goes through
  * (Task B). Every fetch helper below used to throw a bare `Error` on any
  * non-OK response — including a 403 from `can()` for a perfectly ordinary
@@ -93,7 +131,7 @@ async function apiFetch(path: string, init: RequestInit = {}): Promise<Response>
   const res = await fetch(`${apiBase()}${path}`, {
     cache: 'no-store',
     ...init,
-    headers: { ...(await authHeaders()), ...init.headers },
+    headers: { ...(await authHeaders()), ...(await forwardedHeaders()), ...init.headers },
   });
   if (classifyStatus(res.status) === 'auth-required') {
     throw new AuthRequiredError();
@@ -253,6 +291,64 @@ export async function fetchMe(): Promise<Me> {
     throw new Error(`Failed to fetch me: ${res.status}`);
   }
   return (await res.json()) as Me;
+}
+
+// =============================================================================
+// PROFILES (design §11, Phase 12).
+// =============================================================================
+
+/**
+ * A learner's public profile page (design §11).
+ *
+ * Deliberately NOT routed through `apiFetch`: this is the one page in the app
+ * that a signed-out visitor is supposed to be able to read, so a missing
+ * session must render the anonymous view rather than redirect to /login. The
+ * session cookie is still forwarded when there IS one — that is what makes
+ * the API serve the owner's or a peer's view instead.
+ *
+ * 404 becomes null: an unknown handle and an account with no learner profile
+ * answer identically by design, and the page renders Next's notFound() for
+ * both.
+ */
+export async function fetchProfile(handle: string): Promise<Profile | null> {
+  const res = await fetch(`${apiBase()}/api/v1/profiles/${encodeURIComponent(handle)}`, {
+    cache: 'no-store',
+    headers: { ...(await authHeaders()), ...(await forwardedHeaders()) },
+  });
+  if (res.status === 404) {
+    return null;
+  }
+  if (!res.ok) {
+    throw new Error(`Failed to fetch profile "${handle}": ${res.status}`);
+  }
+  return (await res.json()) as Profile;
+}
+
+/** The actor's own profile settings — bio, noindex, and the five section toggles. */
+export async function fetchProfileSettings(): Promise<ProfileSettings> {
+  const res = await apiFetch('/api/v1/me/profile');
+  if (!res.ok) {
+    throw new Error(`Failed to fetch profile settings: ${res.status}`);
+  }
+  return (await res.json()) as ProfileSettings;
+}
+
+/**
+ * Saves any subset of the actor's profile settings. Not routed through
+ * `apiFetch`: a 400 (an unknown section, an over-long bio) is an ordinary
+ * outcome the settings form shows as a message, not an auth failure.
+ */
+export async function updateProfileSettings(body: ProfileSettingsUpdateRequest): Promise<ProfileSettings> {
+  const res = await fetch(`${apiBase()}/api/v1/me/profile`, {
+    method: 'PATCH',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `Failed to save profile settings: ${res.status}`));
+  }
+  return (await res.json()) as ProfileSettings;
 }
 
 /** Import run history, newest first (design plan phase 5's admin screen). */
@@ -534,7 +630,10 @@ export async function login(email: string, password: string, deviceLabel?: strin
   const res = await fetch(`${apiBase()}/api/v1/auth/login`, {
     method: 'POST',
     cache: 'no-store',
-    headers: { 'Content-Type': 'application/json' },
+    // The visitor's address goes with it: §13's limiter counts per IP as
+    // well as per account, and without this every login on the instance
+    // would share one counter.
+    headers: { 'Content-Type': 'application/json', ...(await forwardedHeaders()) },
     body: JSON.stringify({ email, password, deviceLabel }),
   });
 

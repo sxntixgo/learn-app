@@ -21,6 +21,8 @@ import type { SetupRouteDeps } from './routes/setup.ts';
 import { registerSetupRoutes } from './routes/setup.ts';
 import type { AuthRouteDeps } from './routes/auth.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
+import type { ProfileRouteDeps } from './routes/profiles.ts';
+import { registerProfileRoutes } from './routes/profiles.ts';
 import { registerActorHook } from './auth/actor.ts';
 import { getSigningKeys } from './auth/keys.ts';
 import { hashPassword } from './auth/password.ts';
@@ -40,6 +42,7 @@ export type BuildServerOptions = CourseRouteDeps &
   AdminRouteDeps &
   SetupRouteDeps &
   AuthRouteDeps &
+  ProfileRouteDeps &
   SubmissionRouteDeps & {
     /**
      * Whether to believe `X-Forwarded-For`. OFF unless explicitly enabled,
@@ -87,6 +90,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   registerSetupRoutes(fastify, { ...options, hashPassword: options.hashPassword ?? hashPassword });
   registerAuthRoutes(fastify, options);
   registerSubmissionRoutes(fastify, options);
+  registerProfileRoutes(fastify, options);
 
   return fastify;
 }

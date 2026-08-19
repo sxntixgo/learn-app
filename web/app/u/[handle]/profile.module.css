@@ -1,0 +1,189 @@
+/*
+ * The public profile page (design §11, §14).
+ *
+ * Built for 375px first: one column, everything stacked, nothing that needs
+ * a pointer. No hover-only affordance anywhere on this page — every piece of
+ * information is in the DOM at rest (design §14.2). Interactive targets are
+ * at least 44px tall.
+ */
+
+.page {
+  max-width: var(--measure-full);
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-3) var(--space-7);
+  color: var(--color-text);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+  min-width: 0;
+}
+
+.name {
+  font-size: 1.5rem;
+  line-height: 1.2;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.handle {
+  margin: 0;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.joined {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.bio {
+  margin: var(--space-3) 0 0;
+  max-width: var(--measure-prose);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ownerNote,
+.empty {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+}
+
+.ownerLink,
+.courseLink,
+.eventLink {
+  color: var(--color-link);
+  /* Underlined, not colour-only: the link has to survive a greyscale render
+     and a colour-vision deficiency alike (design §14). */
+  text-decoration: underline;
+}
+
+/* 44px targets (design §14.2) — applied to the links that sit inside dense
+   lists, where the text alone would be a 20px tap target. */
+.courseLink,
+.eventLink,
+.ownerLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.section {
+  margin-top: var(--space-5);
+}
+
+.sectionTitle {
+  font-size: 1.125rem;
+  margin: 0 0 var(--space-2);
+  padding-bottom: var(--space-0);
+  border-bottom: var(--border-hairline) solid var(--color-border-hairline);
+}
+
+.subTitle {
+  font-size: 0.9375rem;
+  margin: var(--space-3) 0 var(--space-1);
+  color: var(--color-text-secondary);
+}
+
+.sectionEmpty {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+}
+
+.badgeList,
+.degreeList,
+.courseList,
+.feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.badge,
+.degree,
+.course,
+.event {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-0) var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+}
+
+.badgeTitle,
+.degreeTitle,
+.eventType {
+  font-weight: 600;
+}
+
+.badgeDescription,
+.badgeDate,
+.degreeState,
+.courseCount,
+.eventDate {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.degreePercent {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+}
+
+/* The bar is a second, redundant encoding of the number next to it — never
+   the only one (design §10's "a color-only scale is unreadable for a
+   significant number of people"). */
+.degreeBar {
+  flex-basis: 100%;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    to right,
+    var(--color-heat-4) 0 var(--degree-percent, 0%),
+    var(--color-heat-0) var(--degree-percent, 0%) 100%
+  );
+}
+
+.streaks {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.eventType {
+  text-transform: capitalize;
+}
+
+.eventWhat {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 48rem) {
+  .page {
+    padding-inline: var(--space-4);
+  }
+}
