@@ -7,3 +7,10 @@ dist/
 *.tsbuildinfo
 coverage/
 /backups/
+
+# Playwright (Phase 15) — test artifacts and the per-run fixture manifest
+# tools/src/e2e-seed.ts writes (contains a plaintext invite token, single-run
+# only; never a real secret, but not something to commit either).
+/test-results/
+/playwright-report/
+/e2e/.fixtures.json

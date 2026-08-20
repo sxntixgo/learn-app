@@ -13,7 +13,8 @@
     "seed": "node ./src/seed.ts",
     "backup": "node ./src/backup.ts",
     "restore": "node ./src/restore.ts",
-    "import": "node ./src/import.ts"
+    "import": "node ./src/import.ts",
+    "e2e:seed": "node ./src/e2e-seed.ts"
   },
   "dependencies": {
     "@learn/api": "*",

@@ -710,6 +710,24 @@ it, and an untested restore is not a backup. This lands before real progress dat
       **Acceptance:** a JPEG with EXIF GPS yields a WebP with no metadata; SVG rejected; oversized rejected **before** decode; a decompression bomb does not exhaust memory
       **Model:** `opus` — *(a) security: untrusted binary input and image decoding*
 
+- [ ] **BLOCKER, found 2026-08-20: no user with activity history can be deleted at all**
+      `activity_events.user_id` is `references users (id) on delete cascade` (migration
+      `0004`), but the table also carries a `before delete` trigger that rejects every
+      delete — including the one Postgres issues to satisfy its own cascade. So
+      `delete from users` raises `activity_events is append-only: DELETE is not
+      permitted` for anyone who has ever completed a lesson. Verified against a real
+      database, not inferred. This is not the "delete or anonymise?" policy choice the
+      entry below describes: **the delete fails before any policy can apply.** `0004`'s
+      own comment reasons the trap out correctly for `course_id`/`lesson_id` eleven lines
+      above, and `0005` states the general rule and gives `audit_log.actor_id` a bare
+      `uuid` for exactly this reason — `user_id` is the one column that missed it. Fix is
+      to match `audit_log`: drop the FK, keep a bare `uuid`, and decide what happens to
+      the orphaned history. Needs a data-migration decision about existing rows, so it
+      belongs with the feature below rather than ahead of it. Surfaced by Phase 15's E2E
+      seeding, which is the first thing that ever wrote an `activity_events` row and then
+      re-seeded.
+      **Model:** `opus`
+
 - [ ] **Account deletion and data export** — a student can export their own data and delete their account
       **Acceptance:** export returns progress, submissions, badges and profile as JSON. Deletion removes personal data while preserving referential integrity — decide explicitly whether `activity_events` rows are deleted or anonymised, and record the choice, since that table is append-only by trigger and cannot simply be updated
       **Model:** `opus` — *(b) data integrity: deletion against an append-only log is exactly where this goes wrong quietly*

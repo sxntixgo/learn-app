@@ -5,6 +5,7 @@
   "exports": {
     ".": "./dist/index.js",
     "./content/parse": "./src/content/parse.ts",
+    "./content/present": "./src/content/present.ts",
     "./content/sanitize": "./src/content/sanitize.ts",
     "./content/validate": "./src/content/validate.ts",
     "./content/manifest": "./src/content/manifest.ts",
@@ -12,7 +13,9 @@
     "./content/import": "./src/content/import.ts",
     "./content/run-import": "./src/content/run-import.ts",
     "./content/clone": "./src/content/clone.ts",
-    "./content/repos": "./src/content/repos.ts"
+    "./content/repos": "./src/content/repos.ts",
+    "./invites/token": "./src/invites/token.ts",
+    "./auth/password": "./src/auth/password.ts"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
