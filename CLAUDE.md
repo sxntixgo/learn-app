@@ -81,7 +81,24 @@ Docker is **not** available in this dev container. Postgres runs natively.
 
 - Databases: `learn_dev`, `learn_test`; role `learn`
 - Connection string lives in `.env` (gitignored)
-- Start the cluster if it is down: `sudo -n bash -c "su - postgres -c 'pg_ctl -D /var/lib/postgresql/17/main start'"`
+- Start the cluster if it is down:
+
+  ```bash
+  # A container restart leaves a STALE postmaster.pid behind, and pg_ctl then
+  # refuses with "another server might be running". Check the pid is really
+  # dead (`kill -0 <pid>`) before removing it.
+  sudo -n rm -f /var/lib/postgresql/17/main/postmaster.pid
+  sudo -n bash -c "su - postgres -c '/usr/lib/postgresql/17/bin/pg_ctl \
+    -D /var/lib/postgresql/17/main \
+    -o \"-c config_file=/etc/postgresql/17/main/postgresql.conf\" \
+    -l /var/lib/postgresql/pg.log start'"
+  ```
+
+  Three things the obvious command gets wrong: `pg_ctl` is not on the
+  `postgres` login shell's PATH, the data directory has no `postgresql.conf`
+  (it lives at the Debian path, hence `-o config_file`), and the stale pidfile
+  above. Without the cluster, every DB-touching test fails for reasons that
+  look nothing like "the database is down".
 - `docker/` files are authored here but verified on the WSL host
 
 ## Commands
