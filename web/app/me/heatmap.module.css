@@ -40,10 +40,15 @@
  * grid itself lays out normally.
  */
 .scroller {
-  --hm-window-weeks: 13;
-  --hm-cell: 22px;
-  --hm-gap: 4px;
-  --hm-label: 0px;
+  --hm-window-weeks: 12;
+  --hm-cell: 20px;
+  --hm-gap: 2px;
+  /* Not 0px: the weekday `th` lays out to its text's min-content width
+     whatever this says, so 0 only ever hid a column's worth of space from
+     the arithmetic in src/lib/heatmap.ts. It measures 24.39px, and the th
+     cannot render narrower than that, so 25px is the smallest honest
+     reservation — 24 would leave it 0.39px over and cost a column. */
+  --hm-label: 25px;
 
   direction: rtl;
   overflow-x: auto;
@@ -250,21 +255,26 @@
 }
 
 /* Tablet: half a year, and the weekday column earns its space. */
-@media (min-width: 768px) {
+/* 834, not the nav's 768: 26 weeks needs ~530px and 768 only leaves 498 once
+   the sidebar and the activity card are taken out. See HEATMAP_WINDOW_STEPS
+   in src/lib/heatmap.ts. 834 is iPad portrait, the target device. */
+@media (min-width: 834px) {
   .scroller {
     --hm-window-weeks: 26;
-    --hm-cell: 22px;
-    --hm-gap: 4px;
+    --hm-cell: 16px;
+    --hm-gap: 3px;
     --hm-label: 36px;
   }
 }
 
 /* Desktop: the whole year at once, on smaller cells — there is a pointer here. */
-@media (min-width: 1200px) {
+/* 1360, not 1200: below ~1340 the content column has not reached its 1160px
+   cap, so the full year cannot fit. See HEATMAP_WINDOW_STEPS. */
+@media (min-width: 1360px) {
   .scroller {
     --hm-window-weeks: 53;
     --hm-cell: 16px;
-    --hm-gap: 4px;
+    --hm-gap: 3px;
     --hm-label: 36px;
   }
 }

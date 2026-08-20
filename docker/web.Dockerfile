@@ -43,4 +43,10 @@ EXPOSE 3000
 
 # Note: NEXT_PUBLIC_API_BASE_URL is set via docker-compose environment variables
 # The web service intentionally does NOT receive DATABASE_URL (see docker-compose.yml)
-CMD ["node", "server.js"]
+# `web/server.js`, not `server.js`. This is a workspace build, so Next's
+# standalone output preserves the workspace layout and puts the entry point at
+# `.next/standalone/web/server.js` — which is also why the two COPY lines above
+# target `./web/public` and `./web/.next/static`. Verified against a real
+# `next build` here; `web/public/` did not exist as a tracked directory until
+# Phase 14 added the PWA icons, so this path had never actually been exercised.
+CMD ["node", "web/server.js"]

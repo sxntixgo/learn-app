@@ -160,11 +160,21 @@ test.describe('the contribution heatmap window (design §10)', () => {
       const scrollerRect = scroller.getBoundingClientRect();
       const row = table.querySelector('tbody tr');
       if (!row) return 0;
+
+      // The weekday label is STICKY: it stays pinned at the left edge while
+      // the grid scrolls (it is scrolled to the current week by default), so
+      // cells slide UNDERNEATH it. A cell behind the label is not visible,
+      // however much of it is inside the scroller's box — counting from the
+      // scroller's left edge instead of the label's right edge overstates the
+      // window by exactly the one column the label covers.
+      const label = row.querySelector('th');
+      const leftEdge = label ? label.getBoundingClientRect().right : scrollerRect.left;
+
       const EPS = 1; // px, for sub-pixel layout rounding
       let visible = 0;
       for (const cell of Array.from(row.querySelectorAll('td'))) {
         const r = cell.getBoundingClientRect();
-        if (r.left >= scrollerRect.left - EPS && r.right <= scrollerRect.right + EPS) {
+        if (r.left >= leftEdge - EPS && r.right <= scrollerRect.right + EPS) {
           visible += 1;
         }
       }
@@ -193,49 +203,23 @@ test.describe('the contribution heatmap window (design §10)', () => {
     });
   });
 
-  test('the visible window matches HEATMAP_WINDOW_STEPS exactly — known bug, see comment', async ({
-    browser,
-    baseURL,
-  }) => {
-    // FOUND BUG, reported here rather than silently worked around:
+  test('the visible window matches HEATMAP_WINDOW_STEPS exactly', async ({ browser, baseURL }) => {
+    // This was a `test.fail()` when Phase 15 found the overflow: measured in a
+    // real browser, 11/21/52 columns fitted against a declared 13/26/53.
     //
-    // Measured in a real browser (Chromium, this harness), the number of
-    // week columns that actually fit inside the heatmap's own scroll
-    // viewport WITHOUT clipping falls short of what
-    // `web/src/lib/heatmap.ts`'s HEATMAP_WINDOW_STEPS declares, at every
-    // one of the three canonical widths:
+    // The fix (see web/src/lib/heatmap.ts) was not to change the declared
+    // numbers until they matched — it was to make the arithmetic describe the
+    // page that actually exists. `heatmap.test.ts` proved
+    //   windowWidthPx(step) <= min(viewport, PAGE_MAX_WIDTH) - 2 * gutter
+    // which never subtracted the `.activity` card's padding and border (42px)
+    // or, at >= 768px, the 180px in-flow nav sidebar — which appears at
+    // exactly the breakpoint where the window widens, making tablet the worst
+    // case. Two steps also began at widths where their own week count could
+    // never have fitted, so they overflowed from their first pixel.
     //
-    //   375px:  11 columns fit, HEATMAP_WINDOW_STEPS says 13
-    //   834px:  21 columns fit, HEATMAP_WINDOW_STEPS says 26
-    //   1440px: 52 columns fit, HEATMAP_WINDOW_STEPS says 53
-    //
-    // Root cause: `heatmap.test.ts`'s "the window actually fits the
-    // viewport it is for" describe block proves
-    //   windowWidthPx(step) <= min(viewport, PAGE_MAX_WIDTH_PX) - 2 * step.gutterPx
-    // but that formula is pure CSS-variable arithmetic — it never renders a
-    // page, so it never subtracts:
-    //   (a) the `.activity` card's own padding + border the heatmap
-    //       actually sits inside (`web/app/me/me.module.css`: `.activity {
-    //       padding: 1.25rem }` plus a 1px border, ~42px lost each side), or
-    //   (b) at >=768px, the 180px in-flow nav sidebar
-    //       (`web/app/_shell/nav.module.css`) — which starts taking space
-    //       at exactly the same breakpoint the window widens to 26/53
-    //       weeks, making the tablet case the worst of the three.
-    //
-    // That is precisely the class of defect Phase 15 task 3 exists for
-    // (plan, Phase 15: "the check that would have caught what I could not
-    // verify without a browser") — a CSS-only unit test proved the
-    // arithmetic self-consistent while the real, composed page overflows.
-    //
-    // Not fixed here: task 3 is specs, and the real fix touches shared
-    // geometry across heatmap.ts / heatmap.module.css / me.module.css (and
-    // possibly the page-gutter/nav-width relationship generally), which is
-    // beyond "add viewport specs." `test.fail()` keeps this red-for-a-real-
-    // reason without failing CI: if the overflow gets fixed, this test
-    // starts passing "unexpectedly" and THAT failure is the prompt to
-    // delete this whole annotation.
-    test.fail(true, 'Known bug: the heatmap window overflows its container at every canonical breakpoint.');
-
+    // This assertion is the one that cannot be satisfied by arithmetic about
+    // an imaginary page: it counts columns that are genuinely unclipped in a
+    // real browser.
     await withAuthedPage(browser, baseURL, PHONE, async (page) => {
       await page.goto('/me');
 

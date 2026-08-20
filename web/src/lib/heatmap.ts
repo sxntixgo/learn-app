@@ -23,6 +23,80 @@ export const HEATMAP_MAX_WEEKS = 53;
 /** Page content max width; the heatmap is a breakout block (design §14.1). */
 export const PAGE_MAX_WIDTH_PX = 1160;
 
+/**
+ * The chrome between the page gutters and the heatmap's scroll viewport, in px.
+ *
+ * The grid does not sit directly inside the page column: it sits inside the
+ * `.activity` card (app/me/me.module.css), which adds 1.25rem of padding on
+ * each side plus a 1px hairline border. 2 * 20 + 2 * 1 = 42.
+ *
+ * This constant exists because leaving it out is precisely the bug Phase 15
+ * found. `heatmap.test.ts` computed the available width as
+ * `viewport - 2 * gutter` and concluded every step fitted, while a real
+ * browser showed 11/21/52 columns against a declared 13/26/53. The unit test
+ * was not wrong about its own arithmetic — it was arithmetic about a page
+ * that does not exist.
+ */
+export const ACTIVITY_CARD_CHROME_PX = 42;
+
+/**
+ * Width the in-flow nav sidebar takes out of the content column at >= 768px,
+ * in px. The declared 180px is border-box, so it already includes the 1px
+ * right hairline — measured, not assumed: 834 - 180 - 48 - 42 = 564 is what
+ * the browser reports, and 181 would put it at 563.
+ *
+ * Below 768px the nav is a bottom bar and takes no horizontal space, which is
+ * what makes this a step-dependent term rather than a constant subtraction —
+ * and it appears at exactly the breakpoint where the window widens, so the
+ * step that gains the most columns is also the one that loses the most width.
+ */
+export const NAV_SIDEBAR_PX = 180;
+
+/** The viewport width from which the nav becomes an in-flow sidebar. */
+export const NAV_SIDEBAR_FROM_PX = 768;
+
+/**
+ * Horizontal page padding, one side, by the viewport width it applies from —
+ * `--page-gutter` in app/me/me.module.css.
+ *
+ * These are the PAGE's breakpoints (768/1200, the shell's), deliberately kept
+ * separate from HEATMAP_WINDOW_STEPS' own (0/834/1360). Conflating the two is
+ * the modelling error underneath the overflow bug: `gutterPx` used to be a
+ * field on the heatmap step, which silently asserted that the page changed its
+ * padding at exactly the widths the heatmap changed its column count. It never
+ * did, and once the heatmap's steps had to move to widths where they actually
+ * fit, the two could not be the same list.
+ */
+export const PAGE_GUTTER_STEPS: readonly { minViewportWidth: number; gutterPx: number }[] = [
+  { minViewportWidth: 0, gutterPx: 16 },
+  { minViewportWidth: 768, gutterPx: 24 },
+  { minViewportWidth: 1200, gutterPx: 32 },
+];
+
+/** The page gutter in effect at `viewportWidth`, one side, in px. */
+export function pageGutterForWidth(viewportWidth: number): number {
+  let chosen = PAGE_GUTTER_STEPS[0]!;
+  for (const step of PAGE_GUTTER_STEPS) {
+    if (viewportWidth >= step.minViewportWidth) chosen = step;
+  }
+  return chosen.gutterPx;
+}
+
+/**
+ * The width actually available to the heatmap's scroll viewport at
+ * `viewportWidth` — the number `windowWidthPx(step)` has to fit inside.
+ *
+ * Verified against a real browser at the three canonical widths (375/834/1440
+ * measure 301/564/1054), which is the only way this number can be trusted:
+ * every previous version of it was derived and every previous version was
+ * wrong.
+ */
+export function availableHeatmapWidthPx(viewportWidth: number): number {
+  const sidebar = viewportWidth >= NAV_SIDEBAR_FROM_PX ? NAV_SIDEBAR_PX : 0;
+  const contentColumn = Math.min(viewportWidth - sidebar, PAGE_MAX_WIDTH_PX);
+  return contentColumn - 2 * pageGutterForWidth(viewportWidth) - ACTIVITY_CARD_CHROME_PX;
+}
+
 export interface HeatmapWindowStep {
   /** Applies from this viewport width up, until the next step. */
   minViewportWidth: number;
@@ -32,10 +106,8 @@ export interface HeatmapWindowStep {
   cellPx: number;
   /** Gap between cells in px. */
   gapPx: number;
-  /** Width reserved for the sticky weekday-label column (0 = collapsed). */
+  /** Width reserved for the sticky weekday-label column. */
   labelPx: number;
-  /** Horizontal page padding at this step, one side. */
-  gutterPx: number;
 }
 
 /**
@@ -45,9 +117,31 @@ export interface HeatmapWindowStep {
  * there is no hover to fall back on (design §14.2).
  */
 export const HEATMAP_WINDOW_STEPS: readonly HeatmapWindowStep[] = [
-  { minViewportWidth: 0, weeks: 13, cellPx: 22, gapPx: 4, labelPx: 0, gutterPx: 16 },
-  { minViewportWidth: 768, weeks: 26, cellPx: 22, gapPx: 4, labelPx: 36, gutterPx: 24 },
-  { minViewportWidth: 1200, weeks: 53, cellPx: 16, gapPx: 4, labelPx: 36, gutterPx: 32 },
+  // Phone: 12 weeks, not 13. §10 says "roughly 13 weeks" and 12 is still a
+  // quarter, which is what that number is for — and the alternative, at the
+  // 301px a 375px phone actually leaves, is a 1px gap between cells. A grid
+  // whose cells nearly touch reads as one block, and the day cell is the
+  // whole point on the screen with no hover to fall back on (§14.2).
+  //
+  // labelPx is 25, not 0. The previous 0 described an intent the CSS never
+  // achieved: the weekday `th` still lays out to its text's min-content
+  // width (24.39px measured), so declaring 0 silently overstated the room
+  // for cells by a full column. 25 rather than 24 because the th cannot go
+  // BELOW its min-content width — declaring 24 leaves the label 0.39px wider
+  // than the reserved space, and that fraction costs a whole column.
+  { minViewportWidth: 0, weeks: 12, cellPx: 20, gapPx: 2, labelPx: 25 },
+  // Tablet: from 834, NOT from the nav's own 768 breakpoint. 26 weeks needs
+  // ~530px and 768px only leaves 498 once the sidebar and card are taken out,
+  // so a step starting at 768 could never honour its own number — it was
+  // overflowing from its first pixel. 834 is also the iPad portrait width
+  // this design is aimed at (§14.2). 26 * (16 + 3) + 36 = 530 against 564.
+  { minViewportWidth: 834, weeks: 26, cellPx: 16, gapPx: 3, labelPx: 36 },
+  // Desktop: from 1360, for the same reason — 53 weeks needs ~1043px, and
+  // below 1340 the content column has not yet reached the 1160px cap that
+  // makes that possible. The full year is the promise that actually matters,
+  // so the step waits until it can keep it. 53 * (16 + 3) + 36 = 1043
+  // against 1054 available.
+  { minViewportWidth: 1360, weeks: 53, cellPx: 16, gapPx: 3, labelPx: 36 },
 ];
 
 /** The step that applies at `viewportWidth`. */

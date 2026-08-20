@@ -69,7 +69,17 @@ export default defineConfig({
         DATABASE_URL: TEST_DATABASE_URL,
         API_PORT: String(API_PORT),
       },
-      reuseExistingServer: !process.env.CI,
+      // FALSE EVERYWHERE, not just in CI. Reuse looks like a local
+      // convenience, but this server's command is
+      // `migrate && e2e-seed && node api/src/index.ts` — so reusing a server
+      // someone left running SKIPS THE SEED. The fixtures on disk then
+      // describe a database that has moved on: the single-use invite is
+      // already consumed and the fixture account already registered, so
+      // core-journeys fails at registration and every later step of that
+      // journey fails with it. That is a false failure in a suite whose whole
+      // value is that a red run means something. Paying for a rebuild each
+      // run is the cheaper side of that trade.
+      reuseExistingServer: false,
       timeout: 60_000,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -118,7 +128,9 @@ export default defineConfig({
         NEXT_PUBLIC_API_BASE_URL: API_BASE_URL,
         PORT: String(WEB_PORT),
       },
-      reuseExistingServer: !process.env.CI,
+      // False everywhere, for the same reason as the API server above: a
+      // reused web server was built against whatever fixtures existed then.
+      reuseExistingServer: false,
       timeout: 180_000,
       stdout: 'pipe',
       stderr: 'pipe',

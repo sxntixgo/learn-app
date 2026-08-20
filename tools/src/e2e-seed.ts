@@ -326,9 +326,19 @@ async function ensureTeacherUser(client: pg.PoolClient, courseSlug: string): Pro
 async function resetInvitedAccount(client: pg.PoolClient, email: string): Promise<void> {
   await client.query('begin');
   try {
-    await client.query('alter table activity_events disable trigger activity_events_no_delete');
-    await client.query(`delete from users where email = $1`, [email]);
-    await client.query('alter table activity_events enable trigger activity_events_no_delete');
+    // Uses the supported erasure carve-out (migration 0017) rather than
+    // disabling the trigger. The previous version did
+    // `alter table activity_events disable trigger ...`, which takes an
+    // ACCESS EXCLUSIVE lock and switches the append-only guarantee OFF for
+    // the whole table — every other session included — for as long as the
+    // transaction runs. `set local app.erasing_user` is scoped to this
+    // transaction AND to this one account: nobody else's history is
+    // deletable even while it is set.
+    const { rows } = await client.query<{ id: string }>(`select id from users where email = $1`, [email]);
+    for (const row of rows) {
+      await client.query(`set local app.erasing_user = '${row.id}'`);
+      await client.query(`delete from users where id = $1`, [row.id]);
+    }
     await client.query('commit');
   } catch (err) {
     await client.query('rollback');

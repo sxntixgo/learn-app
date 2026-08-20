@@ -5,6 +5,8 @@ import {
   HEATMAP_MAX_WEEKS,
   HEATMAP_WINDOW_STEPS,
   PAGE_MAX_WIDTH_PX,
+  PAGE_GUTTER_STEPS,
+  availableHeatmapWidthPx,
   buildHeatmapWeeks,
   formatDayLabel,
   heatmapWindowForWidth,
@@ -56,23 +58,25 @@ function readCssVarsByBreakpoint(cssPath: string, names: readonly string[]): Map
 }
 
 describe('heatmapWindowForWidth', () => {
-  it('gives ~13 weeks on a phone, ~26 on a tablet, 53 on a desktop (design §10)', () => {
-    expect(visibleWeeksForWidth(375)).toBe(13);
+  it('gives ~12 weeks on a phone, ~26 on a tablet, 53 on a desktop (design §10)', () => {
+    expect(visibleWeeksForWidth(375)).toBe(12);
     expect(visibleWeeksForWidth(834)).toBe(26);
     expect(visibleWeeksForWidth(1440)).toBe(53);
   });
 
   it('switches exactly at the declared breakpoints, never between them', () => {
-    expect(visibleWeeksForWidth(767)).toBe(13);
-    expect(visibleWeeksForWidth(768)).toBe(26);
-    expect(visibleWeeksForWidth(1199)).toBe(26);
-    expect(visibleWeeksForWidth(1200)).toBe(53);
+    // 834 and 1360, not the shell's 768/1200: a step may only begin where its
+    // own week count actually fits. See HEATMAP_WINDOW_STEPS.
+    expect(visibleWeeksForWidth(833)).toBe(12);
+    expect(visibleWeeksForWidth(834)).toBe(26);
+    expect(visibleWeeksForWidth(1359)).toBe(26);
+    expect(visibleWeeksForWidth(1360)).toBe(53);
   });
 
   it('falls back to the narrowest step for absurd widths', () => {
-    expect(visibleWeeksForWidth(0)).toBe(13);
-    expect(visibleWeeksForWidth(-100)).toBe(13);
-    expect(heatmapWindowForWidth(320).weeks).toBe(13);
+    expect(visibleWeeksForWidth(0)).toBe(12);
+    expect(visibleWeeksForWidth(-100)).toBe(12);
+    expect(heatmapWindowForWidth(320).weeks).toBe(12);
   });
 
   it('never asks for more weeks than the API window', () => {
@@ -83,6 +87,17 @@ describe('heatmapWindowForWidth', () => {
 });
 
 describe('the window actually fits the viewport it is for', () => {
+  // The three widths a browser actually measured for the scroll viewport at
+  // 375/834/1440 (Phase 16 follow-up, measured with the Playwright harness).
+  // Pinned here so a change to the shell's sidebar or the activity card's
+  // padding fails HERE, in a fast test, rather than silently shrinking the
+  // window until the e2e viewport spec notices.
+  it('agrees with what the browser measures for the available width', () => {
+    expect(availableHeatmapWidthPx(375)).toBe(301);
+    expect(availableHeatmapWidthPx(834)).toBe(564);
+    expect(availableHeatmapWidthPx(1440)).toBe(1054);
+  });
+
   // The whole point of the trailing window (design §10) is that 53x7 is
   // unusable at 375px. If the arithmetic below stops holding, the phone
   // layout has silently started overflowing or the cells have gone sub-5px.
@@ -96,16 +111,14 @@ describe('the window actually fits the viewport it is for', () => {
     it(`fits ${HEATMAP_WINDOW_STEPS[stepIndex]!.weeks} weeks inside ${viewport}px`, () => {
       const step = heatmapWindowForWidth(viewport);
       expect(step).toBe(HEATMAP_WINDOW_STEPS[stepIndex]);
-      const available = Math.min(viewport, PAGE_MAX_WIDTH_PX) - 2 * step.gutterPx;
-      expect(windowWidthPx(step)).toBeLessThanOrEqual(available);
+      expect(windowWidthPx(step)).toBeLessThanOrEqual(availableHeatmapWidthPx(viewport));
     });
   }
 
   it('still fits at the narrowest width each step claims', () => {
     for (const step of HEATMAP_WINDOW_STEPS) {
       const viewport = Math.max(step.minViewportWidth, 375);
-      const available = Math.min(viewport, PAGE_MAX_WIDTH_PX) - 2 * step.gutterPx;
-      expect(windowWidthPx(step)).toBeLessThanOrEqual(available);
+      expect(windowWidthPx(step)).toBeLessThanOrEqual(availableHeatmapWidthPx(viewport));
     }
   });
 
@@ -142,7 +155,9 @@ describe('the shipped CSS implements the declared window policy', () => {
     const cssPath = path.join(WEB_DIR, 'app', 'me', 'me.module.css');
     const vars = readCssVarsByBreakpoint(cssPath, ['--page-gutter']);
 
-    for (const step of HEATMAP_WINDOW_STEPS) {
+    // Against PAGE_GUTTER_STEPS, not HEATMAP_WINDOW_STEPS: the page changes
+    // its padding at the shell's breakpoints, which are not the heatmap's.
+    for (const step of PAGE_GUTTER_STEPS) {
       expect(vars.get(step.minViewportWidth)).toEqual({ '--page-gutter': step.gutterPx });
     }
 
