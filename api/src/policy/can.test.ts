@@ -207,6 +207,23 @@ const MATRIX: readonly MatrixCase[] = [
     resource: ownData,
     expected: [DENY, ALLOW, DENY, DENY, DENY],
   },
+  // Both teacher columns allow: `ownData` is built per subject, so a teacher
+  // here is acting on their OWN account. A teacher-only account holds real
+  // data and must be able to leave. Admin denies — an admin account is
+  // instance infrastructure, and self-deleting the last one leaves nobody
+  // able to administer the instance.
+  {
+    row: 'Own profile, badges, degrees',
+    action: 'me:export',
+    resource: ownData,
+    expected: [DENY, ALLOW, ALLOW, ALLOW, DENY],
+  },
+  {
+    row: 'Own profile, badges, degrees',
+    action: 'me:delete',
+    resource: ownData,
+    expected: [DENY, ALLOW, ALLOW, ALLOW, DENY],
+  },
 
   // ---------------------------------------------------------------------------
   // Row: "Register content repos, run syncs" — teacher own courses,

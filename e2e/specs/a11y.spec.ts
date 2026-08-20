@@ -126,6 +126,16 @@ const ROUTES: RouteCase[] = [
   },
   { name: 'dashboard (heatmap)', path: '/me', session: 'student', expectUrl: /\/me$/ },
   { name: 'profile settings', path: '/settings/profile', session: 'student', expectUrl: /\/settings\/profile$/ },
+  // Plan: "Account deletion and data export". Read-only for this pass — the
+  // form is loaded and scanned, never submitted, so this never touches
+  // `viewportUser`'s account (account-export-deletion.spec.ts's own
+  // dedicated `deletableUser` fixture is what actually gets deleted).
+  {
+    name: 'account export & deletion',
+    path: '/settings/account',
+    session: 'student',
+    expectUrl: /\/settings\/account$/,
+  },
   {
     name: 'public profile',
     path: `/u/${E2E_VIEWPORT_HANDLE}`,
@@ -151,6 +161,15 @@ const ROUTES: RouteCase[] = [
   { name: 'admin: import content', path: '/admin/imports', session: 'admin', expectUrl: /\/admin\/imports$/ },
   { name: 'admin: people', path: '/admin/people', session: 'admin', expectUrl: /\/admin\/people$/ },
   { name: 'invitations (admin)', path: '/invites', session: 'admin', expectUrl: /\/invites$/ },
+  // The admin-only branch of the SAME route above — a plain sentence
+  // instead of the export/delete controls (`me:export`/`me:delete` have no
+  // admin cell), genuinely different markup worth its own scan.
+  {
+    name: 'account export & deletion (admin — not available)',
+    path: '/settings/account',
+    session: 'admin',
+    expectUrl: /\/settings\/account$/,
+  },
 ];
 
 // NOT REACHED: none. Every web/app/**/page.tsx is exercised by ROUTES above

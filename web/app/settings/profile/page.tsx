@@ -53,6 +53,21 @@ export default async function ProfileSettingsPage() {
       </section>
 
       <ProfileSettingsForm settings={settings} />
+
+      {/*
+       * The way in to account export/deletion (plan: "Account deletion and
+       * data export"). A sibling route, not a section on this page — see
+       * settings/account/page.tsx's module comment for why the two screens
+       * cannot share one policy floor. `profile:read` (this page's own
+       * gate) is student-only, so every account that reaches this link
+       * already holds the grant `me:export`/`me:delete` require; nothing
+       * further to check here.
+       */}
+      <p className={styles.accountLinkRow}>
+        <Link className={styles.profileLink} href="/settings/account">
+          Export my data or delete my account
+        </Link>
+      </p>
     </main>
   );
 }

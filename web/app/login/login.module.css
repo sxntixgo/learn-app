@@ -22,6 +22,16 @@
   line-height: 1.55;
 }
 
+.notice {
+  margin: 0 0 1.25rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: 8px;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
 .form {
   display: flex;
   flex-direction: column;

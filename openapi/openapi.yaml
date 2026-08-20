@@ -982,6 +982,72 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/v1/me/export:
+    get:
+      summary: Export everything this account holds, as JSON
+      description: >-
+        The data-portability half of account deletion (plan, design §11).
+        Returns the signed-in actor's own profile, enrolments, progress,
+        quiz attempts, exercise submissions, badges, degrees and activity
+        history in one JSON document.
+
+        Scoped to the actor by `me:export` + SELF — there is no way to
+        export somebody else, and no `userId` parameter to try it with.
+      operationId: exportMyData
+      tags:
+        - me
+      responses:
+        '200':
+          description: Everything held about the signed-in account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountExport'
+        '403':
+          description: The actor may not export (anonymous callers included)
+
+  /api/v1/me/account:
+    delete:
+      summary: Permanently delete the signed-in account
+      description: >-
+        Irreversible. Removes the account and everything personal to it —
+        progress, enrolments, quiz attempts, exercise submissions, badges,
+        degrees, profile, sessions, and activity history (the last via the
+        append-only carve-out in migration 0017).
+
+        What deliberately SURVIVES, de-attributed rather than deleted:
+        grades and inline feedback this account left on OTHER people's
+        submissions, courses it owned (which become unowned), invites it
+        issued, and audit-log entries describing what it did. Those are
+        records about other people or about the instance, and taking them
+        with the account would delete somebody else's data.
+
+        Requires the caller to confirm by sending their own handle, which is
+        checked server-side — a destructive action reached by a stray DELETE
+        should not succeed.
+      operationId: deleteMyAccount
+      tags:
+        - me
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmHandle]
+              properties:
+                confirmHandle:
+                  type: string
+                  description: Must equal the signed-in account's own handle.
+              additionalProperties: false
+      responses:
+        '204':
+          description: The account and its personal data are gone
+        '400':
+          description: confirmHandle missing or does not match this account
+        '403':
+          description: The actor may not delete this account (anonymous callers included)
+
   /api/v1/me/activity:
     get:
       summary: The actor's recent activity feed
@@ -2581,6 +2647,93 @@ components:
         `hidden` — absent from the catalog; a direct fetch 404s for anyone
         but the owner or an admin. New courses land `hidden`; re-import
         never changes it.
+
+    AccountExport:
+      type: object
+      description: >-
+        Everything the instance holds about one account. `profile` is mapped
+        to the API's own vocabulary; the collections are returned as stored,
+        because the point of an export is completeness and a mapping layer is
+        one more place for a field to go missing.
+      required:
+        [exportedAt, profile, enrolments, progress, quizAttempts, submissions, badges, degrees, activity]
+      properties:
+        exportedAt:
+          type: string
+          format: date-time
+        profile:
+          $ref: '#/components/schemas/AccountExportProfile'
+        enrolments:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        progress:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        quizAttempts:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        submissions:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        badges:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        degrees:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        activity:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+      additionalProperties: false
+
+    AccountExportProfile:
+      type: object
+      description: >-
+        The account's own record. Includes the email, which is correct here
+        and nowhere else: this endpoint returns your data to you (Gate 12
+        concerns emails reaching UNAUTHENTICATED callers).
+      required: [id, handle, displayName, email, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        handle:
+          type: string
+          nullable: true
+        displayName:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        bio:
+          type: string
+          nullable: true
+        timezone:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        roles:
+          type: array
+          items:
+            type: string
+      additionalProperties: false
 
     SearchResults:
       type: object

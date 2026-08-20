@@ -1,0 +1,173 @@
+/*
+ * Export & delete account (plan: "Account deletion and data export"). Same
+ * page shell and group/section idiom as ../profile/settings.module.css —
+ * this is a sibling screen, not a new pattern — plus a bordered "what
+ * survives" notice reusing the same yellow-accent-as-emphasis idiom
+ * settings.module.css's .error and invites.module.css's .requestError
+ * already use (design's rule 1: the yellow accent is structural, never a
+ * fill, never body text — there is no separate "danger" colour in this
+ * palette, so emphasis here comes from a thick left border, exactly like
+ * every other "read this" moment in the app, not from inventing one).
+ */
+
+.page {
+  max-width: var(--measure-full);
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-3) var(--space-7);
+  color: var(--color-text);
+}
+
+.title {
+  font-size: 1.5rem;
+  margin: 0 0 var(--space-4);
+}
+
+.empty {
+  max-width: var(--measure-prose);
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+
+.groupTitle {
+  font-size: 1.125rem;
+  margin: 0;
+  padding-bottom: var(--space-0);
+  border-bottom: var(--border-hairline) solid var(--color-border-hairline);
+}
+
+.groupNote {
+  margin: 0;
+  color: var(--color-text-secondary);
+  max-width: var(--measure-prose);
+  line-height: 1.55;
+}
+
+.exportLink {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.exportLink:hover {
+  background: var(--color-page);
+}
+
+.exportLink:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+.noticeBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-left: var(--border-thick) solid var(--color-accent-yellow);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  max-width: var(--measure-prose);
+}
+
+.noticeTitle {
+  margin: 0;
+  font-weight: 700;
+}
+
+.noticeIntro {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+}
+
+.noticeList {
+  margin: 0;
+  padding-left: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+}
+
+.deleteForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+  max-width: var(--measure-prose);
+}
+
+.confirmLabel {
+  font-weight: 600;
+}
+
+.confirmInput {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-0) var(--space-1);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--color-page);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.confirmInput:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 1px;
+}
+
+.deleteButton {
+  min-height: 44px;
+  padding: var(--space-1) var(--space-4);
+  border: var(--border-regular) solid var(--color-accent-yellow);
+  border-radius: var(--radius-md);
+  background: var(--color-page);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.deleteButton:hover:not(:disabled) {
+  background: var(--color-surface-raised);
+}
+
+.deleteButton:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.deleteButton:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+.error {
+  margin: 0;
+  color: var(--color-text);
+  font-weight: 600;
+  border-left: var(--border-thick) solid var(--color-accent-yellow);
+  padding-left: var(--space-1);
+}
+
+@media (min-width: 48rem) {
+  .page {
+    padding-inline: var(--space-4);
+  }
+}

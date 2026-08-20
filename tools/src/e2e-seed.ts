@@ -90,6 +90,28 @@ export const E2E_TEACHER_HANDLE = 'e2e-a11y-teacher';
 export const E2E_TEACHER_PASSWORD = 'a-long-enough-teacher-password';
 
 /**
+ * A disposable account, seeded ONLY so the account-deletion e2e spec has
+ * something real to actually delete. Every other fixture user in this file
+ * (`viewportUser`, `teacherUser`, the issuer) is depended on by other specs
+ * — viewport.spec.ts and a11y.spec.ts both sign in as `viewportUser`, for
+ * instance — so deleting one of those mid-suite would break every spec that
+ * runs after it in the same worker. This account has no such dependents:
+ * nothing else in e2e/ ever signs in as it, enrols it, or reads its data.
+ *
+ * Re-created (not merely upserted-and-left) on every seed run via
+ * `ensureDeletableUser`'s call to `resetInvitedAccount`, the same helper
+ * `issueFreshPlatformInvite` uses to reset E2E_INVITE_EMAIL — because
+ * `playwright.config.ts` sets `reuseExistingServer: false`, every `npm run
+ * e2e` invocation re-seeds from scratch, so "the account the previous run's
+ * deletion spec deleted" and "the account this run's deletion spec expects
+ * to find" are the same identity across runs only because this reset makes
+ * it so.
+ */
+export const E2E_DELETABLE_EMAIL = 'e2e-deletable@example.test';
+export const E2E_DELETABLE_HANDLE = 'e2e-deletable';
+export const E2E_DELETABLE_PASSWORD = 'a-long-enough-deletable-password';
+
+/**
  * Phase 15 task 4: a second, dedicated platform invite, distinct from
  * `invite` (task 2's, single-use and consumed by core-journeys.spec.ts).
  * The accessibility pass only needs to LOAD /invite/[token] and axe-scan
@@ -185,6 +207,16 @@ export interface E2eFixtures {
     courseSlug: string;
     lessonSlug: string;
     studentUserId: string;
+  };
+  /**
+   * A disposable account for the account-deletion spec to actually delete
+   * — see E2E_DELETABLE_EMAIL's own comment for why this one, uniquely, has
+   * no other spec depending on it.
+   */
+  deletableUser: {
+    email: string;
+    password: string;
+    handle: string;
   };
 }
 
@@ -374,6 +406,29 @@ async function ensureViewportUser(client: pg.PoolClient): Promise<string> {
 }
 
 /**
+ * Creates a fresh disposable account for the account-deletion e2e spec to
+ * actually delete — see E2E_DELETABLE_EMAIL's own comment for why this
+ * fixture, uniquely among the ones in this file, needs no `on conflict do
+ * update` upsert: `resetInvitedAccount` (already used above by
+ * `issueFreshPlatformInvite` for the identical "idempotent across repeated
+ * local runs" reason) deletes any leftover account at this address first,
+ * via the same erasure carve-out `deleteAccount` itself uses, so a plain
+ * insert afterward always starts from nothing rather than colliding with —
+ * or silently reusing — whatever a previous run's deletion spec left
+ * behind.
+ */
+async function ensureDeletableUser(client: pg.PoolClient): Promise<void> {
+  await resetInvitedAccount(client, E2E_DELETABLE_EMAIL);
+  const passwordHash = await hashPassword(E2E_DELETABLE_PASSWORD);
+  const user = await client.query<{ id: string }>(
+    `insert into users (email, handle, password_hash, display_name) values ($1, $2, $3, $4) returning id`,
+    [E2E_DELETABLE_EMAIL, E2E_DELETABLE_HANDLE, passwordHash, 'E2E Deletable'],
+  );
+  const userId = user.rows[0]!.id;
+  await client.query(`insert into user_roles (user_id, role) values ($1, 'student')`, [userId]);
+}
+
+/**
  * Phase 15 task 4: the exercise lesson + its one submitted submission, so
  * the grading view (/courses/.../submissions/[userId]) has something real
  * to render. `studentUserId` is E2E_VIEWPORT_EMAIL's id — reusing the
@@ -526,11 +581,44 @@ async function clearAwardableState(client: pg.PoolClient): Promise<void> {
   await client.query('truncate table badges, degrees cascade');
 }
 
+/**
+ * The uuid migration 0004 seeds as DEV_ACTOR. Every phase-1..5 progress and
+ * activity row points at it, and policy/can.ts names it, so it is the one
+ * account that must survive a reset.
+ */
+const DEV_ACTOR_ID = '00000000-0000-0000-0000-000000000001';
+
+/**
+ * Removes every account except the seeded DEV_ACTOR, so a run starts from a
+ * known population rather than an accumulated one.
+ *
+ * Same failure mode as the stale badges above, found the same way. vitest and
+ * Playwright share one TEST_DATABASE_URL and both create accounts; nothing
+ * removed them, so they accumulated — 2,354 of them by the time this was
+ * written. `/admin/people` renders that list, and the accessibility spec's
+ * axe scan of it walks every row: the scan had grown to 18-20s against a 30s
+ * test timeout, and eventually tipped over it. The spec was not flaky; it was
+ * measuring a database that kept getting bigger.
+ *
+ * Ordered after clearAwardableState deliberately: that truncates
+ * `activity_events` (via its FK to `badges`), so no account has history left
+ * and this plain DELETE cannot hit the append-only trigger. Everything else
+ * follows each FK's own rule — personal rows cascade, `courses.owner_id` and
+ * `invites.issued_by` go null.
+ *
+ * Safe only because this module refuses to run against anything but a
+ * database whose name says "test" (see main()).
+ */
+async function clearAccumulatedAccounts(client: pg.PoolClient): Promise<void> {
+  await client.query(`delete from users where id <> $1`, [DEV_ACTOR_ID]);
+}
+
 /** Creates/refreshes every fixture the Playwright harness needs. Safe to call repeatedly. */
 export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
   const client = await pool.connect();
   try {
     await clearAwardableState(client);
+    await clearAccumulatedAccounts(client);
     const { courseId, courseSlug, lessonSlug } = await ensureCourseModuleLesson(client);
     const issuerId = await ensureIssuer(client);
     const invite = await issueFreshPlatformInvite(client, issuerId, E2E_INVITE_EMAIL);
@@ -538,6 +626,7 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
     const viewportUserId = await ensureViewportUser(client);
     await ensureTeacherUser(client, courseSlug);
     const exercise = await ensureExerciseSubmission(client, courseId, viewportUserId);
+    await ensureDeletableUser(client);
     return {
       courseSlug,
       lessonSlug,
@@ -550,6 +639,11 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
         courseSlug,
         lessonSlug: exercise.lessonSlug,
         studentUserId: viewportUserId,
+      },
+      deletableUser: {
+        email: E2E_DELETABLE_EMAIL,
+        password: E2E_DELETABLE_PASSWORD,
+        handle: E2E_DELETABLE_HANDLE,
       },
     };
   } finally {

@@ -54,6 +54,12 @@
   gap: var(--space-5);
 }
 
+/* The way out to ../account (export/delete) — same treatment as
+   .profileLink above, reused rather than duplicated. */
+.accountLinkRow {
+  margin: var(--space-5) 0 0;
+}
+
 .group {
   display: flex;
   flex-direction: column;

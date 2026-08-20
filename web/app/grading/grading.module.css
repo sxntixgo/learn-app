@@ -38,6 +38,20 @@
   gap: 0.75rem;
 }
 
+/* The way out to /settings/account — same 44px-target, underlined-not-
+   colour-only treatment as me.module.css's .profileLink. */
+.accountLinkRow {
+  margin: 2rem 0 0;
+}
+
+.accountLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--color-link);
+  text-decoration: underline;
+}
+
 .item {
   border: 1px solid var(--color-border-hairline);
   border-radius: 10px;

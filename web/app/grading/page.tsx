@@ -68,6 +68,24 @@ export default async function GradingQueuePage() {
           })}
         </ol>
       )}
+
+      {/*
+       * The way in to account export/deletion (plan: "Account deletion and
+       * data export") for a teacher-only account. `me:export`/`me:delete`
+       * (api/src/policy/can.ts) grant to `teacher` as well as `student`,
+       * but this account's own home is here, not /me or /settings/profile —
+       * both of those gate on student-only actions (`me:heatmap:read`,
+       * `profile:read`) and 403 for a teacher-only session, which
+       * `withAuthRedirect` turns into the same infinite /login redirect
+       * loop documented in search/page.tsx's module comment. This page's
+       * own gate (`submission:queue:read`) is teacher-only, so anyone who
+       * reached this far already holds the grant those two screens need.
+       */}
+      <p className={styles.accountLinkRow}>
+        <Link href="/settings/account" className={styles.accountLink}>
+          Export my data or delete my account
+        </Link>
+      </p>
     </main>
   );
 }

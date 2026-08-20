@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import pg from 'pg';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { verifyPassword } from '@learn/api/auth/password';
 
 const run = promisify(execFile);
@@ -302,6 +302,26 @@ describe.sequential('e2e-seed CLI', () => {
 
     const badges = await pool.query(`select slug from badges`);
     expect(badges.rows).toHaveLength(0);
+  });
+
+  it('clears accounts accumulated by other suites, so /admin/people stays a known size', async () => {
+    // Same failure mode as the stale badges: vitest and Playwright share one
+    // database and both create accounts, nothing removed them, and the
+    // accessibility spec's axe scan of /admin/people walks every row — it had
+    // grown to 18-20s against a 30s timeout before this existed.
+    const strays = [randomUUID(), randomUUID(), randomUUID()];
+    for (const id of strays) {
+      await pool.query(`insert into users (id, display_name) values ($1, 'stray from another suite')`, [id]);
+    }
+
+    await seed();
+
+    const left = await pool.query(`select id from users where id = any($1::uuid[])`, [strays]);
+    expect(left.rows).toHaveLength(0);
+
+    // The seeded DEV_ACTOR must survive — migration 0004's rows point at it.
+    const devActor = await pool.query(`select 1 from users where id = '00000000-0000-0000-0000-000000000001'`);
+    expect(devActor.rows).toHaveLength(1);
   });
 
   it('refuses to run against a database whose name does not say "test"', async () => {

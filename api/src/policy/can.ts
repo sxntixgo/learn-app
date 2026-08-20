@@ -353,6 +353,15 @@ const MATRIX = {
   // student-only), and §5.1 is explicit that an operator account has "no
   // public profile" at all.
   'profile:update': { row: 'Own profile, badges, degrees', student: SELF },
+  // Account portability and erasure. SELF for both, and granted to `teacher`
+  // as well as `student`: a teacher-only account holds real data (the courses
+  // it owns, the invites it issued) and must be able to leave. `admin` is
+  // deliberately absent — an admin account is instance infrastructure, and
+  // self-deleting the last one would leave nobody able to administer the
+  // instance. Removing an admin belongs in admin tooling, where the
+  // last-admin check can live; see the plan's Gate 12 entry.
+  'me:export': { row: 'Own profile, badges, degrees', student: SELF, teacher: SELF },
+  'me:delete': { row: 'Own profile, badges, degrees', student: SELF, teacher: SELF },
 
   // ---- Register content repos, run syncs -----------------------------------
   // Two actions, because the two halves ask different questions.

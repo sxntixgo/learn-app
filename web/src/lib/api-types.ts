@@ -401,6 +401,49 @@ export interface paths {
         patch: operations["updateMe"];
         trace?: never;
     };
+    "/api/v1/me/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export everything this account holds, as JSON
+         * @description The data-portability half of account deletion (plan, design §11). Returns the signed-in actor's own profile, enrolments, progress, quiz attempts, exercise submissions, badges, degrees and activity history in one JSON document.
+         *     Scoped to the actor by `me:export` + SELF — there is no way to export somebody else, and no `userId` parameter to try it with.
+         */
+        get: operations["exportMyData"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Permanently delete the signed-in account
+         * @description Irreversible. Removes the account and everything personal to it — progress, enrolments, quiz attempts, exercise submissions, badges, degrees, profile, sessions, and activity history (the last via the append-only carve-out in migration 0017).
+         *     What deliberately SURVIVES, de-attributed rather than deleted: grades and inline feedback this account left on OTHER people's submissions, courses it owned (which become unowned), invites it issued, and audit-log entries describing what it did. Those are records about other people or about the instance, and taking them with the account would delete somebody else's data.
+         *     Requires the caller to confirm by sending their own handle, which is checked server-side — a destructive action reached by a stray DELETE should not succeed.
+         */
+        delete: operations["deleteMyAccount"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/activity": {
         parameters: {
             query?: never;
@@ -1083,6 +1126,46 @@ export interface components {
          * @enum {string}
          */
         CourseVisibility: "open" | "restricted" | "hidden";
+        /** @description Everything the instance holds about one account. `profile` is mapped to the API's own vocabulary; the collections are returned as stored, because the point of an export is completeness and a mapping layer is one more place for a field to go missing. */
+        AccountExport: {
+            /** Format: date-time */
+            exportedAt: string;
+            profile: components["schemas"]["AccountExportProfile"];
+            enrolments: {
+                [key: string]: unknown;
+            }[];
+            progress: {
+                [key: string]: unknown;
+            }[];
+            quizAttempts: {
+                [key: string]: unknown;
+            }[];
+            submissions: {
+                [key: string]: unknown;
+            }[];
+            badges: {
+                [key: string]: unknown;
+            }[];
+            degrees: {
+                [key: string]: unknown;
+            }[];
+            activity: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** @description The account's own record. Includes the email, which is correct here and nowhere else: this endpoint returns your data to you (Gate 12 concerns emails reaching UNAUTHENTICATED callers). */
+        AccountExportProfile: {
+            /** Format: uuid */
+            id: string;
+            handle: string | null;
+            displayName: string | null;
+            email: string | null;
+            bio?: string | null;
+            timezone?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            roles?: string[];
+        };
         /** @description Lessons matching a query, grouped by the course they belong to. */
         SearchResults: {
             /** @description The query as the caller sent it, echoed back so a client can label the results. */
@@ -2937,6 +3020,72 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Error"];
                 };
+            };
+        };
+    };
+    exportMyData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Everything held about the signed-in account */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountExport"];
+                };
+            };
+            /** @description The actor may not export (anonymous callers included) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteMyAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Must equal the signed-in account's own handle. */
+                    confirmHandle: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The account and its personal data are gone */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description confirmHandle missing or does not match this account */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The actor may not delete this account (anonymous callers included) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

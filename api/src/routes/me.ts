@@ -3,6 +3,7 @@ import { getPool } from '../db.ts';
 import type { Actor } from '../policy/can.ts';
 import { can as defaultCan } from '../policy/can.ts';
 import { actorFor } from '../auth/actor.ts';
+import { clearSessionCookies } from '../auth/cookies.ts';
 import { DEFAULT_TIMEZONE, isValidTimeZone } from '../time/timezone.ts';
 import { computeStreaks } from '../activity/streaks.ts';
 import type { StreakEvent } from '../activity/streaks.ts';
@@ -10,6 +11,8 @@ import { buildHeatmapDays, clampWeeks } from '../activity/heatmap.ts';
 import { localDateKey } from '../activity/streaks.ts';
 import { listBadgeProgress, listDegreeProgress } from '../progression/views.ts';
 import { remainingBudget } from '../invites/issue.ts';
+import { exportAccount } from '../me/export.ts';
+import { deleteAccount } from '../me/delete-account.ts';
 
 export interface MeRouteDeps {
   // Injectable policy function (CLAUDE.md rule 2), same seam as
@@ -294,5 +297,76 @@ export function registerMeRoutes(fastify: FastifyInstance, deps: MeRouteDeps = {
     } finally {
       client.release();
     }
+  });
+
+  // Data portability. Scoped to the actor by construction: there is no
+  // userId parameter here to point somewhere else, so the only export anyone
+  // can ask for is their own. Returns the email, which Gate 12 permits —
+  // that gate is about emails reaching UNAUTHENTICATED callers, and this is
+  // your own record returned to you.
+  fastify.get('/api/v1/me/export', async (request, reply) => {
+    const actor = actorFor(request, deps);
+
+    if (!can(actor, 'me:export', { userId: actor.id })) {
+      return reply.code(403).send({ message: 'Forbidden' });
+    }
+
+    const result = await exportAccount(getPool(), actor.id);
+    if (!result) {
+      // A valid session whose user row is gone. Treat it as unauthorised
+      // rather than 404: the account does not exist, so neither does the
+      // permission to read it.
+      return reply.code(403).send({ message: 'Forbidden' });
+    }
+
+    // Named so a browser saves it as a file rather than rendering it.
+    reply.header('content-disposition', 'attachment; filename="learn-app-export.json"');
+    return reply.code(200).send(result);
+  });
+
+  fastify.delete('/api/v1/me/account', async (request, reply) => {
+    const actor = actorFor(request, deps);
+
+    if (!can(actor, 'me:delete', { userId: actor.id })) {
+      return reply.code(403).send({ message: 'Forbidden' });
+    }
+
+    // Typed confirmation, checked server-side. A destructive, irreversible
+    // action should not be reachable by a stray DELETE — a CSRF attempt, a
+    // mis-wired client, a curl with the wrong path — and the client cannot be
+    // the only thing standing between a session and permanent erasure.
+    const body = request.body as { confirmHandle?: unknown } | undefined;
+    const confirmHandle = typeof body?.confirmHandle === 'string' ? body.confirmHandle.trim() : '';
+
+    const owner = await getPool().query<{ handle: string | null }>(`select handle from users where id = $1`, [
+      actor.id,
+    ]);
+    const handle = owner.rows[0]?.handle ?? null;
+
+    if (!handle || confirmHandle !== handle) {
+      return reply.code(400).send({ message: 'confirmHandle must match your own handle' });
+    }
+
+    await deleteAccount(getPool(), actor.id);
+
+    // The session outlives the row it points at unless it is cleared here.
+    // refresh_tokens cascade with the account, but the access-token cookie is
+    // stateless and would keep resolving to a deleted id until it expired.
+    //
+    // `clearSessionCookies` (auth/cookies.ts), not a hand-rolled
+    // `reply.clearCookie('access_token', ...)`: the real cookies are named
+    // `learn_at`/`learn_rt` (ACCESS_COOKIE/REFRESH_COOKIE) and the refresh
+    // one is scoped to `REFRESH_COOKIE_PATH` ('/api/v1/auth'), not '/' — a
+    // `clearCookie` call with the wrong name/path sets a cookie that was
+    // never there and leaves the real session cookies live, so the browser
+    // keeps authenticating as the just-deleted account until the token's
+    // natural TTL expiry. Caught by web/settings/account e2e coverage: the
+    // page immediately after deletion (/login?deleted=1) called `GET
+    // /api/v1/me` with the still-live access cookie and got a 404 ("valid
+    // token, no such user") instead of the anonymous 403 a cleared session
+    // would produce. `routes/auth.ts`'s logout/refresh-reuse paths already
+    // use this same helper; this route just needed to match them.
+    clearSessionCookies(reply);
+    return reply.code(204).send();
   });
 }

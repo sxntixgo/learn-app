@@ -33,6 +33,8 @@ export type AwardNotice = components['schemas']['AwardNotice'];
 export type AwardedBadge = components['schemas']['AwardedBadge'];
 export type AwardedDegree = components['schemas']['AwardedDegree'];
 export type Me = components['schemas']['Me'];
+export type AccountExport = components['schemas']['AccountExport'];
+export type AccountExportProfile = components['schemas']['AccountExportProfile'];
 export type Profile = components['schemas']['Profile'];
 export type ProfileSections = components['schemas']['ProfileSections'];
 export type ProfileSettings = components['schemas']['ProfileSettings'];
@@ -345,6 +347,65 @@ export async function fetchMe(): Promise<Me> {
     throw new Error(`Failed to fetch me: ${res.status}`);
   }
   return (await res.json()) as Me;
+}
+
+// =============================================================================
+// ACCOUNT EXPORT & DELETION (plan: "Account deletion and data export").
+// Granted to student and teacher, never admin — api/src/policy/can.ts's
+// `me:export`/`me:delete` rows: an admin account is instance infrastructure,
+// and self-deleting the last one would leave nobody able to administer it.
+// =============================================================================
+
+/**
+ * The actor's own data export (api/src/me/export.ts) — everything the
+ * instance holds about the account, as one JSON document. Routed through
+ * `apiFetch`: anonymous and admin both 403 from `me:export`, and that
+ * becomes `AuthRequiredError` here like any other role-gated fetch — the
+ * settings screen (app/settings/account/page.tsx) uses that, via
+ * `fetchIsAdmin`, to decide whether to render the export/delete controls at
+ * all, the same "ask the floor" idiom as `fetchIsTeacher`/`fetchCanInvite`.
+ *
+ * The actual DOWNLOAD does not call this: a browser download has to be a
+ * same-origin navigation (the CSP's `connect-src 'self'` and the API
+ * carrying no CORS headers both rule out the browser fetching the API
+ * directly — see admin/imports/stream/route.ts's module comment for the
+ * same constraint), so app/settings/account/export/route.ts proxies the API
+ * response itself, fresh, rather than reusing this call's result.
+ */
+export async function fetchAccountExport(): Promise<AccountExport> {
+  const res = await apiFetch('/api/v1/me/export');
+  if (!res.ok) {
+    throw new Error(`Failed to fetch account export: ${res.status}`);
+  }
+  return (await res.json()) as AccountExport;
+}
+
+export type DeleteAccountResult = { ok: true } | { ok: false; message: string };
+
+/**
+ * Permanently deletes the actor's own account (api/src/me/delete-account.ts).
+ * Not routed through `apiFetch`: a 400 (missing or wrong `confirmHandle`) is
+ * an ordinary outcome the delete form shows as a message WITHOUT redirecting
+ * away — same posture as `createInvite`/`gradeSubmission` — not an auth
+ * failure.
+ *
+ * On success the API's own response clears its session cookies, but that
+ * Set-Cookie never reaches the browser on its own (this fetch is
+ * server-to-server, CLAUDE.md rule 1), so it is relayed exactly like
+ * `login`/`logout` already do.
+ */
+export async function deleteMyAccount(confirmHandle: string): Promise<DeleteAccountResult> {
+  const res = await fetch(`${apiBase()}/api/v1/me/account`, {
+    method: 'DELETE',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ confirmHandle }),
+  });
+  if (!res.ok) {
+    return { ok: false, message: await errorMessage(res, `Could not delete your account: ${res.status}`) };
+  }
+  await relaySetCookies(res);
+  return { ok: true };
 }
 
 // =============================================================================
