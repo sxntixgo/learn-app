@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { ReactNode } from 'react';
 import { cookies } from 'next/headers';
 import { IBM_Plex_Mono, Libre_Franklin, Source_Serif_4 } from 'next/font/google';
-import { resolveThemePreference, THEME_COOKIE_NAME, themeDataAttribute } from '../src/lib/theme';
+import { resolveThemePreference, THEME_COOKIE_NAME, themeDataAttribute, type ThemePreference } from '../src/lib/theme';
 import { fetchCanInvite, fetchIsAdmin, fetchIsTeacher, fetchMeOrNull } from '../src/lib/api';
 import type { NavAudience } from '../src/lib/nav';
 import Shell from './_shell/Shell';
@@ -35,16 +35,58 @@ const ibmPlexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: 'Learn App',
   description: 'A self-hosted learning platform',
+  // iOS Safari's manifest support is partial: it does not reliably read the
+  // manifest's `icons` array or `short_name` the way Android does, so the
+  // apple-touch-icon link and the apple-mobile-web-app-* meta tags below
+  // are what iOS actually uses for Add to Home Screen (plan Phase 14).
+  icons: {
+    apple: [{ url: '/icons/icon-180.png', sizes: '180x180', type: 'image/png' }],
+  },
+  appleWebApp: {
+    capable: true,
+    title: 'Learn',
+    statusBarStyle: 'default',
+  },
 };
 
 // viewport-fit=cover is required for env(safe-area-inset-bottom) (used by
 // the bottom tab bar, design §14.2) to resolve to anything but 0 on iOS —
 // without it the tab bar sits under the home-indicator gesture strip.
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  viewportFit: 'cover',
-};
+//
+// A function rather than a static object (plan Phase 14) so theme-color can
+// read the same `theme` cookie RootLayout reads below for `data-theme`.
+// Unlike the JSON manifest (app/manifest.ts, which can only express ONE
+// theme_color), the <meta name="theme-color"> tag supports a `media`
+// attribute, so this CAN be exactly right for both colour schemes — AND
+// for an explicit user override, which the manifest can't see either way:
+// `system` (no cookie) emits both media-conditioned entries and lets
+// `prefers-color-scheme` decide, mirroring `themeDataAttribute`'s "emit no
+// override" logic for the same case; `light`/`dark` emit a single forced
+// value, because a user who explicitly chose dark should not get a light
+// status bar just because their OS is set to light.
+export async function generateViewport(): Promise<Viewport> {
+  const cookieStore = await cookies();
+  const theme = resolveThemePreference(cookieStore.get(THEME_COOKIE_NAME)?.value);
+
+  return {
+    width: 'device-width',
+    initialScale: 1,
+    viewportFit: 'cover',
+    themeColor: themeColorFor(theme),
+  };
+}
+
+function themeColorFor(theme: ThemePreference): Viewport['themeColor'] {
+  // --color-banner-bg, light (9a) and dark (9b) — docs/design/CHOSEN-PALETTE.md
+  const LIGHT = '#bee9ef';
+  const DARK = '#17444b';
+  if (theme === 'light') return LIGHT;
+  if (theme === 'dark') return DARK;
+  return [
+    { media: '(prefers-color-scheme: light)', color: LIGHT },
+    { media: '(prefers-color-scheme: dark)', color: DARK },
+  ];
+}
 
 /** The three role probes behind Nav's restricted destinations (see above). */
 async function navAudience(signedIn: boolean): Promise<NavAudience> {

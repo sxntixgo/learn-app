@@ -41,6 +41,10 @@ describe('content security policy', () => {
     expect(imgSrc).not.toContain('*');
   });
 
+  it('allows the web app manifest to be fetched (design decision #6, plan Phase 14)', () => {
+    expect(directive('manifest-src')).toBe("manifest-src 'self'");
+  });
+
   it('allows no external origins anywhere in the policy', () => {
     expect(csp).not.toMatch(/https?:\/\//);
   });

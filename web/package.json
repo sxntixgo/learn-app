@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "generate:icons": "node scripts/generate-pwa-icons.mjs public/icons"
   },
   "dependencies": {
     "next": "^15.0.0",

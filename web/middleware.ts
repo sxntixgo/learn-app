@@ -35,6 +35,12 @@ export function buildCsp(nonce: string): string {
     // data: only. Avatars are served from our own API.
     "img-src 'self' data:",
 
+    // Without this the browser's fetch of /manifest.webmanifest (triggered
+    // by <link rel="manifest">) falls back to default-src 'none' and is
+    // blocked — even though the server 200s it. manifest-src is what that
+    // fetch is actually governed by (design decision #6 / plan Phase 14).
+    "manifest-src 'self'",
+
     // Fonts are self-hosted by next/font at build time under /_next/static.
     "font-src 'self'",
 
