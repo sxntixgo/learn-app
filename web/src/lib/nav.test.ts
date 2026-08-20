@@ -2,14 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { isNavActive, NAV_DESTINATIONS, visibleNavDestinations, type NavDestination } from './nav';
 
 const catalog = NAV_DESTINATIONS.find((d) => d.href === '/')!;
+const search = NAV_DESTINATIONS.find((d) => d.href === '/search')!;
 const dashboard = NAV_DESTINATIONS.find((d) => d.href === '/me')!;
 const grading = NAV_DESTINATIONS.find((d) => d.href === '/grading')!;
 const admin = NAV_DESTINATIONS.find((d) => d.href === '/admin/imports')!;
 const invites = NAV_DESTINATIONS.find((d) => d.href === '/invites')!;
 
+const FULL_AUDIENCE = { isTeacher: true, canInvite: true, isAdmin: true, canSearch: true };
+
 describe('NAV_DESTINATIONS', () => {
-  it('is exactly Catalog, Dashboard, Grading, Invitations, and Admin', () => {
-    expect(NAV_DESTINATIONS.map((d) => d.href)).toEqual(['/', '/me', '/grading', '/invites', '/admin/imports']);
+  it('is exactly Catalog, Search, Dashboard, Grading, Invitations, and Admin', () => {
+    expect(NAV_DESTINATIONS.map((d) => d.href)).toEqual([
+      '/',
+      '/search',
+      '/me',
+      '/grading',
+      '/invites',
+      '/admin/imports',
+    ]);
   });
 
   it('labels the admin destination clearly as admin', () => {
@@ -19,6 +29,7 @@ describe('NAV_DESTINATIONS', () => {
   it('marks Grading, and only Grading, restricted to teachers', () => {
     expect(grading.restrictedToTeacher).toBe(true);
     expect(catalog.restrictedToTeacher).toBeUndefined();
+    expect(search.restrictedToTeacher).toBeUndefined();
     expect(dashboard.restrictedToTeacher).toBeUndefined();
     expect(admin.restrictedToTeacher).toBeUndefined();
     expect(invites.restrictedToTeacher).toBeUndefined();
@@ -27,6 +38,7 @@ describe('NAV_DESTINATIONS', () => {
   it('marks Admin restricted to admins — the API has always refused everyone else', () => {
     expect(admin.restrictedToAdmin).toBe(true);
     expect(catalog.restrictedToAdmin).toBeUndefined();
+    expect(search.restrictedToAdmin).toBeUndefined();
     expect(grading.restrictedToAdmin).toBeUndefined();
     expect(invites.restrictedToAdmin).toBeUndefined();
   });
@@ -34,19 +46,30 @@ describe('NAV_DESTINATIONS', () => {
   it('marks Invitations restricted to inviters, not to teachers — admin is exclusive of teacher (§5.1)', () => {
     expect(invites.restrictedToInviter).toBe(true);
     expect(grading.restrictedToInviter).toBeUndefined();
+    expect(search.restrictedToInviter).toBeUndefined();
+  });
+
+  it('marks Search, and only Search, restricted to search — same grant as course:list, not a role name', () => {
+    expect(search.restrictedToSearch).toBe(true);
+    expect(catalog.restrictedToSearch).toBeUndefined();
+    expect(dashboard.restrictedToSearch).toBeUndefined();
+    expect(grading.restrictedToSearch).toBeUndefined();
+    expect(invites.restrictedToSearch).toBeUndefined();
+    expect(admin.restrictedToSearch).toBeUndefined();
   });
 });
 
 describe('visibleNavDestinations', () => {
-  const student = { isTeacher: false, canInvite: false, isAdmin: false };
+  const student = { isTeacher: false, canInvite: false, isAdmin: false, canSearch: true };
 
-  it('leaves a student with Catalog and Dashboard only', () => {
-    expect(visibleNavDestinations(student).map((d) => d.href)).toEqual(['/', '/me']);
+  it('leaves a student with Catalog, Search, and Dashboard only', () => {
+    expect(visibleNavDestinations(student).map((d) => d.href)).toEqual(['/', '/search', '/me']);
   });
 
-  it('keeps every destination, in order, for an account that is all three', () => {
-    expect(visibleNavDestinations({ isTeacher: true, canInvite: true, isAdmin: true }).map((d) => d.href)).toEqual([
+  it('keeps every destination, in order, for an account that is everything', () => {
+    expect(visibleNavDestinations(FULL_AUDIENCE).map((d) => d.href)).toEqual([
       '/',
+      '/search',
       '/me',
       '/grading',
       '/invites',
@@ -54,30 +77,36 @@ describe('visibleNavDestinations', () => {
     ]);
   });
 
-  it('gives an admin Invitations and Admin, and no Grading — admin is exclusive of teacher (§5.1)', () => {
-    expect(visibleNavDestinations({ isTeacher: false, canInvite: true, isAdmin: true }).map((d) => d.href)).toEqual([
-      '/',
-      '/me',
-      '/invites',
-      '/admin/imports',
-    ]);
+  it('gives an admin Invitations and Admin, and no Grading or Search — admin holds neither student nor teacher (§5.1)', () => {
+    expect(
+      visibleNavDestinations({ isTeacher: false, canInvite: true, isAdmin: true, canSearch: false }).map(
+        (d) => d.href,
+      ),
+    ).toEqual(['/', '/me', '/invites', '/admin/imports']);
   });
 
-  it('gives a teacher Grading and Invitations, but never Admin', () => {
-    expect(visibleNavDestinations({ isTeacher: true, canInvite: true, isAdmin: false }).map((d) => d.href)).toEqual([
-      '/',
-      '/me',
-      '/grading',
-      '/invites',
-    ]);
+  it('gives a teacher Grading and Invitations, but never Admin or Search — a teacher-only account holds no student role', () => {
+    expect(
+      visibleNavDestinations({ isTeacher: true, canInvite: true, isAdmin: false, canSearch: false }).map(
+        (d) => d.href,
+      ),
+    ).toEqual(['/', '/me', '/grading', '/invites']);
   });
 
   it('drops Invitations from a teacher who cannot list any', () => {
-    expect(visibleNavDestinations({ isTeacher: true, canInvite: false, isAdmin: false }).map((d) => d.href)).toEqual([
-      '/',
-      '/me',
-      '/grading',
-    ]);
+    expect(
+      visibleNavDestinations({ isTeacher: true, canInvite: false, isAdmin: false, canSearch: false }).map(
+        (d) => d.href,
+      ),
+    ).toEqual(['/', '/me', '/grading']);
+  });
+
+  it('drops Search from a teacher who also learns — canSearch, not isTeacher, decides it (roles are a set)', () => {
+    expect(
+      visibleNavDestinations({ isTeacher: true, canInvite: false, isAdmin: false, canSearch: true }).map(
+        (d) => d.href,
+      ),
+    ).toEqual(['/', '/search', '/me', '/grading']);
   });
 });
 

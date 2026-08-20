@@ -91,6 +91,16 @@ const MATRIX: readonly MatrixCase[] = [
     resource: noResource,
     expected: [DENY, ALLOW, DENY, DENY, DENY],
   },
+  // Phase 16. The same cell as course:list above, and that is the point:
+  // search is the catalog reached by typing. A teacher-only account gets a
+  // 403 from both, not an empty result set from one and a refusal from the
+  // other.
+  {
+    row: 'Enroll, read, track own progress',
+    action: 'search:query',
+    resource: noResource,
+    expected: [DENY, ALLOW, DENY, DENY, DENY],
+  },
   {
     row: 'Enroll, read, track own progress',
     action: 'course:read',

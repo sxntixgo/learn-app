@@ -3,12 +3,12 @@
  * "am I the active one" both live here, out of the Nav component, so the
  * matching rule is testable without a browser.
  *
- * Four destinations: Catalog, Dashboard, Grading (Phase 9 — design §9.4's
- * grading queue), and Admin (plan phase 5's import screen — design §14 item
- * 6). Admin's label doubles as its own "clearly marked as admin" marker
- * (design brief); do not add more admin destinations here ahead of the
- * phase that builds their pages (CLAUDE.md: build only the phase you were
- * asked for).
+ * Five destinations: Catalog, Search (Phase 16 — design §16's full-text
+ * search), Dashboard, Grading (Phase 9 — design §9.4's grading queue), and
+ * Admin (plan phase 5's import screen — design §14 item 6). Admin's label
+ * doubles as its own "clearly marked as admin" marker (design brief); do
+ * not add more admin destinations here ahead of the phase that builds
+ * their pages (CLAUDE.md: build only the phase you were asked for).
  *
  * Grading is the one destination that is not for every signed-in visitor —
  * design §9.4/the grading UI brief: "a Grading destination for teachers; do
@@ -16,6 +16,15 @@
  * `visibleNavDestinations` is what a caller filters through before handing
  * the list to <Nav>, so "should a student ever see this link" is answered
  * in one tested place rather than inside JSX.
+ *
+ * Search is restricted the same way, for a different reason: `search:query`
+ * (api/src/policy/can.ts) carries exactly `course:list`'s grant — student
+ * only — so a teacher-only or admin account gets a 403 from the API, same
+ * as it would from the catalog. Rather than surface that as an in-page
+ * permission error, `restrictedToSearch` + `canSearch` hide the entry point
+ * from an account that could never use it, the same choice Grading already
+ * made for the same underlying reason (a role floor, not a per-resource
+ * check).
  */
 
 export interface NavDestination {
@@ -58,6 +67,16 @@ export interface NavDestination {
    * fixing rather than living with.
    */
   restrictedToAdmin?: boolean;
+  /**
+   * Phase 16. Only visible to an actor who may reach `GET /api/v1/search`
+   * at all — `search:query` grants to `student` only, exactly like
+   * `course:list` (api/src/policy/can.ts), so a teacher-only or admin
+   * account matches nothing and would only ever see a 403. Derived the
+   * same way as `restrictedToTeacher`/`restrictedToInviter`: the caller
+   * asks the API's own floor rather than checking a role directly, since
+   * there is no `roles` field on `Me` (CLAUDE.md rule 1).
+   */
+  restrictedToSearch?: boolean;
 }
 
 /** What the shell knows about the actor, for deciding which destinations to render. */
@@ -68,10 +87,13 @@ export interface NavAudience {
   canInvite: boolean;
   /** Holds the operator role (design §5.1). */
   isAdmin: boolean;
+  /** Can reach search — student only, same grant as `course:list` (design §16). */
+  canSearch: boolean;
 }
 
 export const NAV_DESTINATIONS: readonly NavDestination[] = [
   { href: '/', label: 'Catalog', activePrefixes: ['/courses'] },
+  { href: '/search', label: 'Search', restrictedToSearch: true },
   { href: '/me', label: 'Dashboard' },
   { href: '/grading', label: 'Grading', restrictedToTeacher: true },
   { href: '/invites', label: 'Invitations', restrictedToInviter: true },
@@ -91,7 +113,8 @@ export function visibleNavDestinations(audience: NavAudience): readonly NavDesti
     (destination) =>
       (!destination.restrictedToTeacher || audience.isTeacher) &&
       (!destination.restrictedToInviter || audience.canInvite) &&
-      (!destination.restrictedToAdmin || audience.isAdmin),
+      (!destination.restrictedToAdmin || audience.isAdmin) &&
+      (!destination.restrictedToSearch || audience.canSearch),
   );
 }
 

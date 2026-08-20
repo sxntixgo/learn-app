@@ -6,6 +6,7 @@ import { registerSecurityHeaders } from './security-headers.ts';
 import cookie from '@fastify/cookie';
 import type { CourseRouteDeps } from './routes/courses.ts';
 import { registerCourseRoutes } from './routes/courses.ts';
+import { registerSearchRoutes } from './routes/search.ts';
 import type { ProgressRouteDeps } from './routes/progress.ts';
 import { registerProgressRoutes } from './routes/progress.ts';
 import type { QuizRouteDeps } from './routes/quiz.ts';
@@ -85,6 +86,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   });
 
   registerCourseRoutes(fastify, options);
+  registerSearchRoutes(fastify, options);
   registerProgressRoutes(fastify, options);
   registerQuizRoutes(fastify, options);
   registerMeRoutes(fastify, options);

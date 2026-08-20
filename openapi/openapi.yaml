@@ -170,6 +170,50 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/v1/search:
+    get:
+      summary: Full-text search across lesson titles and prose
+      description: >-
+        Postgres full-text search over lesson titles and the text of their
+        prose blocks (design §16, plan Phase 16), grouped by course.
+
+        Results are filtered to exactly what the actor may read: the same
+        rule `can(actor, 'lesson:read', ...)` applies, which means a course
+        the actor neither owns nor can see never appears, and neither do
+        archived lessons or archived modules. Because §5 gives `lesson:read`
+        only to `student`, a teacher-only or admin account searches
+        successfully and matches nothing — roles are a set, so a teacher who
+        also learns holds `student` too.
+      operationId: search
+      tags:
+        - search
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: The search query. Blank or whitespace-only yields an empty result set rather than an error.
+          schema:
+            type: string
+            maxLength: 200
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of matching lessons to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: Matching lessons, grouped by course, most relevant first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResults'
+        '403':
+          description: The actor may not search (anonymous callers included)
+
   /api/v1/courses:
     get:
       summary: List all courses
@@ -2537,6 +2581,53 @@ components:
         `hidden` — absent from the catalog; a direct fetch 404s for anyone
         but the owner or an admin. New courses land `hidden`; re-import
         never changes it.
+
+    SearchResults:
+      type: object
+      description: Lessons matching a query, grouped by the course they belong to.
+      required: [query, groups]
+      properties:
+        query:
+          type: string
+          description: The query as the caller sent it, echoed back so a client can label the results.
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchCourseGroup'
+      additionalProperties: false
+
+    SearchCourseGroup:
+      type: object
+      description: One course, with the lessons in it that matched.
+      required: [courseSlug, courseTitle, lessons]
+      properties:
+        courseSlug:
+          type: string
+        courseTitle:
+          type: string
+        lessons:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchHit'
+      additionalProperties: false
+
+    SearchHit:
+      type: object
+      description: One matching lesson.
+      required: [lessonSlug, title, snippet]
+      properties:
+        lessonSlug:
+          type: string
+        title:
+          type: string
+        snippet:
+          type: string
+          description: >-
+            A short extract of the matching prose with the matched terms
+            marked by <mark> elements, produced by Postgres ts_headline.
+            The only markup it may contain is <mark>; everything else is
+            escaped, because the source prose is HTML.
+      additionalProperties: false
 
     CourseSummary:
       type: object

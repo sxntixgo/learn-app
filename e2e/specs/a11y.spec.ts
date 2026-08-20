@@ -109,6 +109,9 @@ const ROUTES: RouteCase[] = [
 
   // Student (viewportUser) — everything behind plain auth.
   { name: 'catalog', path: '/', session: 'student', expectUrl: /\/$/ },
+  // Phase 16: search results grouped by course, axe-scanned with a real
+  // query so the results markup (not just the empty form) is covered.
+  { name: 'search', path: `/search?q=seeded`, session: 'student', expectUrl: /\/search\?q=seeded$/ },
   {
     name: 'course detail',
     path: `/courses/${fixtures.courseSlug}`,

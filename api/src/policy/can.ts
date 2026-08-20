@@ -306,6 +306,14 @@ const MATRIX = {
   // how a teacher reads. A teacher-only account authoring a course sees the
   // course SETTINGS (course:manage:read), not the lessons.
   'course:list': { row: 'Enroll, read, track own progress', student: ALLOW },
+  // Phase 16. Deliberately the same grant as `course:list`, not a broader
+  // one: search is the catalog reached by typing, so anyone who may not
+  // browse the catalog may not search it either. It takes no course context
+  // because it spans courses — the per-result visibility filtering is
+  // `lesson:read`'s rule applied in SQL, and api/src/search/query.test.ts
+  // asserts the two agree for every role/visibility/ownership combination
+  // rather than trusting that they do.
+  'search:query': { row: 'Enroll, read, track own progress', student: ALLOW },
   'course:read': { row: 'Enroll, read, track own progress', student: STUDENT_VISIBLE_OR_OWN },
   'lesson:read': { row: 'Enroll, read, track own progress', student: STUDENT_VISIBLE_OR_OWN },
   'course:enrol': { row: 'Enroll, read, track own progress', student: STUDENT_ENROLLABLE },

@@ -30,6 +30,12 @@ const ICONS: Record<string, React.ReactNode> = {
       <line x1="7" y1="15.5" x2="13" y2="15.5" />
     </svg>
   ),
+  '/search': (
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <line x1="15.3" y1="15.3" x2="20.5" y2="20.5" />
+    </svg>
+  ),
   '/me': (
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M4 20V10" />

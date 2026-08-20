@@ -60,6 +60,9 @@ export type InviteAcceptResult = components['schemas']['InviteAcceptResult'];
 export type AuditEntry = components['schemas']['AuditEntry'];
 export type AdminUser = components['schemas']['AdminUser'];
 export type RoleAssignRequest = components['schemas']['RoleAssignRequest'];
+export type SearchResults = components['schemas']['SearchResults'];
+export type SearchCourseGroup = components['schemas']['SearchCourseGroup'];
+export type SearchHit = components['schemas']['SearchHit'];
 
 // Re-exported so callers (Server Components deciding whether to redirect to
 // /login) never need to import from ./api-errors directly — api.ts is the
@@ -168,6 +171,45 @@ export async function fetchCourse(courseSlug: string): Promise<CourseDetail | nu
     throw new Error(`Failed to fetch course "${courseSlug}": ${res.status}`);
   }
   return (await res.json()) as CourseDetail;
+}
+
+/**
+ * Full-text search across lesson titles and prose, grouped by course
+ * (design §16, plan Phase 16). `limit` is left to the API's own default
+ * (20) when omitted.
+ *
+ * A blank `q` is not special-cased here: the API itself returns `{ query:
+ * '', groups: [] }` for one (api/src/search/query.ts's own comment — "a
+ * blank box is not an error and not 'everything' — it is no results"), so
+ * there is nothing for this client to short-circuit.
+ */
+export async function fetchSearch(q: string, limit?: number): Promise<SearchResults> {
+  const params = new URLSearchParams({ q });
+  if (limit !== undefined) params.set('limit', String(limit));
+  const res = await apiFetch(`/api/v1/search?${params.toString()}`);
+  if (!res.ok) {
+    throw new Error(`Failed to search: ${res.status}`);
+  }
+  return (await res.json()) as SearchResults;
+}
+
+/**
+ * Whether the actor can reach search at all — the root layout's answer to
+ * "should Nav's Search destination render". Same shape as `fetchIsTeacher`/
+ * `fetchCanInvite`: ask the API's own `search:query` floor (which carries
+ * exactly `course:list`'s grant — student only) with a blank query, so this
+ * probes the 403-or-not floor check in api/src/routes/search.ts without
+ * ever running a real query, and treat a refusal as "no" rather than
+ * letting it propagate — the shell renders for every visitor.
+ */
+export async function fetchCanSearch(): Promise<boolean> {
+  try {
+    await fetchSearch('');
+    return true;
+  } catch (err) {
+    if (err instanceof AuthRequiredError) return false;
+    throw err;
+  }
 }
 
 /**

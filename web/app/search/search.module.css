@@ -1,0 +1,172 @@
+/*
+ * Search (design §16, plan Phase 16 task 2). Single-column at every width,
+ * same idiom as page.module.css (catalog) and invites.module.css — no
+ * hover-only affordance, nothing depends on a pointer, so 375px is the
+ * same layout as wide, just narrower.
+ */
+
+.page {
+  max-width: 60ch;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-3) var(--space-6);
+}
+
+.title {
+  font-size: clamp(1.5rem, 4vw + 0.5rem, 2.25rem);
+  margin: 0 0 var(--space-1);
+}
+
+.intro {
+  max-width: var(--measure-prose, 46ch);
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-4);
+  line-height: 1.55;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Form                                                                    */
+/* ---------------------------------------------------------------------- */
+
+.form {
+  margin-bottom: var(--space-4);
+}
+
+.label {
+  display: block;
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 0.9rem;
+  margin-bottom: var(--space-1);
+}
+
+/* Row wraps at 375px rather than clipping: the button drops below the
+   input instead of squeezing it, and each control keeps its own 44px
+   minimum touch target either way. */
+.inputRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.input {
+  flex: 1 1 12rem;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-size: 0.95rem;
+}
+
+.input:focus-visible {
+  outline: var(--border-regular) solid var(--color-link);
+  outline-offset: 1px;
+}
+
+.submitButton {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.6rem 1.5rem;
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-page);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-weight: 500;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.submitButton:hover {
+  background: var(--color-surface-raised);
+}
+
+.submitButton:focus-visible {
+  outline: var(--border-regular) solid var(--color-link);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Empty / no-results sentences                                           */
+/* ---------------------------------------------------------------------- */
+
+.empty {
+  max-width: var(--measure-prose, 46ch);
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Results, grouped by course                                             */
+/* ---------------------------------------------------------------------- */
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.group + .group {
+  padding-top: var(--space-4);
+  border-top: var(--border-hairline) solid var(--color-border-hairline);
+}
+
+.groupTitle {
+  font-size: 1.1rem;
+  margin: 0 0 var(--space-2);
+}
+
+.lessonList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.lessonCard {
+  display: block;
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  padding: var(--space-2);
+  color: inherit;
+  text-decoration: none;
+}
+
+.lessonCard:focus-visible {
+  outline: var(--border-regular) solid var(--color-link);
+  outline-offset: 2px;
+}
+
+.lessonTitle {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 0.3rem;
+}
+
+.lessonSnippet {
+  display: block;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  /* Long unbroken content (a URL, a very long identifier in prose) wraps
+     rather than forcing horizontal scroll at 375px. */
+  overflow-wrap: anywhere;
+}
+
+/* The one highlight the snippet's markup can contain (see page.tsx's
+   comment on renderSnippet) — never colour alone: weight carries the
+   signal too, so it survives a colour-vision deficiency or a greyscale
+   print the same way the audit log's status pills do. */
+.lessonSnippet :global(mark) {
+  background: var(--color-tag-bg);
+  color: var(--color-tag-text);
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  padding: 0 0.15em;
+}

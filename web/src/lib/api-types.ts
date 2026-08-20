@@ -104,6 +104,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Full-text search across lesson titles and prose
+         * @description Postgres full-text search over lesson titles and the text of their prose blocks (design §16, plan Phase 16), grouped by course.
+         *     Results are filtered to exactly what the actor may read: the same rule `can(actor, 'lesson:read', ...)` applies, which means a course the actor neither owns nor can see never appears, and neither do archived lessons or archived modules. Because §5 gives `lesson:read` only to `student`, a teacher-only or admin account searches successfully and matches nothing — roles are a set, so a teacher who also learns holds `student` too.
+         */
+        get: operations["search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses": {
         parameters: {
             query?: never;
@@ -1062,6 +1083,25 @@ export interface components {
          * @enum {string}
          */
         CourseVisibility: "open" | "restricted" | "hidden";
+        /** @description Lessons matching a query, grouped by the course they belong to. */
+        SearchResults: {
+            /** @description The query as the caller sent it, echoed back so a client can label the results. */
+            query: string;
+            groups: components["schemas"]["SearchCourseGroup"][];
+        };
+        /** @description One course, with the lessons in it that matched. */
+        SearchCourseGroup: {
+            courseSlug: string;
+            courseTitle: string;
+            lessons: components["schemas"]["SearchHit"][];
+        };
+        /** @description One matching lesson. */
+        SearchHit: {
+            lessonSlug: string;
+            title: string;
+            /** @description A short extract of the matching prose with the matched terms marked by <mark> elements, produced by Postgres ts_headline. The only markup it may contain is <mark>; everything else is escaped, because the source prose is HTML. */
+            snippet: string;
+        };
         /** @description A course as it appears in the catalog listing. */
         CourseSummary: {
             /** @description The course's globally-unique slug */
@@ -2160,6 +2200,38 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Error"];
                 };
+            };
+        };
+    };
+    search: {
+        parameters: {
+            query: {
+                /** @description The search query. Blank or whitespace-only yields an empty result set rather than an error. */
+                q: string;
+                /** @description Maximum number of matching lessons to return. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matching lessons, grouped by course, most relevant first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResults"];
+                };
+            };
+            /** @description The actor may not search (anonymous callers included) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
