@@ -130,6 +130,18 @@ export const E2E_AVATAR_HANDLE = 'e2e-avatar';
 export const E2E_AVATAR_PASSWORD = 'a-long-enough-avatar-password';
 
 /**
+ * A student who has read nothing yet, for the stale-dashboard spec.
+ *
+ * Dedicated and RESET every run for one reason: the spec's whole subject is
+ * what the dashboard shows immediately after a lesson is completed for the
+ * FIRST time. An account that already completed it in a previous run would
+ * make the assertion pass without the write under test happening at all.
+ */
+export const E2E_FEED_EMAIL = 'e2e-feed@example.test';
+export const E2E_FEED_HANDLE = 'e2e-feed';
+export const E2E_FEED_PASSWORD = 'a-long-enough-feed-password';
+
+/**
  * Phase 15 task 4: a second, dedicated platform invite, distinct from
  * `invite` (task 2's, single-use and consumed by core-journeys.spec.ts).
  * The accessibility pass only needs to LOAD /invite/[token] and axe-scan
@@ -242,6 +254,12 @@ export interface E2eFixtures {
    * — see E2E_DELETABLE_EMAIL's own comment for why this one, uniquely, has
    * no other spec depending on it.
    */
+  /** A student enrolled but with nothing completed, for the stale-dashboard spec. */
+  feedUser: {
+    email: string;
+    password: string;
+    handle: string;
+  };
   /** Phase 12 (§11.1): a student dedicated to the avatar spec's mutations. */
   avatarUser: {
     email: string;
@@ -464,6 +482,29 @@ async function ensureDeletableUser(client: pg.PoolClient): Promise<void> {
 }
 
 /**
+ * The stale-dashboard spec's account: enrolled in the course, with nothing
+ * completed. Reset every run so "the first completion" is genuinely the
+ * first one.
+ */
+async function ensureFeedUser(client: pg.PoolClient, courseId: string): Promise<void> {
+  await resetInvitedAccount(client, E2E_FEED_EMAIL);
+  const passwordHash = await hashPassword(E2E_FEED_PASSWORD);
+  const user = await client.query<{ id: string }>(
+    `insert into users (email, handle, password_hash, display_name) values ($1, $2, $3, $4) returning id`,
+    [E2E_FEED_EMAIL, E2E_FEED_HANDLE, passwordHash, 'E2E Feed'],
+  );
+  const userId = user.rows[0]!.id;
+  await client.query(`insert into user_roles (user_id, role) values ($1, 'student')`, [userId]);
+  // Enrolled already: the spec is about what happens after a COMPLETION, and
+  // walking the enrolment flow first would only add a second thing that could
+  // fail for unrelated reasons.
+  await client.query(
+    `insert into enrollments (user_id, course_id) values ($1, $2) on conflict (user_id, course_id) do nothing`,
+    [userId, courseId],
+  );
+}
+
+/**
  * Phase 12 (§11.1): the account the avatar spec uploads to. Reset the same
  * way `ensureDeletableUser` is, so every run starts on the identicon.
  */
@@ -683,6 +724,7 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
     const exercise = await ensureExerciseSubmission(client, courseId, viewportUserId);
     await ensureDeletableUser(client);
     await ensureAvatarUser(client);
+    await ensureFeedUser(client, courseId);
     return {
       courseSlug,
       lessonSlug,
@@ -705,6 +747,11 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
         email: E2E_AVATAR_EMAIL,
         password: E2E_AVATAR_PASSWORD,
         handle: E2E_AVATAR_HANDLE,
+      },
+      feedUser: {
+        email: E2E_FEED_EMAIL,
+        password: E2E_FEED_PASSWORD,
+        handle: E2E_FEED_HANDLE,
       },
     };
   } finally {

@@ -43,8 +43,34 @@
   --color-tag-bg: oklch(0.94 0.035 205);
   --color-tag-text: oklch(0.42 0.06 210);
 
-  /* The one yellow accent — never a fill, never body text (rule 1) */
-  --color-accent-yellow: oklch(0.72 0.15 88);
+  /*
+   * The one yellow accent — never a fill, never body text (rule 1).
+   *
+   * 0.63/0.125, not the 0.72/0.15 this started as, and the change is a
+   * correction rather than a redesign. The old value was WRONG TWICE, both
+   * measurable and neither visible by eye:
+   *
+   *   1. It was outside the sRGB gamut (its blue channel came out negative),
+   *      so no browser ever displayed the colour that was written here — they
+   *      all clipped it to #cc9d00. The specified value was not the shipped
+   *      one.
+   *   2. That clipped colour is 2.46:1 against the page. Every use of this
+   *      token in the app is a BORDER or an active-state indicator — the nav's
+   *      current-item underline, the admin tab marker, the rule beside an
+   *      error — which makes it a non-text UI component under WCAG 1.4.11 and
+   *      puts the floor at 3:1. axe does not check border colours, which is
+   *      why 69 passing accessibility assertions never mentioned it.
+   *
+   * This value is the BRIGHTEST in-gamut yellow at the same hue (88) that
+   * clears 3:1 against both light surfaces: 3.47 against the page, 3.25
+   * against a raised card. Hue is unchanged, so its relationship to track
+   * ochre (H 65, deliberately 23 degrees away) is unchanged too.
+   *
+   * Dark mode was already fine — 9.97:1, in gamut — and is untouched.
+   *
+   * web/src/lib/palette.test.ts holds the floor now.
+   */
+  --color-accent-yellow: oklch(0.63 0.125 88);
 
   /* Logo tile is pure white in both modes (rule 2) */
   --color-logo-tile: #fff;

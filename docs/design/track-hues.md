@@ -113,4 +113,41 @@ indicators, not text):
 | maroon | 5.70                               | 8.41                                |
 | slate  | 5.42                               | 8.76                                |
 
-All ten clear 3:1 with margin to spare.
+All ten clear 3:1 with margin to spare. Re-derived and asserted in
+`web/src/lib/palette.test.ts` on 2026-08-21; the numbers above were correct.
+
+## What measurement changed, 2026-08-21
+
+Two things this document asserted turned out to need correcting once the
+arithmetic was actually run (`web/src/lib/oklch.ts`, `palette.test.ts`).
+
+**"`slate` vs `blue` differ almost entirely in chroma" was the wrong worry.**
+It is a real observation — they share a hue family and differ by 0.075 in
+chroma — but they are not the closest pair. Under simulated deuteranopia
+(Viénot 1999, on linear rgb), measured as OKLab distance:
+
+| Pair | Normal | Worst dichromacy |
+|---|---|---|
+| blue / slate | 0.075 | 0.070 (protanopia) |
+| **teal / slate** | 0.041 | **0.021 (deuteranopia)** |
+
+Teal is the one that collapses toward slate, not blue — teal's chroma is
+carried almost entirely on the green-red axis that deuteranopia flattens,
+while slate has hardly any chroma to lose. `palette.test.ts` asserts this
+ordering, so if a future change makes the documented worry the real one,
+someone finds out from a failing test rather than by reading this file and
+believing it.
+
+**Why the threshold there is nonetheless low.** A track hue never appears
+alone: §14.1 confines it to a chip border, a left-edge rule, or a small mono
+label, and the chip and the label carry the track's NAME. Hue is a redundant
+cue, so the requirement is that two tracks are not literally the same colour.
+The heatmap is the opposite case — a filled square with nothing written on it
+— and gets a real floor (0.04 ΔEok per step; the tightest step measures
+0.051).
+
+**Two heatmap fills are out of gamut in light mode.** `--color-heat-4`
+(`0.55 0.11 210`) and `--color-heat-5` (`0.4 0.115 210`) clip. Left alone
+deliberately: they are fills with no contrast requirement, and the clipped
+ramp still separates at every step. Recorded in `palette.test.ts` as known,
+so that a NEW out-of-gamut token fails instead of joining them quietly.

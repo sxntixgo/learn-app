@@ -1,4 +1,4 @@
-# Multi-stage build for the Next.js web app
+# Multi-stage build for the Next.js web app.
 FROM node:22-slim AS builder
 
 WORKDIR /app
@@ -9,18 +9,44 @@ COPY package.json package-lock.json ./
 # Copy web workspace
 COPY web/package.json web/
 COPY web/next.config.ts web/
-COPY .env.example .env.example
 
-# Install dependencies for web workspace
-RUN npm ci --workspace=web --omit=dev
+# DEV DEPENDENCIES ARE REQUIRED HERE. `next build` type-checks the app
+# (CLAUDE.md: it is the ONLY thing that type-checks web/), which needs
+# typescript and @types/*, both of which are devDependencies. `--omit=dev`
+# was here and would have failed the build.
+RUN npm ci --workspace=web
 
-# Copy source code
+# Copy source code.
+#
+# `web/app` IS THE APPLICATION. It was missing from this list, which meant
+# this image could never have built at all: Next exits with "Couldn't find
+# any `pages` or `app` directory". Docker is not available in the dev
+# container (CLAUDE.md), so nothing ever ran it.
+COPY web/app ./web/app
 COPY web/src ./web/src
 COPY web/public ./web/public
+COPY web/proxy.ts web/
+COPY web/next-env.d.ts web/
 COPY web/tsconfig.json web/
 COPY tsconfig.base.json ./
 
-# Build Next.js (output will be in web/.next with standalone mode)
+# NEXT_PUBLIC_* IS INLINED AT BUILD TIME, NOT READ AT RUNTIME.
+#
+# Next statically replaces every `process.env.NEXT_PUBLIC_*` reference during
+# `next build`, server code included. Setting it in docker-compose's
+# `environment:` — which is what this file used to say it did, in a comment
+# at the bottom — has no effect whatever on the built bundle: the container
+# would start, and every page would fail because `apiBase()` found nothing.
+#
+# This was already known here and written down in playwright.config.ts, which
+# rebuilds the web app for exactly this reason and says so at length. The
+# Dockerfile simply never caught up.
+#
+# So it arrives as a build ARG. docker-compose.yml passes it under
+# `build.args`, not only under `environment`.
+ARG NEXT_PUBLIC_API_BASE_URL=http://api:3001
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+
 WORKDIR /app/web
 RUN npm run build
 
@@ -41,8 +67,9 @@ USER app
 
 EXPOSE 3000
 
-# Note: NEXT_PUBLIC_API_BASE_URL is set via docker-compose environment variables
-# The web service intentionally does NOT receive DATABASE_URL (see docker-compose.yml)
+# The web service intentionally does NOT receive DATABASE_URL — CLAUDE.md
+# rule 1, and the single most important boundary in this stack.
+#
 # `web/server.js`, not `server.js`. This is a workspace build, so Next's
 # standalone output preserves the workspace layout and puts the entry point at
 # `.next/standalone/web/server.js` — which is also why the two COPY lines above

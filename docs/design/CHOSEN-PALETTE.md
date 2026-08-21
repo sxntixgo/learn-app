@@ -20,7 +20,7 @@ Lineage: 1c → 2a → 4a → 6c → 7b → 8d → 9a/9b. All colors sampled fro
 | Bottom banner (graphite) | `oklch(0.3 0.008 250)`, text `oklch(0.93 0.004 90)` |
 | Link / date teal | `oklch(0.45 0.075 210)` |
 | Tag chip | bg `oklch(0.94 0.035 205)`, text `oklch(0.42 0.06 210)` |
-| Yellow (single accent) | `oklch(0.72 0.15 88)` |
+| Yellow (single accent) | `oklch(0.63 0.125 88)` — **corrected 2026-08-21, see below** |
 
 ## Dark (9b)
 | Role | Value |
@@ -34,6 +34,30 @@ Lineage: 1c → 2a → 4a → 6c → 7b → 8d → 9a/9b. All colors sampled fro
 | Link / date teal | `oklch(0.80 0.075 205)` |
 | Tag chip | bg `oklch(0.3 0.03 205)`, text `oklch(0.83 0.06 205)` |
 | Yellow (single accent) | `oklch(0.82 0.15 88)` |
+
+## The light yellow was corrected on 2026-08-21
+
+It was `oklch(0.72 0.15 88)` from the first pass until Gate 4's first question
+was finally answered with arithmetic instead of an eye. The answer was no, and
+the value was wrong twice over:
+
+1. **Outside the sRGB gamut.** Its blue channel comes out negative, so no
+   browser ever showed the colour written here — every one of them clipped it
+   to `#cc9d00`. What the file specified was never what shipped.
+2. **2.46:1 against the page.** Rule 1 below spends this colour on the active-nav
+   underline, the 2px role rule, and the about-box left edge — borders and
+   state indicators, which WCAG 1.4.11 holds to 3:1 as non-text UI components.
+   axe does not check border colours, which is why a passing accessibility
+   suite never mentioned it.
+
+`oklch(0.63 0.125 88)` is the brightest in-gamut yellow at the SAME hue that
+clears 3:1 against both light surfaces (3.47 against the page, 3.25 against a
+raised card). Hue is unchanged, so its 23-degree separation from track ochre
+(H 65) is unchanged too. Dark mode measured 9.97:1, in gamut, and is untouched.
+
+`web/src/lib/palette.test.ts` now holds the floor, and
+`web/src/lib/oklch.ts` — which it uses — is itself tested against the sRGB
+primaries, because a palette check is worth exactly as much as its conversion.
 
 ## Rules
 1. **One yellow only.** Logo tile S, the 2px role rule, the active-nav underline, the about-box left edge. Never a fill, never body text.

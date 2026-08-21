@@ -1,5 +1,4 @@
-version: '3.8'
-
+# Compose v2 ignores `version:` and warns about it; it is deliberately absent.
 services:
   db:
     image: postgres:17
@@ -41,8 +40,16 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-learn}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-learn_dev}
       API_PORT: '3001'
+    # node, not curl: the base image is node:22-slim, which has no curl, so
+    # this check could only ever have failed. api.Dockerfile's own HEALTHCHECK
+    # already does it correctly with node; this override existed only to
+    # undo that.
     healthcheck:
-      test: ['CMD-SHELL', 'curl -f http://localhost:3001/api/v1/health || exit 1']
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://localhost:3001/api/v1/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
       interval: 10s
       timeout: 5s
       retries: 5
@@ -55,8 +62,15 @@ services:
     build:
       context: ..
       dockerfile: docker/web.Dockerfile
+      # NEXT_PUBLIC_* is inlined by `next build`, so this has to be a BUILD
+      # arg. Passing it only under `environment:` below — which is all this
+      # file used to do — leaves the bundle pointing nowhere and every page
+      # failing at runtime. See web.Dockerfile for the full note.
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://api:3001}
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     ports:
       - '${WEB_PORT:-3000}:3000'
     environment:

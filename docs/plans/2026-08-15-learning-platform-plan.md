@@ -133,9 +133,15 @@ database access, no credentials in any committable file.
 
 **New work discovered, for later phases:**
 
-- [ ] Existing content uses ```mermaid fences, currently rendered as plain code. A `diagram`
-      block type is worth considering in Phase 10 alongside `chart` and `figure`.
-      **Model:** `sonnet`
+- [x] **DONE 2026-08-21.** Existing content uses ```mermaid fences, which rendered as plain
+      code. There is now a `diagram` block: parsed in `parse.ts`, in the block schema and
+      the OpenAPI contract, drawn in the browser. It stores the SOURCE, not an SVG, unlike
+      `figure` — mermaid is a layout engine that needs real text metrics, and rendering it
+      server-side under jsdom fails in the worst available way, by SUCCEEDING with a wrong
+      picture (a four-node flowchart came back as a 116x36 viewBox with every node on top
+      of every other). The cost is ~1.4 MB of lazily loaded client JS; an E2E test measures
+      script bytes on a page with a diagram against one without, so the "loaded only where
+      needed" claim cannot quietly stop being true. The CSP did not move.
 - [ ] `web/tsconfig.json` is Next-generated and sits outside the root composite project, so
       `npm run typecheck` does not cover it — `next build` does. Consider unifying in Phase 4.
       **Model:** `haiku`
@@ -356,10 +362,33 @@ Verified independently here:
 
 ### Gate 4 — needs a human (accumulated)
 
+**Three of these were arithmetic, not judgement, and were answered on 2026-08-21**
+(`web/src/lib/oklch.ts` + `palette.test.ts`, which now hold the results as assertions).
+
+- [x] **Does the yellow clear 3:1 as a non-text indicator in light mode?** **NO — it was
+      2.46:1**, and the specified value was outside the sRGB gamut besides, so no browser
+      ever displayed it. Every use of the token is a border or an active-state marker,
+      which WCAG 1.4.11 puts a 3:1 floor under; axe does not check border colours, so a
+      passing accessibility suite never mentioned it. Corrected to
+      `oklch(0.63 0.125 88)` — the brightest in-gamut yellow at the same hue clearing 3:1
+      on both light surfaces (3.47 page / 3.25 card). Dark mode measured 9.97:1 and is
+      unchanged.
+- [x] **`slate` vs `blue` "differ almost entirely in chroma" — too close?** Real, but
+      **not the closest pair**. Under simulated deuteranopia, teal/slate measures 0.021
+      ΔEok against blue/slate's 0.070 — teal is the one that collapses toward slate. The
+      documented worry was aimed at the wrong pair. Judged acceptable because a track hue
+      never appears without its name beside it (§14.1 confines it to a chip border, a
+      left-edge rule, or a small mono label); the heatmap, where colour IS the only
+      signal, gets a real floor instead and clears it.
+- [x] **Is the heatmap ramp distinguishable?** Yes, at every step, under normal vision and
+      all three dichromacies, and after the clipping that two out-of-gamut light-mode
+      steps incur. Tightest is empty→level-one at 0.051 ΔEok against a 0.04 floor — the
+      step design §10 singles out.
+
+Still genuinely needing eyes:
+
 - [ ] Do the five track hues read as their names at chip and 3px-rule size?
 - [ ] Is 30–35° hue separation enough to the eye between adjacent tracks?
-- [ ] **`slate` (H250, C0.02) vs `blue` (H255, C0.095) differ almost entirely in chroma** —
-      distinguishable as a 3px left-edge rule, or too close?
 - [ ] Is the breakout escape visually obvious at 375px?
 - [ ] Does the shell match `9a-light.png` / `9b-dark.png` in banner and footer treatment?
 - [ ] **The Claude Design pass on the annotatable code block** — Phase 8 depends on it
@@ -548,10 +577,26 @@ Verified independently here:
 
 ### Gate 6 — needs a human, and this is the exposure decision
 
-- [ ] **Open the app in a real browser with the CSP on.** Verified structurally only —
-      no browser in the dev container. Check code blocks keep their colours, hydration
-      works, and the console is free of CSP violations
-- [ ] Confirm `docker compose up` still works with the headers in place
+- [x] **Open the app in a real browser with the CSP on.** Done 2026-08-21:
+      `e2e/specs/csp.spec.ts` drives real Chromium against the built app and asserts zero
+      `securitypolicyviolation` events on three routes, that Next's nonce'd bootstrap
+      scripts actually EXECUTE (a policy can be word-perfect and still leave a blank app),
+      that the nonce in the header is the nonce on the scripts, that it is fresh per
+      request, and that the manifest fetch — which only happens when something asks for it
+      — succeeds. Verified by mutation: dropping the nonce from `script-src` turns it red
+      with "Next's bootstrap scripts never ran".
+- [ ] **Confirm `docker compose up` works.** STILL NEEDS THE WSL HOST — Docker is not
+      available in the dev container. But the files were finally read against the tree
+      they describe on 2026-08-21, and **the stack had never been built by anyone**:
+      `web.Dockerfile` did not copy `web/app` (so `next build` could not run at all), ran
+      `npm ci --omit=dev` without the typescript it type-checks with, and passed
+      `NEXT_PUBLIC_API_BASE_URL` only at runtime — which does nothing, since Next inlines
+      it at build time, a fact this repo had already discovered and written down in
+      `playwright.config.ts`. `api.Dockerfile` did not copy `schemas/`, which the API
+      reads from disk at runtime. The compose healthcheck shelled out to `curl`, absent
+      from `node:22-slim`. All fixed, and `tools/src/docker-stack.test.ts` now derives the
+      web COPY list from the actual tree so a new top-level directory cannot go missing
+      the way `app/` did. **A green test here is not a green `docker compose up`.**
 - [ ] Decide whether to backfill `courses.owner_id` for the existing imported catalog —
       they are currently unowned, so only an admin may act on them
 - [ ] Existing courses were backfilled to `hidden`. Publish the ones you want visible
@@ -699,15 +744,28 @@ it, and an untested restore is not a backup. This lands before real progress dat
 - [ ] **Public profile route** — deny-by-default serializer, rate limiting, per-user `noindex`, OG tags
       **Acceptance:** a test that adds a new field to the profile model asserts it does **not** appear publicly without explicit allowlisting
       **Model:** `opus` — *(a) security: this is the classic profile-endpoint leak*
-- [ ] **BLOCKER, found 2026-08-17: `sharp` carries unpatched libvips CVEs**
+- [x] **CLEARED 2026-08-21. BLOCKER, found 2026-08-17: `sharp` carries unpatched libvips CVEs**
+      Fixed by the Next 15 → 16 upgrade: sharp 0.34.5 → 0.35.3, `@img/sharp-libvips-*`
+      1.2.4 → 1.3.2 (libvips 8.18.0 → 8.18.3). `tools/src/libvips-cve.test.ts` fails the
+      build if the vulnerable line comes back, checking the prebuilt binary packages as
+      well as `sharp` itself — the vulnerable code lives in the binaries, so checking only
+      `sharp` would pass with an overridden libvips still on disk. The upgrade surface was
+      smaller than feared: middleware.ts → proxy.ts, `allowImportingTsExtensions` for the
+      tsconfig Next rewrote, React 19.2, Turbopack by default.
+- [ ] ~~**BLOCKER, found 2026-08-17: `sharp` carries unpatched libvips CVEs**~~
       (CVE-2026-33327 / 33328 / 35590). It ships with Next and processes nothing
       untrusted today — but avatar uploads are precisely untrusted image bytes reaching
       libvips, and the design's "always re-encode" rule routes them straight through it.
       Fix requires Next 15 → 16 (semver major, touches middleware and the CSP nonce
       plumbing). **Do this before the upload pipeline, not after.**
       **Model:** `sonnet`
-- [ ] **Avatars** — generated identicon plus upload pipeline
-      **Acceptance:** a JPEG with EXIF GPS yields a WebP with no metadata; SVG rejected; oversized rejected **before** decode; a decompression bomb does not exhaust memory
+- [x] **Avatars — DONE 2026-08-21** — generated identicon plus upload pipeline
+      All four acceptance criteria hold, each with a test that fails for the right reason
+      when its guard is removed (`api/src/profile/avatar.test.ts`). The oversized fixture
+      is also undecodable garbage, so the refusal REASON changes if the size check moves
+      below the decode — "before decode" is a claim about how the answer is reached, which
+      no assertion on a return value alone can make. The bomb is a 128-byte PNG declaring
+      2.5 gigapixels; resident memory grows 1.4 MB.
       **Model:** `opus` — *(a) security: untrusted binary input and image decoding*
 
 - [x] **FIXED 2026-08-20: no user with activity history could be deleted at all**
@@ -725,7 +783,8 @@ it, and an untested restore is not a backup. This lands before real progress dat
       else. **The remaining decision for the entry below is only about EXPORT and the
       rest of the deletion flow, not about whether deletion can happen.**
 
-- [ ] **Account deletion and data export** — a student can export their own data and delete their account
+- [x] **Account deletion and data export — DONE 2026-08-20**
+- [ ] ~~**Account deletion and data export**~~ — a student can export their own data and delete their account
       **Acceptance:** export returns progress, submissions, badges and profile as JSON. Deletion removes personal data while preserving referential integrity. The `activity_events` question is now settled — they are DELETED, via 0017's `app.erasing_user` carve-out; use it rather than inventing a second mechanism
       **Model:** `opus` — *(b) data integrity: deletion against an append-only log is exactly where this goes wrong quietly*
 
@@ -777,6 +836,31 @@ catch layout, focus order, or whether a component is actually usable.*
       heatmap and the annotatable code block
       **Acceptance:** no critical violations; the grid is reachable and escapable by keyboard
       **Model:** `sonnet`
+
+### The core-journeys feed flake — closed 2026-08-21, and the suspect was wrong
+
+`core-journeys.spec.ts` failed about one run in eight, always at the same step: mark a
+lesson complete, click Dashboard, no event in the feed. Two fixes were applied at the
+time — `truncate badges, degrees` (a genuine, diagnosed cause: 385 leaked badge
+definitions produced 168 `badge_awarded` events that pushed `lesson_completed` off a
+20-item feed) and `reuseExistingServer: false` (a plausible false-failure mechanism, and
+the commit said plainly that this was a hypothesis, naming **a stale RSC payload** as the
+next suspect).
+
+**That suspect is now disproven.** `e2e/specs/stale-dashboard.spec.ts` forces the race the
+flake could only win by accident: it hovers the Dashboard link so Next prefetches `/me`
+BEFORE the completion, then completes and clicks. It passes. And it still passes with
+`router.refresh()` removed from `MarkCompleteButton` entirely — because invoking a Server
+Action expires the client Router Cache on its own. A stale payload was never reachable
+here.
+
+What can be said with evidence: **10 consecutive seeded runs of `core-journeys.spec.ts`,
+zero failures**, on top of the full suite passing repeatedly the same day. The badge flood
+was a real cause and is really fixed; whether it was the only one is not proven, and this
+note exists so nobody later reads the earlier commit and believes the RSC explanation.
+`stale-dashboard.spec.ts` stays as a regression guard on behaviour that is worth pinning
+regardless: a completion is visible on the dashboard on the very next click, with no
+reload.
 
 ---
 

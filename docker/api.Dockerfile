@@ -11,6 +11,14 @@ COPY api/package.json api/
 COPY tools/package.json tools/
 COPY db/ db/
 
+# schemas/*.json ARE READ AT RUNTIME, from disk, by
+# api/src/content/validate.ts — they live at the repo root deliberately, so a
+# future non-Node importer can read them without depending on this package
+# (design §6.2). They were missing from this image, which would have taken
+# the API down with ENOENT the first time anything imported content. Docker
+# is not available in the dev container (CLAUDE.md), so nothing ever ran it.
+COPY schemas/ schemas/
+
 # Install dependencies (including both api and tools workspaces)
 RUN npm ci --workspace=api --workspace=tools --omit=dev
 
@@ -35,6 +43,7 @@ COPY --from=builder --chown=app:app /app/package.json ./
 COPY --from=builder --chown=app:app /app/api ./api
 COPY --from=builder --chown=app:app /app/tools ./tools
 COPY --from=builder --chown=app:app /app/db ./db
+COPY --from=builder --chown=app:app /app/schemas ./schemas
 COPY --from=builder --chown=app:app /app/tsconfig*.json ./
 
 USER app
