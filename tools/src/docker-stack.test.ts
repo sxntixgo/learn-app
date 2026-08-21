@@ -1,4 +1,5 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, statSync } from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
@@ -59,16 +60,27 @@ function copiedPaths(dockerfile: string): string[] {
   return paths;
 }
 
-/** Directories directly under `web/` that hold source the build needs. */
+/**
+ * Directories directly under `web/` that hold source the build needs.
+ *
+ * From `git ls-files`, not from `readdir`. Reading the directory picks up
+ * whatever happens to be lying in the working tree — a stray `web/test-results`
+ * from a Playwright run started in the wrong directory made this fail once,
+ * demanding that the Dockerfile copy a folder of screenshots. Tracked files
+ * are what a build context is built from and what a clean checkout contains.
+ */
 function webSourceDirectories(): string[] {
-  const webDir = path.join(repoRoot, 'web');
-  return readdirSync(webDir).filter((entry) => {
-    if (entry.startsWith('.') || entry === 'node_modules') return false;
-    if (!statSync(path.join(webDir, entry)).isDirectory()) return false;
-    // `scripts/` is a build-time helper run by hand (PWA icon generation),
-    // not something `next build` reads.
-    return entry !== 'scripts';
-  });
+  const tracked = execFileSync('git', ['ls-files', 'web'], { cwd: repoRoot, encoding: 'utf8' });
+  const dirs = new Set<string>();
+  for (const file of tracked.split('\n')) {
+    const segments = file.split('/');
+    // web/<dir>/<something> — a top-level directory with content in it.
+    if (segments.length > 2 && segments[0] === 'web') dirs.add(segments[1]!);
+  }
+  // `scripts/` is a build-time helper run by hand (PWA icon generation), not
+  // something `next build` reads.
+  dirs.delete('scripts');
+  return [...dirs];
 }
 
 describe('web.Dockerfile copies the application it claims to build', () => {

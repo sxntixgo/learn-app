@@ -11,6 +11,12 @@ coverage/
 # Playwright (Phase 15) — test artifacts and the per-run fixture manifest
 # tools/src/e2e-seed.ts writes (contains a plaintext invite token, single-run
 # only; never a real secret, but not something to commit either).
-/test-results/
-/playwright-report/
+# Unanchored, deliberately. These were `/test-results/` and
+# `/playwright-report/`, which match only at the repo root — and Playwright
+# writes them relative to whatever directory it was started in. Running
+# `npx playwright test` from inside `web/` produced `web/test-results/`, which
+# git happily tracked and which then broke tools/src/docker-stack.test.ts by
+# looking like a source directory the Dockerfile had forgotten to copy.
+test-results/
+playwright-report/
 /e2e/.fixtures.json
