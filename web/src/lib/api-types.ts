@@ -1092,8 +1092,28 @@ export interface components {
             /** @description A required caption */
             caption: string;
         };
-        /** @description A content block, which may be prose, code, a quiz, a rubric, a chart, or a figure */
-        Block: components["schemas"]["ProseBlock"] | components["schemas"]["CodeBlock"] | components["schemas"]["QuizBlock"] | components["schemas"]["RubricBlock"] | components["schemas"]["ChartBlock"] | components["schemas"]["FigureBlock"];
+        /**
+         * @description A diagram written as source, drawn by the browser (the Phase 1 finding: existing content uses ```mermaid fences and they rendered as plain code).
+         *     Unlike FigureBlock, which carries sanitized SVG, this carries the notation itself. Mermaid is a layout engine whose output depends on how wide each label renders, so a correct picture needs something that can measure text; rendering it server-side without a browser produces a WRONG drawing rather than an error. Nothing here is markup, so nothing here needs sanitizing — the source reaches the DOM as text.
+         */
+        DiagramBlock: {
+            /**
+             * @description The block type discriminator (enum property replaced by openapi-typescript)
+             * @enum {string}
+             */
+            type: "diagram";
+            /**
+             * @description The notation. A field rather than an assumption, so a second one later is a new value and not a new block type.
+             * @enum {string}
+             */
+            format: "mermaid";
+            /** @description The diagram source, verbatim */
+            source: string;
+            /** @description Optional, authored as mermaid's own `%% caption:` comment so the fence stays valid mermaid everywhere else it is read. */
+            caption?: string;
+        };
+        /** @description A content block, which may be prose, code, a quiz, a rubric, a chart, a figure, or a diagram */
+        Block: components["schemas"]["ProseBlock"] | components["schemas"]["CodeBlock"] | components["schemas"]["QuizBlock"] | components["schemas"]["RubricBlock"] | components["schemas"]["ChartBlock"] | components["schemas"]["FigureBlock"] | components["schemas"]["DiagramBlock"];
         /** @description A minimal pointer to an adjacent lesson, for prev/next navigation. */
         LessonNavStub: {
             /** @description The adjacent lesson's slug (unique within the course) */

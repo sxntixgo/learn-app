@@ -29,6 +29,9 @@
         },
         {
           "$ref": "#/$defs/figureBlock"
+        },
+        {
+          "$ref": "#/$defs/diagramBlock"
         }
       ],
       "discriminator": {
@@ -172,7 +175,7 @@
       }
     },
     "rubricBlock": {
-      "description": "Design §9.4: rubrics are declared in content, filled in by the teacher, so every student is measured against the same published bar and can read the criteria before submitting. Unlike a quiz's `correct`, nothing in a rubric is secret — present.ts passes it through unchanged.",
+      "description": "Design \u00a79.4: rubrics are declared in content, filled in by the teacher, so every student is measured against the same published bar and can read the criteria before submitting. Unlike a quiz's `correct`, nothing in a rubric is secret \u2014 present.ts passes it through unchanged.",
       "type": "object",
       "required": [
         "type",
@@ -211,14 +214,14 @@
           "exclusiveMinimum": 0
         },
         "track": {
-          "description": "Optional track id this criterion belongs to, e.g. \"cx\" — matches a track's `id` in course.yaml. Carried through to rubric_scores so per-track scoring (design §9.1/§9.3) is a query, not a reconstruction.",
+          "description": "Optional track id this criterion belongs to, e.g. \"cx\" \u2014 matches a track's `id` in course.yaml. Carried through to rubric_scores so per-track scoring (design \u00a79.1/\u00a79.3) is a query, not a reconstruction.",
           "type": "string",
           "minLength": 1
         }
       }
     },
     "chartBlock": {
-      "description": "A chart block (design §6.3/§14.1, Task A). A small, honest set of server-rendered chart kinds — never a general charting DSL, never a client-side library. `data` here is always the final inline-rows form: a CSV sidecar is resolved to this same shape before a lesson's blocks reach this schema (see the top-level description).",
+      "description": "A chart block (design \u00a76.3/\u00a714.1, Task A). A small, honest set of server-rendered chart kinds \u2014 never a general charting DSL, never a client-side library. `data` here is always the final inline-rows form: a CSV sidecar is resolved to this same shape before a lesson's blocks reach this schema (see the top-level description).",
       "type": "object",
       "required": [
         "type",
@@ -232,14 +235,14 @@
           "const": "chart"
         },
         "kind": {
-          "description": "The chart kind. Deliberately a small fixed set (design §5's whitelist principle) — an unrecognised kind fails import naming the problem.",
+          "description": "The chart kind. Deliberately a small fixed set (design \u00a75's whitelist principle) \u2014 an unrecognised kind fails import naming the problem.",
           "enum": [
             "bar",
             "line"
           ]
         },
         "caption": {
-          "description": "A caption naming what the chart shows. Required — it is also the chart's accessible name (an SVG <title>), not just decoration.",
+          "description": "A caption naming what the chart shows. Required \u2014 it is also the chart's accessible name (an SVG <title>), not just decoration.",
           "type": "string",
           "minLength": 1
         },
@@ -266,13 +269,13 @@
           "minLength": 1
         },
         "value": {
-          "description": "Must be a number — a string value (e.g. an unquoted CSV cell that didn't parse, or an author typo like `value: five`) fails import naming the offending row.",
+          "description": "Must be a number \u2014 a string value (e.g. an unquoted CSV cell that didn't parse, or an author typo like `value: five`) fails import naming the offending row.",
           "type": "number"
         }
       }
     },
     "figureBlock": {
-      "description": "A figure block (design §6.3: 'the only escape hatch for bespoke visuals is a figure block containing static SVG. No scripts, ever.'). `svg` is ALREADY SANITIZED by the time it reaches this schema — api/src/content/parse.ts runs it through sanitize.ts's sanitizeSvg (scripts, event handlers, foreignObject stripped) while building the block, so this schema only checks shape, not safety.",
+      "description": "A figure block (design \u00a76.3: 'the only escape hatch for bespoke visuals is a figure block containing static SVG. No scripts, ever.'). `svg` is ALREADY SANITIZED by the time it reaches this schema \u2014 api/src/content/parse.ts runs it through sanitize.ts's sanitizeSvg (scripts, event handlers, foreignObject stripped) while building the block, so this schema only checks shape, not safety.",
       "type": "object",
       "required": [
         "type",
@@ -289,7 +292,7 @@
           "minLength": 1
         },
         "caption": {
-          "description": "Required — a figure without a caption fails import naming the problem (Task B).",
+          "description": "Required \u2014 a figure without a caption fails import naming the problem (Task B).",
           "type": "string",
           "minLength": 1
         }
@@ -339,6 +342,36 @@
           ]
         }
       ]
+    },
+    "diagramBlock": {
+      "description": "A diagram written as source, drawn by the browser. Unlike `figure`, which stores sanitized SVG, this stores the notation itself: mermaid is a layout engine whose output depends on real text metrics, so a correct picture needs something that can measure text. Rendering it server-side without a browser was tried and produces a WRONG drawing rather than an error \u2014 see api/src/content/parse.ts's DiagramBlock. Nothing here is markup, so nothing here needs sanitizing; the source reaches the DOM as text inside a <pre> and the client renderer takes it from there.",
+      "type": "object",
+      "required": [
+        "type",
+        "format",
+        "source"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "diagram"
+        },
+        "format": {
+          "description": "The notation. A field rather than an assumption, so a second one later is a new value and not a new block type.",
+          "enum": [
+            "mermaid"
+          ]
+        },
+        "source": {
+          "description": "The fence body verbatim, minus a leading `%% caption:` line if there was one.",
+          "type": "string",
+          "minLength": 1
+        },
+        "caption": {
+          "description": "Optional, authored as mermaid's own `%% caption:` comment so the fence stays valid mermaid everywhere else it is read.",
+          "type": "string"
+        }
+      }
     }
   }
 }

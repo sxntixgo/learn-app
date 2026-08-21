@@ -431,6 +431,88 @@ describe('parseLesson', () => {
     });
   });
 
+  describe('diagram blocks — the ```mermaid fences the real corpus already contains', () => {
+    const mermaidMarkdown = [
+      '# Title',
+      '',
+      'Before.',
+      '',
+      '```mermaid',
+      'graph TD;',
+      '  A[Start] --> B{Choice};',
+      '  B -->|yes| C[Do it];',
+      '```',
+      '',
+      'After.',
+      '',
+    ].join('\n');
+
+    it('parses a ```mermaid fence into a diagram block, not a code block', () => {
+      // The whole point. Until now these landed as `{ type: 'code', lang:
+      // 'mermaid' }` and rendered as a wall of unhighlighted source, which is
+      // the defect recorded against Phase 1 ("Existing content uses ```mermaid
+      // fences, currently rendered as plain code").
+      const { blocks } = parseLesson(mermaidMarkdown);
+      const diagram = blocks.find((b) => b.type === 'diagram');
+
+      expect(diagram).toBeDefined();
+      expect(diagram).toEqual({
+        type: 'diagram',
+        format: 'mermaid',
+        source: 'graph TD;\n  A[Start] --> B{Choice};\n  B -->|yes| C[Do it];',
+      });
+    });
+
+    it('leaves the prose on either side alone', () => {
+      const { blocks } = parseLesson(mermaidMarkdown);
+      expect(blocks.map((b) => b.type)).toEqual(['prose', 'diagram', 'prose']);
+    });
+
+    it('produces output that validates against the blocks schema', () => {
+      const { blocks } = parseLesson(mermaidMarkdown);
+      expect(validateBlocks(blocks)).toEqual({ valid: true, errors: [] });
+    });
+
+    it('carries an optional caption from a %% comment on the first line', () => {
+      // Mermaid's own comment syntax, so the caption stays valid mermaid and
+      // a diagram authored for any other renderer still works. No new fence
+      // dialect to learn, and nothing to strip for other tools.
+      const { blocks } = parseLesson(
+        ['# Title', '', '```mermaid', '%% caption: How a lesson is imported', 'graph LR; A-->B;', '```', ''].join('\n'),
+      );
+      expect(blocks[0]).toEqual({
+        type: 'diagram',
+        format: 'mermaid',
+        caption: 'How a lesson is imported',
+        source: 'graph LR; A-->B;',
+      });
+    });
+
+    it('keeps a %% comment that is not a caption in the source', () => {
+      const { blocks } = parseLesson(
+        ['# Title', '', '```mermaid', '%% just a note', 'graph LR; A-->B;', '```', ''].join('\n'),
+      );
+      expect(blocks[0]).toEqual({
+        type: 'diagram',
+        format: 'mermaid',
+        source: '%% just a note\ngraph LR; A-->B;',
+      });
+    });
+
+    it('refuses an empty diagram rather than storing a blank one', () => {
+      expect(() => parseLesson(['# Title', '', '```mermaid', '', '```', ''].join('\n'))).toThrow(/empty/i);
+    });
+
+    it('leaves every other language fence as a code block', () => {
+      // The dispatch is on the fence language and nothing else; a change here
+      // must not quietly capture ```ts or an untagged fence.
+      const { blocks } = parseLesson(
+        ['# Title', '', '```ts', 'const a = 1;', '```', '', '```', 'plain', '```', ''].join('\n'),
+      );
+      expect(blocks.map((b) => b.type)).toEqual(['code', 'code']);
+    });
+  });
+
   describe('figure blocks (design §6.3, Task B: the sanctioned static-SVG escape hatch)', () => {
     const validFigureMarkdown = [
       '# Title',

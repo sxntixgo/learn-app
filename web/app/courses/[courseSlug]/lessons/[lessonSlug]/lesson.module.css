@@ -616,3 +616,48 @@
   color: var(--color-text-secondary);
   text-align: center;
 }
+
+/*
+ * The `diagram` block: a ```mermaid fence, drawn by the browser. Same
+ * breakout width as `.figure` for the same reason — a flowchart needs more
+ * than 46ch.
+ *
+ * Two states share this frame, and the layout must not jump between them:
+ * the source (server-rendered, and the fallback if mermaid never loads) and
+ * the SVG that replaces it. Nothing here sets a height, so the frame is
+ * whatever its content needs; a fixed one would be wrong for both.
+ */
+.diagram {
+  max-width: var(--measure-breakout, 70ch);
+  width: 100%;
+  margin: 1.75rem auto;
+}
+
+.diagramSvg {
+  display: flex;
+  justify-content: center;
+  color: var(--color-text);
+}
+
+.diagramSvg :global(svg) {
+  max-width: 100%;
+  height: auto;
+}
+
+/*
+ * The fallback, and what a reader with no JavaScript sees. Styled as source
+ * rather than as a broken picture: it is a correct rendering of the block,
+ * not an error state.
+ */
+.diagramSource {
+  margin: 0;
+  padding: var(--space-2);
+  overflow-x: auto;
+  background: var(--color-surface-raised);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}

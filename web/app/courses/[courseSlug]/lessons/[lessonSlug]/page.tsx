@@ -9,6 +9,7 @@ import { highlightCodeBlocks } from '../../../../../src/lib/highlight';
 import AnnotatableCode from './AnnotatableCode';
 import Chart from './Chart';
 import ExercisePanel from './ExercisePanel';
+import Diagram from './Diagram';
 import Figure from './Figure';
 import MarkCompleteButton from './MarkCompleteButton';
 import Quiz from './Quiz';
@@ -121,6 +122,9 @@ export default async function LessonPage({
               }
               if (block.type === 'chart') {
                 return <Chart key={index} kind={block.kind} caption={block.caption} data={block.data} />;
+              }
+              if (block.type === 'diagram') {
+                return <Diagram key={index} source={block.source} caption={block.caption} />;
               }
               if (block.type === 'figure') {
                 return <Figure key={index} svg={block.svg} caption={block.caption} />;

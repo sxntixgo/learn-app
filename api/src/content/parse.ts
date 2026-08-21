@@ -100,13 +100,40 @@ export interface FigureBlock {
   caption: string;
 }
 
+/**
+ * A diagram written as source rather than drawn as SVG (the Phase 1 finding:
+ * "existing content uses ```mermaid fences, currently rendered as plain
+ * code").
+ *
+ * WHY THE SOURCE IS STORED AND NOT AN SVG, unlike `figure`. Mermaid is a
+ * LAYOUT engine: where a box goes depends on how wide its label renders, so a
+ * correct drawing needs real text metrics. Rendering server-side without a
+ * browser was tried — mermaid runs under jsdom once half a dozen DOM APIs are
+ * shimmed — and produces a WRONG picture rather than an error: with `getBBox`
+ * stubbed, a four-node flowchart came back as a 116x36 viewBox with every
+ * node on top of every other. Getting it right server-side means shipping
+ * Chromium in the import path. So the source is what the database holds and
+ * the browser, which can measure text, does the drawing.
+ *
+ * `format` is a field rather than an assumption so that adding a second
+ * notation later is a new value, not a new block type.
+ */
+export interface DiagramBlock {
+  type: 'diagram';
+  format: 'mermaid';
+  /** The fence body, verbatim, minus a leading `%% caption:` line if there was one. */
+  source: string;
+  caption?: string;
+}
+
 export type Block =
   | { type: 'prose'; html: string }
   | { type: 'code'; lang: string | null; source: string; annotations?: Annotation[] }
   | QuizBlock
   | RubricBlock
   | ChartBlock
-  | FigureBlock;
+  | FigureBlock
+  | DiagramBlock;
 
 export type LessonKind = 'lesson' | 'exercise' | 'quiz';
 
@@ -269,6 +296,10 @@ function buildBlocks(nodes: RootContent[]): Block[] {
         blocks.push(buildFigureBlock(codeNode));
         continue;
       }
+      if (codeNode.lang === 'mermaid') {
+        blocks.push(buildDiagramBlock(codeNode));
+        continue;
+      }
       const { source, annotations } = extractAnnotations(codeNode.value);
       const block: Block = { type: 'code', lang: codeNode.lang ?? null, source };
       if (annotations.length > 0) block.annotations = annotations;
@@ -419,6 +450,46 @@ function buildChartBlock(codeNode: Code): ChartBlock {
     caption: record.caption as string,
     data: record.data as ChartBlock['data'],
   };
+}
+
+/**
+ * Turns a ```mermaid fence into a DiagramBlock.
+ *
+ * NOT a tagged-YAML block like `quiz`/`rubric`/`chart`/`figure`: the fence
+ * body is mermaid source, and it has to stay mermaid source — the corpus
+ * already contains these fences, written for other renderers, and a dialect
+ * of our own would break them everywhere else they are read.
+ *
+ * The caption therefore rides in mermaid's OWN comment syntax. `%% caption:
+ * ...` on the first line is a valid mermaid comment that every other tool
+ * ignores, so a captioned diagram still renders correctly on GitHub.
+ *
+ * Nothing is sanitized here, and nothing needs to be: unlike `figure`, this
+ * stores no markup. The source is rendered to SVG by the browser, and what
+ * reaches the DOM is text inside a <pre> until it does.
+ */
+const DIAGRAM_CAPTION = /^%%\s*caption:\s*(.+)$/;
+
+function buildDiagramBlock(node: Code): DiagramBlock {
+  const line = node.position?.start.line ?? 0;
+  const lines = node.value.split('\n');
+
+  let caption: string | undefined;
+  const first = lines[0] ?? '';
+  const match = DIAGRAM_CAPTION.exec(first.trim());
+  if (match) {
+    caption = match[1]!.trim();
+    lines.shift();
+  }
+
+  const source = lines.join('\n').trim();
+  if (source === '') {
+    // A blank diagram is an authoring mistake, and storing it would put an
+    // empty frame on the page with nothing to say why.
+    throw new Error(`invalid diagram block at line ${line}: the \`\`\`mermaid fence body is empty`);
+  }
+
+  return caption === undefined ? { type: 'diagram', format: 'mermaid', source } : { type: 'diagram', format: 'mermaid', source, caption };
 }
 
 /**

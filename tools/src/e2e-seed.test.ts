@@ -86,10 +86,18 @@ describe.sequential('e2e-seed CLI', () => {
     expect(reader.visibility).toBe('open');
     expect(reader.module_key).toBe('e2e-module');
     expect(reader.title).toBe('Getting started');
-    expect(reader.blocks).toHaveLength(3);
-    expect(reader.blocks[0].type).toBe('prose');
-    expect(reader.blocks[1].type).toBe('code');
-    expect(reader.blocks[2].type).toBe('prose');
+    // The block types in order, not a count. Same lesson as the comment
+    // above: a count turns "a spec needed one more fixture block" into a red
+    // test that says nothing useful. This says what the lesson IS — prose,
+    // an annotated code block for the accessibility spec to tab through, a
+    // mermaid diagram for the diagram spec to draw, and a closing paragraph
+    // — and fails only when that changes.
+    expect(reader.blocks.map((block: { type: string }) => block.type)).toEqual([
+      'prose',
+      'code',
+      'diagram',
+      'prose',
+    ]);
   });
 
   it('creates an admin issuer and one pending platform invite for the fixed address', async () => {

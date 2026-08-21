@@ -2580,6 +2580,47 @@ components:
         - svg
         - caption
 
+    DiagramBlock:
+      type: object
+      description: >-
+        A diagram written as source, drawn by the browser (the Phase 1
+        finding: existing content uses ```mermaid fences and they rendered as
+        plain code).
+
+        Unlike FigureBlock, which carries sanitized SVG, this carries the
+        notation itself. Mermaid is a layout engine whose output depends on
+        how wide each label renders, so a correct picture needs something
+        that can measure text; rendering it server-side without a browser
+        produces a WRONG drawing rather than an error. Nothing here is
+        markup, so nothing here needs sanitizing — the source reaches the DOM
+        as text.
+      properties:
+        type:
+          type: string
+          enum:
+            - diagram
+          description: The block type discriminator
+        format:
+          type: string
+          enum:
+            - mermaid
+          description: >-
+            The notation. A field rather than an assumption, so a second one
+            later is a new value and not a new block type.
+        source:
+          type: string
+          minLength: 1
+          description: The diagram source, verbatim
+        caption:
+          type: string
+          description: >-
+            Optional, authored as mermaid's own `%% caption:` comment so the
+            fence stays valid mermaid everywhere else it is read.
+      required:
+        - type
+        - format
+        - source
+
     Block:
       oneOf:
         - $ref: '#/components/schemas/ProseBlock'
@@ -2588,6 +2629,7 @@ components:
         - $ref: '#/components/schemas/RubricBlock'
         - $ref: '#/components/schemas/ChartBlock'
         - $ref: '#/components/schemas/FigureBlock'
+        - $ref: '#/components/schemas/DiagramBlock'
       discriminator:
         propertyName: type
         mapping:
@@ -2597,7 +2639,10 @@ components:
           rubric: '#/components/schemas/RubricBlock'
           chart: '#/components/schemas/ChartBlock'
           figure: '#/components/schemas/FigureBlock'
-      description: A content block, which may be prose, code, a quiz, a rubric, a chart, or a figure
+          diagram: '#/components/schemas/DiagramBlock'
+      description: >-
+        A content block, which may be prose, code, a quiz, a rubric, a chart,
+        a figure, or a diagram
 
     LessonNavStub:
       type: object

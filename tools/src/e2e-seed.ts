@@ -163,6 +163,17 @@ const LESSON_MARKDOWN = [
   'hello, e2e  # [!note] Seeded so the annotatable code block has something to tab to.',
   '```',
   '',
+  // A real ```mermaid fence, so the diagram block has something to draw. The
+  // corpus this app imports already contains these; before the diagram block
+  // existed they rendered as a wall of unhighlighted source.
+  '```mermaid',
+  '%% caption: How a lesson reaches a reader',
+  'graph LR;',
+  '  Repo[Content repo] --> Import[Import];',
+  '  Import --> Blocks[Typed blocks];',
+  '  Blocks --> Reader[Reader];',
+  '```',
+  '',
   'A closing paragraph, so the lesson renders more than one block.',
   '',
 ].join('\n');
