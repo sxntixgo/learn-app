@@ -12,12 +12,12 @@ for the design and `docs/plans/2026-08-15-learning-platform-plan.md` for the pha
 | Language | TypeScript, `strict: true` |
 | Repo | npm workspaces: `api/`, `web/`, `tools/` |
 | API | Fastify 5 |
-| Web | Next.js 15, App Router |
+| Web | Next.js 16, App Router (Turbopack by default; the CSP middleware is `web/proxy.ts`, renamed from `middleware.ts` by the 16 upgrade) |
 | DB | Postgres 17 via `pg` (node-postgres) |
 | Migrations | **Plain SQL** in `db/migrations/NNNN_name.sql`, applied by our own runner. Never an ORM's migration tooling |
 | Markdown | `unified` + `remark` + `rehype` |
 | Highlighting | `shiki`, **at render time only** |
-| Tests | `vitest` |
+| Tests | `vitest` 4 (unit) + Playwright (e2e, Chromium only) |
 | Lint/format | `eslint` (flat config) + `prettier` |
 
 ## Architectural rules (from the design — violating these is a bug)
@@ -65,6 +65,18 @@ for the design and `docs/plans/2026-08-15-learning-platform-plan.md` for the pha
   CI runs it (added Phase 9, after nine phases in which web type errors could reach `main`
   undetected). When verifying web work, run `cd web && npx next build` — a clean
   `npm run typecheck` says nothing about it.
+- **Run Playwright from the REPO ROOT, never from inside a workspace.** `npx playwright
+  test` started in `web/` picks up the wrong config, reports "Vitest failed to access its
+  internal state", and leaves a `web/test-results/` directory behind. Shell working
+  directories persist between commands, so this is easy to do by accident right after a
+  `cd web && npx next build`.
+- **A `'use server'` module may export nothing but async functions.** Exporting a single
+  `const` from an `actions.ts` empties the whole module — every action in it vanishes and
+  the build says only "the module has no exports at all". Put shared constants in
+  `src/lib/`.
+- **`NEXT_PUBLIC_*` is inlined at BUILD time.** Supplying one to a running container does
+  nothing. `docker/web.Dockerfile` takes `NEXT_PUBLIC_API_BASE_URL` as a build `ARG` and
+  `playwright.config.ts` rebuilds the app for the same reason; both say so at length.
 
 ## Public repository
 
@@ -99,7 +111,11 @@ Docker is **not** available in this dev container. Postgres runs natively.
   (it lives at the Debian path, hence `-o config_file`), and the stale pidfile
   above. Without the cluster, every DB-touching test fails for reasons that
   look nothing like "the database is down".
-- `docker/` files are authored here but verified on the WSL host
+- `docker/` files are authored here but verified on the WSL host. Because nothing here can
+  run them, `tools/src/docker-stack.test.ts` checks what is decidable statically —
+  including deriving the list of directories `web.Dockerfile` must COPY from `git ls-files`,
+  after the stack was found in 2026-08 to have never been built at all (it did not copy
+  `web/app`). **A green test there is not a green `docker compose up`.**
 
 ## Commands
 
@@ -108,6 +124,7 @@ npm test              # vitest, all workspaces
 npm run lint
 npm run typecheck
 npm run gen:api       # regenerate client types from openapi/openapi.yaml
+npx playwright test   # e2e — FROM THE REPO ROOT (see above)
 ```
 
 ## Style
