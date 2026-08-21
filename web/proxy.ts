@@ -3,11 +3,18 @@ import { NextResponse, type NextRequest } from 'next/server';
 /**
  * Security response headers for every HTML route.
  *
- * This runs in middleware rather than `next.config.ts` headers because the CSP
+ * This runs here rather than in `next.config.ts` headers because the CSP
  * carries a per-request nonce, and a static config cannot generate one. Next
  * reads the nonce out of the `content-security-policy` request header we set
  * here and stamps it onto the framework's own inline bootstrap scripts, which
  * is what lets `script-src` avoid `'unsafe-inline'`.
+ *
+ * The file is `proxy.ts`, not `middleware.ts`: Next 16 renamed the convention
+ * and the exported function with it. The nonce mechanism is unchanged — Next
+ * still discovers the nonce by reading the request header — but `proxy` runs
+ * only on the `nodejs` runtime, which cannot be configured back to `edge`.
+ * Nothing here needed the edge runtime; `crypto.getRandomValues` and `btoa`
+ * are both Node globals.
  */
 
 /** Builds the policy. Exported so the test can assert on it directly. */
@@ -63,13 +70,24 @@ export function isSecureRequest(request: NextRequest): boolean {
   return request.nextUrl.protocol === 'https:';
 }
 
-export function middleware(request: NextRequest): NextResponse {
+export function proxy(request: NextRequest): NextResponse {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   const nonce = btoa(String.fromCharCode(...bytes));
   const csp = buildCsp(nonce);
 
-  // Next reads the CSP off the REQUEST headers to discover the nonce.
+  // Next reads the CSP off the REQUEST headers to discover the nonce
+  // (`getScriptNonceFromHeader` in app-render), which is why it is set on
+  // both sides below.
+  //
+  // Belt AND braces, established by mutation: removing this request-header
+  // line alone changes nothing, because Next's router copies every header
+  // the proxy puts on the RESPONSE back onto `req.headers` before rendering
+  // (`resolve-routes.js`: `resHeaders[key] = value; req.headers[key] =
+  // value`). The response header is therefore load-bearing on its own today.
+  // The documented contract is the request header, so it stays — but do not
+  // read a passing test as proof that this line is what makes the nonce
+  // work.
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('content-security-policy', csp);
@@ -97,6 +115,6 @@ export function middleware(request: NextRequest): NextResponse {
 
 export const config = {
   // Static assets are immutable and carry no user data; skipping them keeps
-  // middleware off the hot path for every font and chunk.
+  // this off the hot path for every font and chunk.
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };

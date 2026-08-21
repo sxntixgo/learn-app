@@ -18,7 +18,7 @@ import type { MetadataRoute } from 'next';
  * (CLAUDE.md rule 2) — deliberately: a manifest fetch carries no session
  * (the browser can request it before a visitor has signed in), and this
  * function calls no API route and no `can()` check, so there is nothing to
- * gate, by construction. `web/middleware.ts`'s matcher does not exclude
+ * gate, by construction. `web/proxy.ts`'s matcher does not exclude
  * this path, so it still gets the standard security headers.
  *
  * Colours: the JSON manifest format has no equivalent of a

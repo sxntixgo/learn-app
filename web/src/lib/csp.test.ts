@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildCsp } from '../../middleware.ts';
+import { buildCsp } from '../../proxy.ts';
 
 /**
  * The policy is asserted directly rather than through a served response,

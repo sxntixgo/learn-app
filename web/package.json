@@ -9,9 +9,9 @@
     "generate:icons": "node scripts/generate-pwa-icons.mjs public/icons"
   },
   "dependencies": {
-    "next": "^15.0.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "next": "^16.3.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "shiki": "^4.4.3"
   },
   "devDependencies": {
