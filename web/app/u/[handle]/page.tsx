@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { fetchProfile } from '../../../src/lib/api';
 import type { Profile } from '../../../src/lib/api';
-import Identicon from '../../_shell/Identicon';
+import Avatar from '../../_shell/Avatar';
 import Heatmap from '../../me/Heatmap';
 import styles from './profile.module.css';
 
@@ -125,7 +125,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ handle
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <Identicon seed={profile.avatar.seed} size={96} label={null} />
+        <Avatar avatar={profile.avatar} size={96} label={null} />
         <div className={styles.identity}>
           <h1 className={styles.name}>{name}</h1>
           <p className={styles.handle}>@{profile.handle}</p>

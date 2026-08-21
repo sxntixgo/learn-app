@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { ViewerRelation, VisibilityMap } from './visibility.ts';
 import { visibleSectionsFor } from './visibility.ts';
+import { avatarUrl } from './avatar-store.ts';
 
 // =============================================================================
 // TWO SERIALIZERS, ON PURPOSE (design §11).
@@ -106,12 +107,27 @@ export interface ProfileModel {
   noindex: boolean;
   visibility: VisibilityMap;
   sections: ProfileSectionData;
+  /**
+   * The digest of the account's uploaded avatar, or null when it uses the
+   * generated identicon. Just the digest — loading the image itself for a
+   * JSON render would drag kilobytes of WebP through every profile response.
+   */
+  avatarSha: string | null;
 }
 
-/** The identicon (§11.1). Uploads are out of scope; see the route module. */
+/**
+ * Which face to draw (§11.1).
+ *
+ * `seed` is present for BOTH kinds, deliberately. An `upload` still carries
+ * its identicon seed so a client whose image request fails — offline, a
+ * cache miss under a strict CSP, a 404 after the owner removed it mid-render
+ * — has something to draw instead of a hole where a person's face goes.
+ */
 export interface ProfileAvatar {
-  kind: 'identicon';
+  kind: 'identicon' | 'upload';
   seed: string;
+  /** Non-null only for `upload`. Carries the content digest as a cache-buster. */
+  url?: string | null;
 }
 
 /** Sections are OPTIONAL here: a hidden one is absent, not null, not empty. */
@@ -148,6 +164,25 @@ export function avatarSeed(userId: string): string {
   return createHash('sha256').update(`identicon:${userId}`).digest('hex').slice(0, 16);
 }
 
+/**
+ * The avatar descriptor for a profile. One function, used by both the
+ * owner/signed-in serializer and the anonymous allowlist below, so the two
+ * cannot disagree about which face a page shows.
+ *
+ * An uploaded avatar is as public as the profile header it sits in — the
+ * same place the handle and display name already are.
+ */
+export function avatarDescriptorFor(model: Pick<ProfileModel, 'id' | 'handle' | 'avatarSha'>): ProfileAvatar {
+  const seed = avatarSeed(model.id);
+  // Falsy rather than `=== null`, and the direction matters: anything that is
+  // not a digest falls back to the identicon, which always renders. The
+  // opposite default would publish a URL built from `undefined` — which is
+  // exactly what a model fixture missing this field produced, in a spread
+  // that TypeScript could not flag.
+  if (!model.avatarSha) return { kind: 'identicon', seed };
+  return { kind: 'upload', seed, url: avatarUrl(model.handle, model.avatarSha) };
+}
+
 /** Builds the section object for a viewer, omitting everything they may not see. */
 function sectionsFor(model: ProfileModel, viewer: ViewerRelation): SerializedSections {
   const visible = visibleSectionsFor(model.visibility, viewer);
@@ -172,7 +207,7 @@ export function serializeProfileForViewer(model: ProfileModel, viewer: ViewerRel
     displayName: model.displayName,
     bio: model.bio,
     joinedAt: model.joinedAt,
-    avatar: { kind: 'identicon', seed: avatarSeed(model.id) },
+    avatar: avatarDescriptorFor(model),
     noindex: model.noindex,
     viewer,
     sections: sectionsFor(model, viewer),
@@ -195,7 +230,7 @@ const PUBLIC_FIELD_BUILDERS = {
   displayName: (model: ProfileModel) => model.displayName,
   bio: (model: ProfileModel) => model.bio,
   joinedAt: (model: ProfileModel) => model.joinedAt,
-  avatar: (model: ProfileModel): ProfileAvatar => ({ kind: 'identicon', seed: avatarSeed(model.id) }),
+  avatar: (model: ProfileModel): ProfileAvatar => avatarDescriptorFor(model),
   noindex: (model: ProfileModel) => model.noindex,
   viewer: (): ViewerRelation => 'anonymous',
   sections: (model: ProfileModel): SerializedSections => publicSections(model),

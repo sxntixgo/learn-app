@@ -36,7 +36,9 @@ describe('content security policy', () => {
     // arbitrary third-party URL simply by including an <img> in a lesson.
     const imgSrc = directive('img-src');
 
-    expect(imgSrc).toBe("img-src 'self' data:");
+    // blob: is for the avatar picker's local preview and nothing else; see
+    // the directive's own comment in proxy.ts.
+    expect(imgSrc).toBe("img-src 'self' data: blob:");
     expect(imgSrc).not.toContain('https:');
     expect(imgSrc).not.toContain('*');
   });

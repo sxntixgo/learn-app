@@ -444,6 +444,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace the signed-in account's avatar with an uploaded image
+         * @description The request body is the RAW IMAGE BYTES, not multipart. There is one file and no other fields, so a multipart envelope would add a parser for untrusted input to a route whose whole purpose is to minimise how much untrusted parsing happens.
+         *     The image is never stored as sent (design §11.1: "always re-encode, never serve the bytes you were given"). It is re-encoded to a 256x256 WebP with all metadata dropped — a photograph uploaded straight from a phone carries the camera model and often a GPS fix, and publishing an avatar must not publish where it was taken.
+         *     Accepted: image/jpeg, image/png, image/webp, decided by the file's own magic bytes rather than by this header or a filename. Everything else is refused, SVG emphatically included.
+         */
+        put: operations["putMyAvatar"];
+        post?: never;
+        /**
+         * Remove the uploaded avatar, reverting to the generated identicon
+         * @description Idempotent: an account that never uploaded one still gets 204. There is no "no avatar" state — the identicon is always there underneath.
+         */
+        delete: operations["deleteMyAvatar"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/profiles/{handle}/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The image bytes of a learner's uploaded avatar
+         * @description Serves the stored WebP. Reachable without a session, exactly like the profile it belongs to, and rate-limited by the same per-IP limiter for the same reason — a face is part of the public profile of §11.
+         *     404, not a placeholder, when the account has no uploaded avatar: the identicon is generated client-side from the seed in the profile payload, so there is nothing to serve here. 404 is also the answer for a handle that does not exist, so this endpoint is not an oracle for which handles are taken.
+         */
+        get: operations["getProfileAvatar"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/activity": {
         parameters: {
             query?: never;
@@ -1604,11 +1651,17 @@ export interface components {
          * @enum {string}
          */
         ProfileViewer: "owner" | "signed_in" | "anonymous";
-        /** @description A generated identicon (§11.1). `seed` is a one-way hash of the user id, so the face is stable without publishing the row key. Uploads are not implemented. */
+        /**
+         * @description Which face to draw.
+         *     `identicon` is the default and the fallback: `seed` is a one-way hash of the user id, so the face is stable without publishing the row key, and the client draws it with no request at all.
+         *     `upload` means the account has a stored image; `url` points at `/api/v1/profiles/{handle}/avatar` with the content digest as a cache-busting query. `seed` is still present for `upload`, so a client whose image request fails has something to draw instead of a hole.
+         */
         ProfileAvatar: {
             /** @enum {string} */
-            kind: "identicon";
+            kind: "identicon" | "upload";
             seed: string;
+            /** @description Present and non-null only when `kind` is `upload`. */
+            url?: ((string | null) | null) | null;
         };
         /** @description One earned badge, as a profile shows it. */
         ProfileBadge: {
@@ -3086,6 +3139,136 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    putMyAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "image/jpeg": string;
+                "image/png": string;
+                "image/webp": string;
+            };
+        };
+        responses: {
+            /** @description The stored avatar */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileAvatar"];
+                };
+            };
+            /** @description Not one of the accepted formats, or not decodable as the format its header claims. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The actor may not set an avatar. Anonymous callers, and operator accounts, which have no learner profile (§5.1). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Larger than 2 MiB on the wire, or declaring more pixels than the decoder will be asked to allocate. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteMyAvatar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account is back to its identicon */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The actor may not change this avatar */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getProfileAvatar: {
+        parameters: {
+            query?: {
+                /** @description Cache-busting token; the avatar's sha256, as published in the profile payload's `url`. Ignored by the server, which serves the current image whatever is passed. */
+                v?: string;
+            };
+            header?: never;
+            path: {
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The avatar image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/webp": string;
+                };
+            };
+            /** @description Unchanged since the ETag the client holds */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such profile, or it has no uploaded avatar */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests from this address */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

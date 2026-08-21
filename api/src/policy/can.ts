@@ -353,6 +353,16 @@ const MATRIX = {
   // student-only), and §5.1 is explicit that an operator account has "no
   // public profile" at all.
   'profile:update': { row: 'Own profile, badges, degrees', student: SELF },
+  // Phase 12 (§11.1). Uploading or removing your own avatar. Separate from
+  // `profile:update` rather than folded into it, because the two are not the
+  // same kind of write: everything `profile:update` touches is text the
+  // account holder typed, while this one hands a binary blob to an image
+  // decoder. Keeping them apart means a future decision to restrict uploads
+  // — while leaving the bio editable — is a matrix change, not a refactor.
+  //
+  // student only, SELF, matching `profile:update` exactly: §5.1 gives an
+  // operator account no learner profile, so there is no face for one to set.
+  'profile:avatar:write': { row: 'Own profile, badges, degrees', student: SELF },
   // Account portability and erasure. SELF for both, and granted to `teacher`
   // as well as `student`: a teacher-only account holds real data (the courses
   // it owns, the invites it issued) and must be able to leave. `admin` is
@@ -526,6 +536,17 @@ const MATRIX = {
   // above is what the route then asks to find out whether this viewer is the
   // owner and gets the unfiltered view.
   'profile:public:read': { row: 'Public profile (§11, not a §5 row)', student: ALLOW, teacher: ALLOW, admin: ALLOW },
+  // The image behind the profile above. A separate action rather than a
+  // reuse of `profile:public:read`, so that "who may read the page" and "who
+  // may fetch the picture" can never drift apart by accident — and so that
+  // the answer to the second is a deliberate line in this table rather than
+  // an inference from the first.
+  'profile:avatar:public:read': {
+    row: 'Public profile (§11, not a §5 row)',
+    student: ALLOW,
+    teacher: ALLOW,
+    admin: ALLOW,
+  },
 
   // ---- NOT A §5 ROW: accepting an invitation (§12, §13) --------------------
   // The second and third unauthenticated endpoints on the instance, and for
@@ -562,6 +583,7 @@ const PUBLIC_ACTIONS: ReadonlySet<Action> = new Set<Action>([
   // Phase 12 (§11): the profile page is an unauthenticated ROUTE, not
   // unauthenticated DATA. See the action's entry in MATRIX.
   'profile:public:read',
+  'profile:avatar:public:read',
   // Phase 13 (§12, §13): an invitee has no account yet. Gated by the invite
   // token and the atomic claim, not by a role.
   'invite:preview',

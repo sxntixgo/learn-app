@@ -112,6 +112,24 @@ export const E2E_DELETABLE_HANDLE = 'e2e-deletable';
 export const E2E_DELETABLE_PASSWORD = 'a-long-enough-deletable-password';
 
 /**
+ * Phase 12 (§11.1): a student who exists only to have their avatar changed.
+ *
+ * A DEDICATED account rather than reusing `viewportUser`, for the same
+ * reason `deletableUser` is one: the avatar spec MUTATES the account it signs
+ * in as, and `viewportUser` is depended on, live, by viewport.spec.ts and
+ * a11y.spec.ts running in other workers at the same moment
+ * (`fullyParallel: true`). Swapping that account's face mid-scan is the kind
+ * of cross-file coupling that produces a failure in a spec that never
+ * mentioned avatars.
+ *
+ * Reset on every seed run so a leftover upload from a previous run does not
+ * make "starts on the identicon" false.
+ */
+export const E2E_AVATAR_EMAIL = 'e2e-avatar@example.test';
+export const E2E_AVATAR_HANDLE = 'e2e-avatar';
+export const E2E_AVATAR_PASSWORD = 'a-long-enough-avatar-password';
+
+/**
  * Phase 15 task 4: a second, dedicated platform invite, distinct from
  * `invite` (task 2's, single-use and consumed by core-journeys.spec.ts).
  * The accessibility pass only needs to LOAD /invite/[token] and axe-scan
@@ -213,6 +231,12 @@ export interface E2eFixtures {
    * — see E2E_DELETABLE_EMAIL's own comment for why this one, uniquely, has
    * no other spec depending on it.
    */
+  /** Phase 12 (§11.1): a student dedicated to the avatar spec's mutations. */
+  avatarUser: {
+    email: string;
+    password: string;
+    handle: string;
+  };
   deletableUser: {
     email: string;
     password: string;
@@ -429,6 +453,26 @@ async function ensureDeletableUser(client: pg.PoolClient): Promise<void> {
 }
 
 /**
+ * Phase 12 (§11.1): the account the avatar spec uploads to. Reset the same
+ * way `ensureDeletableUser` is, so every run starts on the identicon.
+ */
+async function ensureAvatarUser(client: pg.PoolClient): Promise<void> {
+  await resetInvitedAccount(client, E2E_AVATAR_EMAIL);
+  const passwordHash = await hashPassword(E2E_AVATAR_PASSWORD);
+  const user = await client.query<{ id: string }>(
+    `insert into users (email, handle, password_hash, display_name) values ($1, $2, $3, $4) returning id`,
+    [E2E_AVATAR_EMAIL, E2E_AVATAR_HANDLE, passwordHash, 'E2E Avatar'],
+  );
+  const userId = user.rows[0]!.id;
+  await client.query(`insert into user_roles (user_id, role) values ($1, 'student')`, [userId]);
+  // The public page has to be reachable for the anonymous half of the spec,
+  // and every section defaults to private (§11) — which is right, and means
+  // the header alone is what a stranger sees. That header is where the
+  // avatar lives, so nothing else needs opening.
+  await client.query(`update users set profile_noindex = true where id = $1`, [userId]);
+}
+
+/**
  * Phase 15 task 4: the exercise lesson + its one submitted submission, so
  * the grading view (/courses/.../submissions/[userId]) has something real
  * to render. `studentUserId` is E2E_VIEWPORT_EMAIL's id — reusing the
@@ -627,6 +671,7 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
     await ensureTeacherUser(client, courseSlug);
     const exercise = await ensureExerciseSubmission(client, courseId, viewportUserId);
     await ensureDeletableUser(client);
+    await ensureAvatarUser(client);
     return {
       courseSlug,
       lessonSlug,
@@ -644,6 +689,11 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
         email: E2E_DELETABLE_EMAIL,
         password: E2E_DELETABLE_PASSWORD,
         handle: E2E_DELETABLE_HANDLE,
+      },
+      avatarUser: {
+        email: E2E_AVATAR_EMAIL,
+        password: E2E_AVATAR_PASSWORD,
+        handle: E2E_AVATAR_HANDLE,
       },
     };
   } finally {

@@ -55,6 +55,8 @@ export interface ProfileSubject {
    * which would confirm the handle exists.
    */
   isStudent: boolean;
+  /** sha256 of the uploaded avatar, or null when the account uses its identicon. */
+  avatarSha: string | null;
 }
 
 interface SubjectRow {
@@ -67,14 +69,22 @@ interface SubjectRow {
   created_at: Date;
   timezone: string | null;
   is_student: boolean;
+  avatar_sha: string | null;
 }
 
 /** Finds the account a handle names, or null. Handles are stored lower-case (0005). */
 export async function findProfileSubject(client: pg.PoolClient, handle: string): Promise<ProfileSubject | null> {
   const { rows } = await client.query<SubjectRow>(
+    // `avatar_kind = 'upload'` gates the join rather than being checked
+    // afterwards: it is the source of truth for which avatar an account uses
+    // (migration 0019), so a stale row is invisible here and the profile
+    // falls back to the identicon instead of pointing at an image the rest
+    // of the system considers withdrawn.
     `select u.id, u.handle, u.email, u.display_name, u.bio, u.profile_noindex, u.created_at, u.timezone,
-            exists (select 1 from user_roles ur where ur.user_id = u.id and ur.role = 'student') as is_student
+            exists (select 1 from user_roles ur where ur.user_id = u.id and ur.role = 'student') as is_student,
+            case when u.avatar_kind = 'upload' then a.sha256 end as avatar_sha
        from users u
+       left join user_avatars a on a.user_id = u.id
       where u.handle = $1`,
     [handle.toLowerCase()],
   );
@@ -91,6 +101,7 @@ export async function findProfileSubject(client: pg.PoolClient, handle: string):
     joinedAt: row.created_at,
     timezone: row.timezone,
     isStudent: row.is_student,
+    avatarSha: row.avatar_sha,
   };
 }
 
@@ -305,5 +316,6 @@ export async function loadProfileModel(
     noindex: subject.noindex,
     visibility,
     sections: data,
+    avatarSha: subject.avatarSha,
   };
 }

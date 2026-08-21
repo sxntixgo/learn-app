@@ -201,6 +201,82 @@
   color: var(--color-text-secondary);
 }
 
+/* ---- avatar (§11.1) ------------------------------------------------------ */
+
+.avatarForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.avatarRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* Matches the identicon's frame so a swap between the two does not shift the
+   layout by a hairline. */
+.avatarPreview {
+  display: block;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  object-fit: cover;
+}
+
+.avatarControls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  /* Keeps the hint text from stretching the row past the page measure on a
+     wide viewport, and lets it wrap under the picture at 375px. */
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.avatarLabel {
+  font-weight: 600;
+}
+
+.avatarInput {
+  font: inherit;
+  color: var(--color-text);
+  /* A file input's button is drawn by the browser; this is the hit area
+     around it, kept at the 44px target the rest of the app uses. */
+  min-height: 44px;
+}
+
+.avatarHint {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.avatarButtons {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.secondary {
+  min-height: 44px;
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-regular) solid var(--color-border-hairline);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.secondary:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 @media (min-width: 48rem) {
   .page {
     padding-inline: var(--space-4);

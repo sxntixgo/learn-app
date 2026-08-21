@@ -38,9 +38,21 @@ export function buildCsp(nonce: string): string {
 
     // The control identified by the Phase 5 hardening review: a content repo
     // can put <img src="https://tracker.example/x.png"> in a lesson, which
-    // would make an authenticated reader's browser call out. Same-origin and
-    // data: only. Avatars are served from our own API.
-    "img-src 'self' data:",
+    // would make an authenticated reader's browser call out. Same-origin,
+    // data:, and blob: — no remote origin, ever. Avatars are served from our
+    // own API through app/avatars/[handle]/route.ts, which is what keeps
+    // them 'self'.
+    //
+    // `blob:` is here for ONE thing: the avatar picker previews the file the
+    // person just chose, and `URL.createObjectURL` produces a blob: URL. It
+    // is not a widening toward remote content — a blob: URL can only be
+    // minted by script already running on this page, and script-src is
+    // nonce + 'strict-dynamic' with no 'unsafe-inline', so anything able to
+    // create one has code execution already. Without it the preview is
+    // silently blocked and the picker shows an empty frame; e2e/specs/
+    // avatar.spec.ts asserts the preview renders, so removing this turns a
+    // test red rather than degrading in production.
+    "img-src 'self' data: blob:",
 
     // Without this the browser's fetch of /manifest.webmanifest (triggered
     // by <link rel="manifest">) falls back to default-src 'none' and is

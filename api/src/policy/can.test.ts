@@ -207,6 +207,15 @@ const MATRIX: readonly MatrixCase[] = [
     resource: ownData,
     expected: [DENY, ALLOW, DENY, DENY, DENY],
   },
+  // Phase 12 (§11.1). Identical to `profile:update`'s row on purpose — the
+  // separation between the two is about being able to diverge later, not
+  // about differing today.
+  {
+    row: 'Own profile, badges, degrees',
+    action: 'profile:avatar:write',
+    resource: ownData,
+    expected: [DENY, ALLOW, DENY, DENY, DENY],
+  },
   // Both teacher columns allow: `ownData` is built per subject, so a teacher
   // here is acting on their OWN account. A teacher-only account holds real
   // data and must be able to leave. Admin denies — an admin account is
@@ -540,6 +549,14 @@ const MATRIX: readonly MatrixCase[] = [
     resource: noResource,
     expected: [ALLOW, ALLOW, ALLOW, ALLOW, ALLOW],
   },
+  // The image behind that page. Same answer, separately stated, so the two
+  // cannot drift apart unnoticed.
+  {
+    row: 'Public profile (§11, not a §5 row)',
+    action: 'profile:avatar:public:read',
+    resource: noResource,
+    expected: [ALLOW, ALLOW, ALLOW, ALLOW, ALLOW],
+  },
   // Accepting an invitation (§12, §13): an invitee has no account yet, so
   // there is no role to check. The invite token is the authorization —
   // hashed, single-use, expiring, bound to one address — exactly as the
@@ -833,7 +850,7 @@ describe('the anonymous actor', () => {
     expect(isAnonymous(student)).toBe(false);
   });
 
-  it('may do nothing except the five explicitly public actions', () => {
+  it('may do nothing except the six explicitly public actions', () => {
     // Written out rather than imported from can.ts: this list is the whole
     // unauthenticated attack surface of the instance, and a test that read it
     // from the module under test would agree with any future addition.
@@ -841,6 +858,10 @@ describe('the anonymous actor', () => {
       'instance:setup:status',
       'instance:bootstrap',
       'profile:public:read',
+      // Phase 12 (§11.1): the avatar image is as public as the page it sits
+      // on, and no more — the route resolves the subject from the handle and
+      // answers 404 for a profile this viewer could not have found anyway.
+      'profile:avatar:public:read',
       // Phase 13 (§12): reaching these is not the same as being able to use
       // them — both are gated by a 256-bit token the anonymous caller must
       // already hold, and the acceptance additionally by the atomic claim.

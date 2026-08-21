@@ -41,6 +41,7 @@ export type ProfileSettings = components['schemas']['ProfileSettings'];
 export type ProfileSettingsUpdateRequest = components['schemas']['ProfileSettingsUpdateRequest'];
 export type ProfileVisibility = components['schemas']['ProfileVisibility'];
 export type ProfileSection = components['schemas']['ProfileSection'];
+export type ProfileAvatar = components['schemas']['ProfileAvatar'];
 export type SectionVisibility = components['schemas']['SectionVisibility'];
 export type ProfileBadge = components['schemas']['ProfileBadge'];
 export type ProfileDegree = components['schemas']['ProfileDegree'];
@@ -464,6 +465,42 @@ export async function updateProfileSettings(body: ProfileSettingsUpdateRequest):
     throw new Error(await errorMessage(res, `Failed to save profile settings: ${res.status}`));
   }
   return (await res.json()) as ProfileSettings;
+}
+
+/**
+ * Uploads a new avatar (§11.1). The body is the raw image bytes and the
+ * content type is the one the browser reported for the chosen file — the API
+ * decides the real format from the file's own magic bytes and refuses
+ * anything outside its allowlist, so this header is a routing hint, not a
+ * claim anyone trusts.
+ *
+ * Not routed through `apiFetch`: a 400 (wrong format) or 413 (too big) is an
+ * ordinary outcome the settings form shows as a message, not an auth failure
+ * to redirect on.
+ */
+export async function uploadAvatar(bytes: ArrayBuffer, contentType: string): Promise<ProfileAvatar> {
+  const res = await fetch(`${apiBase()}/api/v1/me/avatar`, {
+    method: 'PUT',
+    cache: 'no-store',
+    headers: { 'Content-Type': contentType, ...(await authHeaders()), ...(await forwardedHeaders()) },
+    body: bytes,
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `Failed to upload the image: ${res.status}`));
+  }
+  return (await res.json()) as ProfileAvatar;
+}
+
+/** Reverts the actor to their generated identicon. Idempotent (§11.1). */
+export async function removeAvatar(): Promise<void> {
+  const res = await fetch(`${apiBase()}/api/v1/me/avatar`, {
+    method: 'DELETE',
+    cache: 'no-store',
+    headers: { ...(await authHeaders()), ...(await forwardedHeaders()) },
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `Failed to remove the image: ${res.status}`));
+  }
 }
 
 /** Import run history, newest first (design plan phase 5's admin screen). */
