@@ -37,10 +37,41 @@ test('the diagram is drawn as SVG, not printed as source', async ({ page }) => {
   await expect(svg).toContainText('Content repo');
   await expect(svg).toContainText('Typed blocks');
 
-  // And the source is gone, replaced rather than duplicated — two copies of
-  // the same diagram is what the page looked like halfway through building
-  // this.
-  await expect(figure.locator('pre')).toHaveCount(0);
+  // The source is no longer VISUALLY presented — replaced by the picture
+  // rather than shown alongside it.
+  //
+  // Measured as a bounding box, not with `toBeHidden()`: the source is
+  // clipped to 1x1 rather than `display: none`, precisely so it stays in the
+  // accessibility tree as the figure's description (see the next test).
+  // Playwright counts a clipped element as visible, and rightly — the
+  // question here is whether a sighted reader sees two copies of the
+  // diagram, and the answer is a size.
+  const box = await figure.locator('pre').boundingBox();
+  expect(box!.height, 'the source is still taking up space next to the picture').toBeLessThan(4);
+});
+
+test('a screen reader gets the diagram structure, not four disconnected nouns', async ({ page }) => {
+  // The measured accessibility tree of a mermaid SVG is a `document`
+  // containing one paragraph per node — "Content repo", "Import", "Typed
+  // blocks", "Reader" — with every arrow dropped. It reads as a complete
+  // answer while omitting the entire meaning, so the SVG is hidden from
+  // assistive technology and the source describes the figure instead.
+  await signIn(page, LESSON);
+  const figure = page.locator('figure').filter({ hasText: 'How a lesson reaches a reader' });
+  await figure.locator('svg').waitFor();
+
+  const snapshot = await figure.ariaSnapshot();
+
+  // The caption still names the figure.
+  expect(snapshot).toContain('How a lesson reaches a reader');
+  // The SVG's own tree is gone — this string is what it exposed before.
+  expect(snapshot, 'the SVG is still exposing its nodes as loose paragraphs').not.toContain('paragraph: Content repo');
+  // And the description is reachable, carrying the edges the SVG lost.
+  const describedBy = await figure.getAttribute('aria-describedby');
+  expect(describedBy).toBeTruthy();
+  const description = await page.locator(`#${describedBy}`).textContent();
+  expect(description).toContain('-->');
+  expect(description).toContain('Content repo');
 });
 
 test('mermaid loads without tripping the CSP', async ({ page }) => {
@@ -153,4 +184,40 @@ test('mermaid is fetched only by a page that has a diagram on it', async ({ brow
     `the lesson fetched ${withDiagram} bytes of script and /me fetched ${withoutDiagram}: mermaid does not look ` +
       `like a separate chunk`,
   ).toBeGreaterThan(500_000);
+});
+
+test('the diagram is drawn in the app palette, not mermaid\'s', async ({ page }) => {
+  // Left alone, mermaid draws lavender node fills (#ECECFF) and purple
+  // strokes. This codebase bans hard-coded colours in CSS on purpose
+  // (tools/check-css-tokens.mjs), and a diagram arriving in a sixth accent
+  // undoes that in the most conspicuous place on the page.
+  //
+  // This assertion also guards something subtler: the theme is built by
+  // reading tokens at render time, and getting a token into a form mermaid
+  // accepts took three attempts. Every failed attempt threw INSIDE the render
+  // and fell back to the source — visible as "no picture", never as an error.
+  // Comparing the painted fill to the token is what makes that loud.
+  await signIn(page, LESSON);
+  const figure = page.locator('figure').filter({ hasText: 'How a lesson reaches a reader' });
+  await figure.locator('svg').waitFor();
+
+  const { fill, surface } = await figure.evaluate((el) => {
+    const rect = el.querySelector('svg .node rect, svg rect.basic') as SVGElement | null;
+    const paint = (value: string): string => {
+      const ctx = document.createElement('canvas').getContext('2d')!;
+      ctx.fillStyle = value;
+      ctx.fillRect(0, 0, 1, 1);
+      const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+      return `${r},${g},${b}`;
+    };
+    return {
+      fill: rect ? paint(getComputedStyle(rect).fill) : 'no-node-found',
+      surface: paint(getComputedStyle(document.documentElement).getPropertyValue('--color-surface-raised').trim()),
+    };
+  });
+
+  expect(fill, 'no node rect in the rendered diagram').not.toBe('no-node-found');
+  expect(fill, 'nodes are not filled with the raised-surface token').toBe(surface);
+  // Mermaid's default, spelled out so the failure names what went wrong.
+  expect(fill, 'the diagram is still using mermaid\'s own palette').not.toBe('236,236,255');
 });

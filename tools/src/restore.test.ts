@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 import pg from 'pg';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { runBackup } from './backup.ts';
@@ -54,6 +55,7 @@ interface Fixture {
   teacherId: string;
   courseId: string;
   lessonId: string;
+  avatarBytes: Buffer;
 }
 
 /**
@@ -138,7 +140,21 @@ async function populate(pool: pg.Pool): Promise<Fixture> {
     [studentId, courseId, JSON.stringify({})],
   );
 
-  return { studentId, teacherId, courseId, lessonId };
+  // BYTEA. The only binary column in the schema, added by migration 0019, and
+  // the one most likely to survive a dump/restore in name but not in content
+  // — an encoding slip between COPY's hex format and the restore turns an
+  // avatar into corruption that no row count would notice. Deliberately
+  // contains bytes that are neither valid UTF-8 nor printable.
+  const avatarBytes = Buffer.from([
+    0x52, 0x49, 0x46, 0x46, 0x00, 0xff, 0xfe, 0x80, 0x00, 0x01, 0x7f, 0x00, 0x0a, 0x0d, 0x5c, 0x27,
+  ]);
+  await pool.query(
+    `insert into user_avatars (user_id, bytes, content_type, width, height, sha256)
+     values ($1, $2, 'image/webp', 256, 256, $3)`,
+    [studentId, avatarBytes, createHash('sha256').update(avatarBytes).digest('hex')],
+  );
+
+  return { studentId, teacherId, courseId, lessonId, avatarBytes };
 }
 
 /** SQL expression for a timestamptz column that is timezone-independent (epoch seconds). */
@@ -169,7 +185,50 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   activity_events: ['id', 'user_id', 'type', 'course_id', 'lesson_id', 'meta', epoch('occurred_at')],
   enrollments: ['id', 'user_id', 'course_id', 'status', epoch('enrolled_at')],
   user_roles: ['user_id', 'role', epoch('granted_at'), 'granted_by'],
+  // `bytes` is hashed as text via encode(...,'hex') rather than ::text,
+  // because the default bytea output format is a session setting and a
+  // checksum must not depend on one.
+  user_avatars: ["encode(bytes,'hex')", 'content_type', 'width', 'height', 'sha256'],
 };
+
+/**
+ * Tables the fixture does not populate, and therefore that this test does NOT
+ * content-check.
+ *
+ * IT IS A LIST, NOT AN OMISSION. Before this existed, the test verified eight
+ * tables out of twenty-six and nothing said so — the coverage gap was
+ * invisible, and a new table joined it silently. `pg_dump` copies these
+ * regardless; what is unproven is that their CONTENT round-trips, which is
+ * only worth proving for types that can round-trip wrongly. The ones that can
+ * — jsonb, bytea, arrays, timestamptz, and the generated tsvector — are all
+ * represented above or in the search assertion below.
+ *
+ * Adding a table to the schema forces a choice between these two lists. That
+ * is the point.
+ */
+const NOT_CONTENT_CHECKED: ReadonlySet<string> = new Set([
+  // Bookkeeping, not user data.
+  'schema_migrations',
+  'instance_state',
+  // Populated only by flows with heavy setup costs (Argon2id hashes, real
+  // imports). Their columns are text, uuid, timestamptz and jsonb — all types
+  // already exercised by the tables above.
+  'refresh_tokens',
+  'invites',
+  'audit_log',
+  'content_repos',
+  'import_runs',
+  'tracks',
+  'badges',
+  'degrees',
+  'user_badges',
+  'user_degrees',
+  'profile_section_visibility',
+  'quiz_attempts',
+  'exercise_submissions',
+  'annotations',
+  'rubric_scores',
+]);
 
 interface TableSnapshot {
   count: number;
@@ -251,6 +310,65 @@ describe.sequential('backup + restore', () => {
       expect(dstSnapshot[table]!.count, `${table} row count`).toBe(srcSnapshot[table]!.count);
       expect(dstSnapshot[table]!.checksum, `${table} content checksum`).toBe(srcSnapshot[table]!.checksum);
     }
+  }, 60_000);
+
+  it('accounts for every table in the schema, either checked or listed as unchecked', async () => {
+    // The guard that makes the coverage above honest. It failed the moment it
+    // was written: eight of twenty-six tables were content-checked and
+    // nothing recorded the other eighteen. A new table now forces a choice
+    // rather than joining an invisible gap.
+    const { rows } = await dstPool.query<{ tablename: string }>(
+      `select tablename from pg_tables where schemaname = 'public' order by tablename`,
+    );
+    const unaccounted = rows
+      .map((r) => r.tablename)
+      .filter((t) => !(t in TABLE_COLUMNS) && !NOT_CONTENT_CHECKED.has(t));
+
+    expect(unaccounted, 'add these to TABLE_COLUMNS or to NOT_CONTENT_CHECKED, with a reason').toEqual([]);
+  }, 60_000);
+
+  it('round-trips the avatar bytes exactly, not merely a row of the right shape', async () => {
+    // bytea is the one type here whose content can come back wrong while
+    // every count and constraint still looks right. Compared byte for byte
+    // against the buffer the fixture inserted, and against the digest stored
+    // beside it — so a silent re-encoding fails twice.
+    const { rows } = await dstPool.query<{ bytes: Buffer; sha256: string }>(
+      'select bytes, sha256 from user_avatars where user_id = $1',
+      [fixture.studentId],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.bytes.equals(fixture.avatarBytes)).toBe(true);
+    expect(createHash('sha256').update(rows[0]!.bytes).digest('hex')).toBe(rows[0]!.sha256);
+  }, 60_000);
+
+  it('rebuilds the generated search vector, so search still works after a restore', async () => {
+    // `lessons.search_vector` is GENERATED ALWAYS (migration 0016). pg_dump
+    // does not dump generated columns as data — the restored database has to
+    // recompute them from the column expression, and the GIN index has to be
+    // recreated alongside. If either did not survive, every restore would
+    // look perfect and search would return nothing, forever, with no error.
+    //
+    // Asserted by running a real query rather than by inspecting catalogs:
+    // what matters is that a search finds the lesson, not that a definition
+    // is present.
+    const { rows } = await dstPool.query<{ title: string }>(
+      `select title from lessons where search_vector @@ websearch_to_tsquery('english', $1)`,
+      ['Lesson One'],
+    );
+    expect(rows.map((r) => r.title)).toContain('Lesson One');
+
+    // The query has to be able to say no, or the assertion above is satisfied
+    // by any predicate that happens to be true.
+    const miss = await dstPool.query(
+      `select 1 from lessons where search_vector @@ websearch_to_tsquery('english', $1)`,
+      ['xyzzyplughnotaword'],
+    );
+    expect(miss.rows).toHaveLength(0);
+
+    const index = await dstPool.query(
+      `select indexname from pg_indexes where tablename = 'lessons' and indexdef ilike '%gin%search_vector%'`,
+    );
+    expect(index.rows.length, 'the GIN index on search_vector did not survive the restore').toBeGreaterThan(0);
   }, 60_000);
 
   it('preserves the activity_events append-only trigger across the restore', async () => {

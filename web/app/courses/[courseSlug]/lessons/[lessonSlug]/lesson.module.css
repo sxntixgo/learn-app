@@ -649,6 +649,24 @@
  * rather than as a broken picture: it is a correct rendering of the block,
  * not an error state.
  */
+/*
+ * The diagram's text alternative once the picture is drawn: out of the layout
+ * but still in the accessibility tree. Same rule as nav.module.css's own
+ * .srOnly — `display: none` would remove it from that tree too, which is the
+ * opposite of what it is for.
+ */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .diagramSource {
   margin: 0;
   padding: var(--space-2);
