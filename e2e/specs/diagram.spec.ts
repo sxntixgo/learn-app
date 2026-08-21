@@ -110,9 +110,14 @@ test('mermaid is fetched only by a page that has a diagram on it', async ({ brow
   // it in the shared bundle and every page would pay for it.
   //
   // Measured as SCRIPT BYTES, not chunk names, because the names are content
-  // hashes and say nothing. The threshold is generous: mermaid is ~1.4 MB, so
-  // half a megabyte of difference cannot be explained by anything else on
-  // these two pages.
+  // hashes and say nothing.
+  //
+  // The measured figures, 2026-08-21: /me fetches ~461 KB of script, a lesson
+  // with a diagram ~1284 KB — a delta of ~822 KB, all of it mermaid. (Note
+  // that this is smaller than the ~1.4 MB of on-disk chunks that MENTION
+  // mermaid; not all of them are fetched for a flowchart.) The 500 KB
+  // threshold below is deliberately well under the delta and well over
+  // anything else these two pages could differ by.
   async function scriptBytesOn(path: string): Promise<number> {
     const context = await browser.newContext();
     try {

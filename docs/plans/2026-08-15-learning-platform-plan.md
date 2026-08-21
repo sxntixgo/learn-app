@@ -139,9 +139,11 @@ database access, no credentials in any committable file.
       `figure` — mermaid is a layout engine that needs real text metrics, and rendering it
       server-side under jsdom fails in the worst available way, by SUCCEEDING with a wrong
       picture (a four-node flowchart came back as a 116x36 viewBox with every node on top
-      of every other). The cost is ~1.4 MB of lazily loaded client JS; an E2E test measures
-      script bytes on a page with a diagram against one without, so the "loaded only where
-      needed" claim cannot quietly stop being true. The CSP did not move.
+      of every other). The cost, measured rather than estimated: a lesson with a diagram
+      fetches ~1284 KB of script against ~461 KB for a page without one — **~822 KB**, all
+      mermaid, and only on pages that have a diagram. An E2E test measures exactly that
+      delta, so the "loaded only where needed" claim cannot quietly stop being true. The
+      CSP did not move.
 - [ ] `web/tsconfig.json` is Next-generated and sits outside the root composite project, so
       `npm run typecheck` does not cover it — `next build` does. Consider unifying in Phase 4.
       **Model:** `haiku`
