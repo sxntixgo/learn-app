@@ -68,6 +68,18 @@ function instructions(dockerfile: string): string {
     .join('\n');
 }
 
+/**
+ * A Dockerfile with `\`-continued lines joined into one.
+ *
+ * Matching a multi-line instruction without this needs a regex whose first
+ * `[^\n]*` does not eat the trailing backslash — which it does, greedily,
+ * leaving the continuation unmatched and the assertion looking at half an
+ * instruction.
+ */
+function joinContinuations(dockerfile: string): string {
+  return dockerfile.replace(/\\\n\s*/g, ' ');
+}
+
 /** Every path a Dockerfile COPYs from the build context. */
 function copiedPaths(dockerfile: string): string[] {
   const paths: string[] = [];
@@ -210,6 +222,45 @@ describe('both images run unprivileged, as the user the base image provides', ()
       }
     });
   }
+});
+
+describe('the health probe is a committed script, not an inline one-liner', () => {
+  /**
+   * An inline `node -e` probe in a compose file lost twenty-nine characters
+   * somewhere between being written and being run, and then failed with a
+   * SyntaxError on every interval while the API behind it was serving
+   * normally. Eighteen consecutive failures, none of which said anything
+   * about the service.
+   *
+   * Exec form referencing a file removes every layer that could mangle it,
+   * and makes the probe testable — api/src/healthcheck.test.ts covers the
+   * cases the old one got wrong (non-200, refused connection, no answer).
+   */
+  it('api.Dockerfile uses exec form with no embedded script', () => {
+    const healthcheck = joinContinuations(apiDockerfile).match(/^HEALTHCHECK[^\n]*/m)?.[0];
+    expect(healthcheck, 'api.Dockerfile declares no HEALTHCHECK').toBeDefined();
+    expect(healthcheck, 'exec form, so no shell parses it').toMatch(/CMD \["node", "api\/src\/healthcheck\.ts"\]/);
+    expect(healthcheck, 'an inline -e probe is what this replaced').not.toContain('-e');
+  });
+
+  it('the script it points at is copied into the image', () => {
+    expect(statSync(path.join(repoRoot, 'api', 'src', 'healthcheck.ts')).isFile()).toBe(true);
+    // api/src is copied wholesale, and .dockerignore drops only *.test.ts.
+    expect(copiedPaths(apiDockerfile)).toContain('api/src');
+    expect(dockerignore).not.toContain('api/src/healthcheck.ts');
+  });
+
+  it('no compose service re-declares a health probe inline', () => {
+    // The image knows how to check itself. A compose override is a second
+    // copy that can drift, and was the one that broke.
+    for (const [name, service] of Object.entries(compose.services)) {
+      const test = service.healthcheck?.test;
+      if (!test) continue;
+      const command = Array.isArray(test) ? test.join(' ') : test;
+      if (name === 'db') continue; // postgres has no HEALTHCHECK of its own
+      expect(command, `${name} embeds a script in its compose healthcheck`).not.toMatch(/node\s+-e|python\s+-c/);
+    }
+  });
 });
 
 describe('the api image has the binaries its code shells out to', () => {

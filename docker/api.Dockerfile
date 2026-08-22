@@ -68,9 +68,17 @@ COPY --from=builder --chown=node:node /app/tsconfig*.json ./
 
 USER node
 
-# Health check
-HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
-  CMD node -e "require('http').get('http://localhost:3001/api/v1/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
+# EXEC FORM, pointing at a committed script — no shell, no quoting, nothing
+# for a copy-paste to mangle. The previous inline probe lost 29 characters
+# somewhere between a compose file and a running container and failed with a
+# SyntaxError eighteen times in a row while the API was healthy.
+#
+# It also targeted `localhost`, which can resolve to ::1 while this server
+# listens on IPv4 only, and attached no error handler, so a refused
+# connection during start-up was an uncaught exception rather than "not
+# ready yet". api/src/healthcheck.ts handles both, and is tested.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["node", "api/src/healthcheck.ts"]
 
 # Default to running the API
 CMD ["node", "api/src/index.ts"]

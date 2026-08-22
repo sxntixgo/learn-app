@@ -40,20 +40,9 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-learn}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-learn_dev}
       API_PORT: '3001'
-    # node, not curl: the base image is node:22-slim, which has no curl, so
-    # this check could only ever have failed. api.Dockerfile's own HEALTHCHECK
-    # already does it correctly with node; this override existed only to
-    # undo that.
-    healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - "require('http').get('http://localhost:3001/api/v1/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
+    # No healthcheck override. api.Dockerfile declares one, pointing at a
+    # committed script — see the note there for why an inline `node -e` probe
+    # in a compose file is a bad idea.
   # CRITICAL ARCHITECTURAL RULE 1: web MUST NEVER receive DATABASE_URL.
   # The web service only receives NEXT_PUBLIC_API_BASE_URL and WEB_PORT.
   # It communicates with the API exclusively over HTTP.
