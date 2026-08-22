@@ -34,19 +34,22 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Create non-root user
-RUN useradd -m -u 1000 app && chown -R app:app /app
+# The node images already ship a non-root `node` user at UID 1000, so
+# `useradd -m -u 1000 app` fails outright with "UID 1000 is not unique" — the
+# build could never have reached this line. Use the user the base image gives
+# us rather than minting a second one at the same id.
+RUN chown -R node:node /app
 
 # Copy from builder
-COPY --from=builder --chown=app:app /app/node_modules ./node_modules
-COPY --from=builder --chown=app:app /app/package.json ./
-COPY --from=builder --chown=app:app /app/api ./api
-COPY --from=builder --chown=app:app /app/tools ./tools
-COPY --from=builder --chown=app:app /app/db ./db
-COPY --from=builder --chown=app:app /app/schemas ./schemas
-COPY --from=builder --chown=app:app /app/tsconfig*.json ./
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/package.json ./
+COPY --from=builder --chown=node:node /app/api ./api
+COPY --from=builder --chown=node:node /app/tools ./tools
+COPY --from=builder --chown=node:node /app/db ./db
+COPY --from=builder --chown=node:node /app/schemas ./schemas
+COPY --from=builder --chown=node:node /app/tsconfig*.json ./
 
-USER app
+USER node
 
 # Health check
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \

@@ -55,15 +55,18 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Create non-root user
-RUN useradd -m -u 1000 app && chown -R app:app /app
+# The node images already ship a non-root `node` user at UID 1000, so
+# `useradd -m -u 1000 app` fails outright with "UID 1000 is not unique" — the
+# build could never have reached this line. Use the user the base image gives
+# us rather than minting a second one at the same id.
+RUN chown -R node:node /app
 
 # Copy Next.js standalone output from builder
-COPY --from=builder /app/web/.next/standalone /app
-COPY --from=builder /app/web/public ./web/public
-COPY --from=builder /app/web/.next/static ./web/.next/static
+COPY --from=builder --chown=node:node /app/web/.next/standalone /app
+COPY --from=builder --chown=node:node /app/web/public ./web/public
+COPY --from=builder --chown=node:node /app/web/.next/static ./web/.next/static
 
-USER app
+USER node
 
 EXPOSE 3000
 

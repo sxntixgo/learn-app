@@ -150,6 +150,59 @@ describe('api.Dockerfile ships what the API reads at runtime', () => {
   });
 });
 
+describe('both images run unprivileged, as the user the base image provides', () => {
+  /**
+   * Found by the first `docker compose build` these files ever had, on
+   * 2026-08-22: `RUN useradd -m -u 1000 app` fails with "UID 1000 is not
+   * unique" on node:22-slim, which already ships a non-root `node` user at
+   * that id. Both Dockerfiles carried the line, so neither image could be
+   * produced at all — and nothing here noticed, because this file checked
+   * what was COPIED and never what was RUN.
+   */
+  /**
+   * Instructions only. The comments in these files quote the broken line on
+   * purpose, so matching raw text would fail on the explanation of the fix.
+   */
+  const instructions = (dockerfile: string): string =>
+    dockerfile
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('#'))
+      .join('\n');
+
+  for (const [name, dockerfile] of [
+    ['api', instructions(apiDockerfile)],
+    ['web', instructions(webDockerfile)],
+  ] as const) {
+    it(`${name}: does not mint a second user at an id the base image already uses`, () => {
+      expect(dockerfile, 'node images already have a `node` user at UID 1000').not.toMatch(
+        /useradd[^\n]*-u\s*1000/,
+      );
+    });
+
+    it(`${name}: drops to a non-root user before the entry point`, () => {
+      const user = dockerfile.match(/^USER (\S+)/m)?.[1];
+      expect(user, `${name}.Dockerfile never switches away from root`).toBeDefined();
+      expect(user).not.toBe('root');
+    });
+
+    it(`${name}: gives that user ownership of everything it copies into the runtime stage`, () => {
+      // The web image copied the standalone bundle ROOT-OWNED while running
+      // as a non-root user — the second bug in the same four lines. Next's
+      // standalone server writes .next/cache at runtime, so that is an
+      // EACCES waiting for the first request that needs it.
+      const user = dockerfile.match(/^USER (\S+)/m)?.[1];
+      const runtimeCopies = [...dockerfile.matchAll(/^COPY --from=builder(.*)$/gm)].map((m) => m[1]!);
+      expect(runtimeCopies.length, `${name}.Dockerfile has no runtime-stage COPY`).toBeGreaterThan(0);
+
+      for (const line of runtimeCopies) {
+        expect(line, `a runtime COPY leaves files unreadable/unwritable by ${user}`).toContain(
+          `--chown=${user}:${user}`,
+        );
+      }
+    });
+  }
+});
+
 describe('docker-compose.yml', () => {
   it('never hands DATABASE_URL to web — CLAUDE.md rule 1', () => {
     // Checked against the parsed service AND against the raw text, because

@@ -38,8 +38,11 @@ describe('docker/web.Dockerfile agrees with the shape next build actually produc
   });
 
   it('copies public/ and .next/static alongside that server, not beside the bundle root', () => {
-    expect(dockerfile).toMatch(/COPY --from=builder \S+\/web\/public \.\/web\/public/);
-    expect(dockerfile).toMatch(/COPY --from=builder \S+\/web\/\.next\/static \.\/web\/\.next\/static/);
+    // `[^\n]*` rather than `\S+`: these lines also carry `--chown=node:node`,
+    // which the original pattern could not accommodate — it assumed exactly
+    // one token between the flag and the source path.
+    expect(dockerfile).toMatch(/COPY --from=builder[^\n]*\/web\/public \.\/web\/public/);
+    expect(dockerfile).toMatch(/COPY --from=builder[^\n]*\/web\/\.next\/static \.\/web\/\.next\/static/);
   });
 
   it('matches the real build output when there is one to check against', () => {
