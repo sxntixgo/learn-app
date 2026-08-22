@@ -1,0 +1,53 @@
+# What must not enter a build context.
+#
+# There was no .dockerignore here at all until the images were first built for
+# real, which cost two separate problems:
+#
+#  1. `next build` type-checks everything under web/, INCLUDING *.test.ts.
+#     Those import `vitest`, which is a ROOT devDependency — the web image
+#     installs only the web workspace, so the build failed with twenty
+#     "Cannot find module 'vitest'" errors. Test files have no business in a
+#     production image in the first place.
+#  2. `.env` sat in the context. Nothing copies it today, but a build context
+#     is not a safe place for a signing key and a database password to be
+#     within reach of one careless `COPY . .`.
+#
+# NOTE ON (1): excluding tests means `next build` INSIDE DOCKER type-checks
+# less than `next build` in CI, which still sees them. CI remains the gate for
+# web type errors (CLAUDE.md); a green Docker build is not a substitute.
+
+# Secrets. Never.
+.env
+.env.*
+!.env.example
+
+# Tests and their artifacts — not shipped, and see (1) above.
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+e2e/
+playwright.config.ts
+vitest.config.ts
+vitest.setup.ts
+test-results/
+playwright-report/
+coverage/
+
+# Build output and installed dependencies. The image runs `npm ci` and builds
+# from source; copying these in would both bloat the context and risk shipping
+# a host's platform-specific binaries (sharp, in particular).
+node_modules/
+**/node_modules/
+.next/
+web/.next/
+dist/
+**/dist/
+*.tsbuildinfo
+
+# Operational data that belongs on a volume, not in a layer.
+backups/
+
+# Repo metadata.
+.git/
+.github/
+docs/

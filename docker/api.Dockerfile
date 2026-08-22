@@ -32,6 +32,23 @@ COPY tools/tsconfig.json tools/
 # Runtime stage
 FROM node:22-slim
 
+# git, because api/src/content/clone.ts SPAWNS IT at runtime to import a
+# course from a git URL (design §5, the admin import screen). node:22-slim
+# does not ship it, so that whole feature would have failed with ENOENT on
+# first use — a runtime hole no amount of reading the Dockerfile reveals,
+# since nothing in this file mentions git at all.
+#
+# ca-certificates so an https:// clone can verify anything.
+#
+# Deliberately NOT postgresql-client: tools/src/backup.ts spawns `pg_dump`,
+# and pg_dump refuses to dump a server newer than itself, so this image would
+# have to track the database's major version forever. The postgres:17 image
+# already has matching tools — take backups from THERE:
+#   docker compose exec learn-db pg_dump -U learn -Fc learn > learn.dump
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # The node images already ship a non-root `node` user at UID 1000, so

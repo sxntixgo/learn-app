@@ -40,6 +40,10 @@ const repoRoot = path.resolve(here, '../..');
 const webDockerfile = readFileSync(path.join(repoRoot, 'docker', 'web.Dockerfile'), 'utf8');
 const apiDockerfile = readFileSync(path.join(repoRoot, 'docker', 'api.Dockerfile'), 'utf8');
 const composeRaw = readFileSync(path.join(repoRoot, 'docker', 'docker-compose.yml'), 'utf8');
+const dockerignore = readFileSync(path.join(repoRoot, '.dockerignore'), 'utf8')
+  .split('\n')
+  .map((line) => line.trim())
+  .filter((line) => line !== '' && !line.startsWith('#'));
 
 interface ComposeService {
   build?: { context?: string; dockerfile?: string; args?: Record<string, string> };
@@ -48,6 +52,21 @@ interface ComposeService {
   depends_on?: unknown;
 }
 const compose = parseYaml(composeRaw) as { version?: string; services: Record<string, ComposeService> };
+
+/**
+ * A Dockerfile with its comments removed.
+ *
+ * Every negative assertion in this file needs it: the comments deliberately
+ * quote the broken thing they explain — `useradd -m -u 1000`,
+ * `postgresql-client` — so matching raw text finds the explanation and calls
+ * it the bug.
+ */
+function instructions(dockerfile: string): string {
+  return dockerfile
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('#'))
+    .join('\n');
+}
 
 /** Every path a Dockerfile COPYs from the build context. */
 function copiedPaths(dockerfile: string): string[] {
@@ -159,16 +178,6 @@ describe('both images run unprivileged, as the user the base image provides', ()
    * produced at all — and nothing here noticed, because this file checked
    * what was COPIED and never what was RUN.
    */
-  /**
-   * Instructions only. The comments in these files quote the broken line on
-   * purpose, so matching raw text would fail on the explanation of the fix.
-   */
-  const instructions = (dockerfile: string): string =>
-    dockerfile
-      .split('\n')
-      .filter((line) => !line.trimStart().startsWith('#'))
-      .join('\n');
-
   for (const [name, dockerfile] of [
     ['api', instructions(apiDockerfile)],
     ['web', instructions(webDockerfile)],
@@ -201,6 +210,51 @@ describe('both images run unprivileged, as the user the base image provides', ()
       }
     });
   }
+});
+
+describe('the api image has the binaries its code shells out to', () => {
+  /**
+   * Found by reading the code for `spawn`/`execFile` after the first real
+   * build got far enough to matter: node:22-slim is a minimal image and
+   * carries neither git nor postgres client tools. A missing binary is
+   * invisible in a Dockerfile — nothing in it mentions the dependency — and
+   * surfaces as ENOENT the first time a feature is used in anger.
+   */
+  it('installs git, which content/clone.ts spawns to import from a URL', () => {
+    const clone = readFileSync(path.join(repoRoot, 'api', 'src', 'content', 'clone.ts'), 'utf8');
+    expect(clone, 'clone.ts no longer spawns git; this test needs revisiting').toMatch(/spawn\(\s*'git'/);
+    expect(apiDockerfile, 'api.Dockerfile never installs git').toMatch(/apt-get install[^\n]*\bgit\b/);
+  });
+
+  it('does NOT install postgresql-client, which would have to track the server major', () => {
+    // backup.ts spawns pg_dump, and pg_dump refuses a newer server. Rather
+    // than pin this image to the database's major version forever, backups
+    // are taken from the postgres image, which always matches.
+    expect(instructions(apiDockerfile)).not.toMatch(/postgresql-client/);
+  });
+});
+
+describe('.dockerignore keeps the wrong things out of the build context', () => {
+  it('excludes .env — a build context is not a place for a signing key', () => {
+    // apps/learn-app/.env holds AUTH_JWT_PRIVATE_KEY and the database
+    // password in a real deployment. Nothing copies it today; this is about
+    // the one careless `COPY . .` that would.
+    expect(dockerignore).toContain('.env');
+    expect(dockerignore).toContain('.env.*');
+  });
+
+  it('excludes test files, which `next build` would otherwise try to type-check', () => {
+    // The failure this prevents: *.test.ts import `vitest`, a ROOT
+    // devDependency that the web image never installs, so `next build` died
+    // with twenty "Cannot find module 'vitest'" errors.
+    expect(dockerignore).toContain('**/*.test.ts');
+  });
+
+  it('excludes node_modules, so a host build never ships its own platform binaries', () => {
+    // sharp resolves a platform-specific binary. Copying a host's
+    // node_modules into a linux image is how that goes wrong quietly.
+    expect(dockerignore.some((line) => line === 'node_modules/' || line === '**/node_modules/')).toBe(true);
+  });
 });
 
 describe('docker-compose.yml', () => {
