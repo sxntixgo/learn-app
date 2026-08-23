@@ -5,10 +5,9 @@ import { can as defaultCan } from '../policy/can.ts';
 import { actorFor } from '../auth/actor.ts';
 import { clearSessionCookies } from '../auth/cookies.ts';
 import { DEFAULT_TIMEZONE, isValidTimeZone } from '../time/timezone.ts';
-import { computeStreaks } from '../activity/streaks.ts';
-import type { StreakEvent } from '../activity/streaks.ts';
 import { buildHeatmapDays, clampWeeks } from '../activity/heatmap.ts';
 import { localDateKey } from '../activity/streaks.ts';
+import { loadStreaks } from '../activity/day-keys.ts';
 import { listBadgeProgress, listDegreeProgress } from '../progression/views.ts';
 import { remainingBudget } from '../invites/issue.ts';
 import { exportAccount } from '../me/export.ts';
@@ -261,12 +260,9 @@ export function registerMeRoutes(fastify: FastifyInstance, deps: MeRouteDeps = {
     // heatmap window — a streak that started before the window is still a
     // real streak. Deliberately not reusing `counts`/`days` above, which
     // are truncated to the window.
-    const allEventsResult = await getPool().query<{ occurred_at: Date }>(
-      'select occurred_at from activity_events where user_id = $1 order by occurred_at asc',
-      [actor.id],
-    );
-    const streakEvents: StreakEvent[] = allEventsResult.rows.map((r) => ({ occurredAt: r.occurred_at }));
-    const { current, longest } = computeStreaks(streakEvents, timezone, now);
+    // One row per active day, not per event — activity/day-keys.ts explains
+    // why that distinction is worth a shared module.
+    const { current, longest } = await loadStreaks(getPool(), actor.id, timezone, now);
 
     return reply.code(200).send({
       timezone,

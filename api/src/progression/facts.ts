@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import { computeStreaks } from '../activity/streaks.ts';
+import { loadStreaks } from '../activity/day-keys.ts';
 import { DEFAULT_TIMEZONE } from '../time/timezone.ts';
 import type { FactKey } from './criteria.ts';
 import type { PooledTrack, TrackTally } from './track-score.ts';
@@ -223,15 +223,10 @@ async function loadCurrentStreak(client: pg.PoolClient, userId: string): Promise
   ]);
   const timezone = userResult.rows[0]?.timezone ?? DEFAULT_TIMEZONE;
 
-  const { rows } = await client.query<{ occurred_at: Date }>(
-    'select occurred_at from activity_events where user_id = $1 order by occurred_at asc',
-    [userId],
-  );
-
-  return computeStreaks(
-    rows.map((r) => ({ occurredAt: r.occurred_at })),
-    timezone,
-  ).current;
+  // This function runs on EVERY lesson completion, so re-reading the whole
+  // event history here made each of a learner's actions cost more the longer
+  // they had been learning. One row per active day instead.
+  return (await loadStreaks(client, userId, timezone)).current;
 }
 
 /**

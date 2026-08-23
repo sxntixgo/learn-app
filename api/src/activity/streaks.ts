@@ -59,12 +59,31 @@ export function addDaysToKey(key: string, deltaDays: number): string {
  *   and a streak both want.
  */
 export function computeStreaks(events: readonly StreakEvent[], timezone: string, now: Date = new Date()): Streaks {
-  const dayKeys = new Set(events.map((e) => localDateKey(new Date(e.occurredAt), timezone)));
+  const dayKeys = events.map((e) => localDateKey(new Date(e.occurredAt), timezone));
+  return streaksFromDayKeys(dayKeys, localDateKey(now, timezone));
+}
 
-  const longest = longestRun(dayKeys);
-  const current = currentRun(dayKeys, localDateKey(now, timezone));
-
-  return { current, longest };
+/**
+ * The same computation, starting from date keys that have ALREADY been
+ * bucketed into the subject's timezone.
+ *
+ * This is what `computeStreaks` reduces to on its first line, and it is
+ * exported because that reduction is where the cost was. Every caller loaded
+ * a learner's entire `activity_events` history — one row per event — purely
+ * to throw all but one row per day into a Set. A learner with a year of daily
+ * use had thousands of rows read, transferred and formatted to produce at
+ * most 365 distinct keys, and `progression/facts.ts` paid it again on every
+ * single lesson completion.
+ *
+ * `activity/day-keys.ts` now asks Postgres for the distinct days instead, and
+ * feeds them here. The bucketing moves to SQL, which is why
+ * `day-keys.test.ts` pins `(occurred_at at time zone $tz)::date` and
+ * `localDateKey` to the same answer across DST transitions in both
+ * hemispheres — that agreement is now load-bearing rather than incidental.
+ */
+export function streaksFromDayKeys(dayKeys: Iterable<string>, todayKey: string): Streaks {
+  const keys = dayKeys instanceof Set ? dayKeys : new Set(dayKeys);
+  return { current: currentRun(keys, todayKey), longest: longestRun(keys) };
 }
 
 function longestRun(dayKeys: ReadonlySet<string>): number {

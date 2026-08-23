@@ -1,7 +1,7 @@
 import type pg from 'pg';
 import { buildHeatmapDays } from '../activity/heatmap.ts';
-import { computeStreaks, localDateKey } from '../activity/streaks.ts';
-import type { StreakEvent } from '../activity/streaks.ts';
+import { localDateKey } from '../activity/streaks.ts';
+import { loadStreaks } from '../activity/day-keys.ts';
 import { listDegreeProgress } from '../progression/views.ts';
 import { DEFAULT_TIMEZONE } from '../time/timezone.ts';
 import type {
@@ -256,13 +256,11 @@ async function loadHeatmap(client: pg.PoolClient, userId: string, timezone: stri
   const days = buildHeatmapDays(new Map(counts.rows.map((r) => [r.local_date, Number(r.cnt)])), HEATMAP_WEEKS, todayKey);
 
   // Streaks come from the FULL history, not the window: a streak that began
-  // before it is still a streak (same reasoning as routes/me.ts).
-  const all = await client.query<{ occurred_at: Date }>(
-    'select occurred_at from activity_events where user_id = $1 order by occurred_at asc',
-    [userId],
-  );
-  const events: StreakEvent[] = all.rows.map((r) => ({ occurredAt: r.occurred_at }));
-  const { current, longest } = computeStreaks(events, timezone, now);
+  // before it is still a streak (same reasoning as routes/me.ts). Full
+  // history, but one row per ACTIVE DAY rather than one per event — this
+  // runs for anonymous viewers too, so it is the query least able to afford
+  // being unbounded. See activity/day-keys.ts.
+  const { current, longest } = await loadStreaks(client, userId, timezone, now);
 
   return {
     timezone,
