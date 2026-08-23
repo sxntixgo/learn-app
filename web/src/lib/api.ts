@@ -1,6 +1,6 @@
 import { cookies, headers } from 'next/headers';
 import type { components } from './api-types';
-import { AuthRequiredError, classifyStatus } from './api-errors';
+import { AuthRequiredError, ForbiddenError, classifyStatus } from './api-errors';
 import { relaySetCookies } from './auth-cookies';
 
 // Types come from the generated contract (CLAUDE.md rule 3) — never
@@ -71,7 +71,7 @@ export type SearchHit = components['schemas']['SearchHit'];
 // /login) never need to import from ./api-errors directly — api.ts is the
 // one seam that talks to the API, and this is the one error it can throw
 // that isn't just "something is broken" (Task B).
-export { AuthRequiredError } from './api-errors';
+export { AuthRequiredError, ForbiddenError } from './api-errors';
 
 function apiBase(): string {
   const base = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -151,9 +151,11 @@ async function apiFetch(path: string, init: RequestInit = {}): Promise<Response>
     ...init,
     headers: { ...(await authHeaders()), ...(await forwardedHeaders()), ...init.headers },
   });
-  if (classifyStatus(res.status) === 'auth-required') {
-    throw new AuthRequiredError();
-  }
+  const outcome = classifyStatus(res.status);
+  if (outcome === 'auth-required') throw new AuthRequiredError();
+  // ForbiddenError extends AuthRequiredError, so every `instanceof
+  // AuthRequiredError` probe below still catches it.
+  if (outcome === 'forbidden') throw new ForbiddenError();
   return res;
 }
 

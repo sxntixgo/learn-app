@@ -86,6 +86,35 @@ export function parseSetCookie(raw: string): ParsedSetCookie | null {
 }
 
 /**
+ * The path a relayed cookie should carry ON WEB'S ORIGIN.
+ *
+ * The API scopes the refresh cookie to `/api/v1/auth` — sound reasoning, and
+ * its own comment says why: a credential only the auth routes need should
+ * not ride along on every other request. That scoping is about the API's
+ * origin, where those routes exist.
+ *
+ * On web's origin they do not. The browser never talks to the API directly
+ * (proxy.ts's CSP is `connect-src 'self'`), and Next serves nothing under
+ * `/api/v1/auth`. A refresh cookie scoped there is a cookie the browser will
+ * never send anywhere — so the session simply ended when the 15-minute access
+ * token expired, with a perfectly good refresh token sitting unused in the
+ * jar.
+ *
+ * Re-scoped to `/` so proxy.ts can see it and refresh. That is a real
+ * widening of where the token travels, and it is the cost of the token being
+ * usable at all here: every path on this origin is the same Next server, the
+ * cookie stays httpOnly + secure + SameSite=Lax, and no page script can read
+ * it.
+ */
+function pathOnThisOrigin(parsed: ParsedSetCookie): string | undefined {
+  if (parsed.name === REFRESH_COOKIE_NAME) return '/';
+  return parsed.path;
+}
+
+/** Mirrors api/src/auth/cookies.ts. Duplicated rather than imported: web must not depend on the API package. */
+const REFRESH_COOKIE_NAME = 'learn_rt';
+
+/**
  * Re-issues every Set-Cookie header on `res` (an API response) as a cookie
  * on web's own outgoing response. A no-op when the API set no cookies —
  * most API responses don't.
@@ -99,7 +128,7 @@ export async function relaySetCookies(res: Response): Promise<void> {
     const parsed = parseSetCookie(header);
     if (!parsed) continue;
     store.set(parsed.name, parsed.value, {
-      path: parsed.path,
+      path: pathOnThisOrigin(parsed),
       maxAge: parsed.maxAge,
       httpOnly: parsed.httpOnly,
       secure: parsed.secure,

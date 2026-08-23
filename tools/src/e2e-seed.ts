@@ -137,6 +137,21 @@ export const E2E_AVATAR_PASSWORD = 'a-long-enough-avatar-password';
  * FIRST time. An account that already completed it in a previous run would
  * make the assertion pass without the write under test happening at all.
  */
+/**
+ * A student whose SESSION is the subject, for the refresh spec.
+ *
+ * Dedicated for a reason specific to auth: `login` calls
+ * `revokeDeviceSessions` (api/src/routes/auth.ts) to kill the same device's
+ * previous session rather than leave a second live family behind. Six specs
+ * sign in as `viewportUser`, so any of them running concurrently revokes the
+ * refresh-token family another one is mid-way through testing — the refresh
+ * then correctly returns 401 and the spec fails for a reason that has
+ * nothing to do with refresh.
+ */
+export const E2E_SESSION_EMAIL = 'e2e-session@example.test';
+export const E2E_SESSION_HANDLE = 'e2e-session';
+export const E2E_SESSION_PASSWORD = 'a-long-enough-session-password';
+
 export const E2E_FEED_EMAIL = 'e2e-feed@example.test';
 export const E2E_FEED_HANDLE = 'e2e-feed';
 export const E2E_FEED_PASSWORD = 'a-long-enough-feed-password';
@@ -254,6 +269,12 @@ export interface E2eFixtures {
    * — see E2E_DELETABLE_EMAIL's own comment for why this one, uniquely, has
    * no other spec depending on it.
    */
+  /** A student nothing else signs in as, so the refresh spec's token family is undisturbed. */
+  sessionUser: {
+    email: string;
+    password: string;
+    handle: string;
+  };
   /** A student enrolled but with nothing completed, for the stale-dashboard spec. */
   feedUser: {
     email: string;
@@ -479,6 +500,22 @@ async function ensureDeletableUser(client: pg.PoolClient): Promise<void> {
   );
   const userId = user.rows[0]!.id;
   await client.query(`insert into user_roles (user_id, role) values ($1, 'student')`, [userId]);
+}
+
+/** The refresh spec's account. Nothing else signs in as it, so its token family is undisturbed. */
+async function ensureSessionUser(client: pg.PoolClient, courseId: string): Promise<void> {
+  await resetInvitedAccount(client, E2E_SESSION_EMAIL);
+  const passwordHash = await hashPassword(E2E_SESSION_PASSWORD);
+  const user = await client.query<{ id: string }>(
+    `insert into users (email, handle, password_hash, display_name) values ($1, $2, $3, $4) returning id`,
+    [E2E_SESSION_EMAIL, E2E_SESSION_HANDLE, passwordHash, 'E2E Session'],
+  );
+  const userId = user.rows[0]!.id;
+  await client.query(`insert into user_roles (user_id, role) values ($1, 'student')`, [userId]);
+  await client.query(
+    `insert into enrollments (user_id, course_id) values ($1, $2) on conflict (user_id, course_id) do nothing`,
+    [userId, courseId],
+  );
 }
 
 /**
@@ -725,6 +762,7 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
     await ensureDeletableUser(client);
     await ensureAvatarUser(client);
     await ensureFeedUser(client, courseId);
+    await ensureSessionUser(client, courseId);
     return {
       courseSlug,
       lessonSlug,
@@ -747,6 +785,11 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
         email: E2E_AVATAR_EMAIL,
         password: E2E_AVATAR_PASSWORD,
         handle: E2E_AVATAR_HANDLE,
+      },
+      sessionUser: {
+        email: E2E_SESSION_EMAIL,
+        password: E2E_SESSION_PASSWORD,
+        handle: E2E_SESSION_HANDLE,
       },
       feedUser: {
         email: E2E_FEED_EMAIL,

@@ -17,27 +17,57 @@
  * Actions) keep working unchanged.
  */
 export class AuthRequiredError extends Error {
-  constructor() {
-    super('Authentication required.');
+  constructor(message = 'Authentication required') {
+    super(message);
     this.name = 'AuthRequiredError';
   }
 }
 
-export type FetchOutcome = 'ok' | 'auth-required' | 'not-found' | 'error';
+/**
+ * A 403: the caller HAS a session and it does not reach this resource.
+ *
+ * A SUBCLASS of AuthRequiredError, deliberately. A dozen call sites in api.ts
+ * ask "may this actor do X?" by catching AuthRequiredError and returning
+ * false — `canGrade`, `hasInvites`, and friends — and every one of them means
+ * "the API refused on authorization grounds", which is as true of a 403 as of
+ * a 401. Subclassing keeps all of them correct without a single edit.
+ *
+ * The base class keeps its name even though "auth required" now reads a
+ * little oddly for the parent of both. Renaming it to AuthorizationError
+ * would be more accurate and would touch every one of those call sites for
+ * no behavioural gain; this comment is the cheaper fix.
+ *
+ * What the distinction is FOR is the remedy. 401 means sign in. 403 means
+ * signing in again changes nothing — which is exactly the loop this split
+ * exists to end.
+ */
+export class ForbiddenError extends AuthRequiredError {
+  constructor(message = 'Forbidden') {
+    super(message);
+    this.name = 'ForbiddenError';
+  }
+}
+
+export type FetchOutcome = 'ok' | 'auth-required' | 'forbidden' | 'not-found' | 'error';
 
 /**
  * Classifies an HTTP status for the API client (web/src/lib/api.ts):
  *   - 2xx is `ok`.
- *   - 401/403 is `auth-required` — the actor has no session, or the one
- *     they have does not reach this resource. Either way the UI's answer is
- *     the same: send them to sign in (Task B).
+ *   - 401 is `auth-required` — there is no session. Sign in.
+ *   - 403 is `forbidden` — there IS a session and it does not reach this
+ *     resource. These were one outcome until an admin account signed in and
+ *     hit the catalog: `course:list` is a student-only power (§5.1), the
+ *     catalog 403'd, the UI sent them to /login, /login saw a valid session
+ *     and sent them back, forever. Signing in again cannot fix a 403, so the
+ *     two cannot share a remedy.
  *   - 404 is `not-found` — callers turn this into `notFound()`, exactly as
  *     `fetchCourse` already did before this fix.
  *   - anything else is a genuine `error`, left for the caller to throw.
  */
 export function classifyStatus(status: number): FetchOutcome {
   if (status >= 200 && status < 300) return 'ok';
-  if (status === 401 || status === 403) return 'auth-required';
+  if (status === 401) return 'auth-required';
+  if (status === 403) return 'forbidden';
   if (status === 404) return 'not-found';
   return 'error';
 }

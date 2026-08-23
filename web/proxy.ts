@@ -82,7 +82,120 @@ export function isSecureRequest(request: NextRequest): boolean {
   return request.nextUrl.protocol === 'https:';
 }
 
-export function proxy(request: NextRequest): NextResponse {
+// -----------------------------------------------------------------------------
+// SESSION REFRESH
+//
+// The API mints a 15-minute access token and a long-lived, rotating refresh
+// token, with reuse detection (design §13). It has done since Phase 6. The
+// web app never called `/api/v1/auth/refresh` — so in practice a session
+// lasted fifteen minutes and then dumped you at the login form, with a
+// perfectly good refresh token in the jar that nothing ever spent.
+//
+// It happens HERE because this is the only place in a Next app that can both
+// read the incoming cookies and set new ones on the way out. A Server
+// Component render cannot set a cookie, which is why api.ts could never have
+// done it.
+//
+// THE HAZARD, and why the conditions below are narrow. Rotation means a
+// refresh token is single-use, and presenting a spent one is treated as
+// THEFT: the API revokes the whole family, writes an audit row, and clears
+// both cookies. Two requests refreshing concurrently would therefore not
+// merely race — the loser would look like an attacker and destroy the
+// session. So a refresh is attempted only for a top-level document
+// navigation, which the browser makes one of at a time. Prefetches, RSC
+// payloads, images and actions are all left alone; they will be re-issued
+// with the fresh cookie once the document lands.
+//
+// Residual risk, stated rather than hidden: two tabs navigating in the same
+// instant can still collide, and the loser loses the session. Eliminating
+// that needs a lock the middleware does not have. It trades a rare forced
+// re-login for a session that works at all, which is the better side of the
+// trade — but it is a trade.
+// -----------------------------------------------------------------------------
+
+const ACCESS_COOKIE = 'learn_at';
+const REFRESH_COOKIE = 'learn_rt';
+
+/** A real page load, not a prefetch, an RSC fetch, an action, or a subresource. */
+function isDocumentNavigation(request: NextRequest): boolean {
+  if (request.method !== 'GET') return false;
+  if (!request.headers.get('accept')?.includes('text/html')) return false;
+  // Next's own client sends these on payload fetches and prefetches.
+  if (request.headers.has('rsc') || request.headers.has('next-router-prefetch')) return false;
+  if (request.headers.get('sec-fetch-dest') === 'iframe') return false;
+  return true;
+}
+
+function shouldRefresh(request: NextRequest): boolean {
+  // The access cookie carries maxAge = its own TTL, so the browser drops it
+  // at expiry. Absent-but-refresh-present is precisely "expired, renewable".
+  return (
+    !request.cookies.has(ACCESS_COOKIE) && request.cookies.has(REFRESH_COOKIE) && isDocumentNavigation(request)
+  );
+}
+
+function apiBase(): string | undefined {
+  return process.env.NEXT_PUBLIC_API_BASE_URL;
+}
+
+/**
+ * Spends the refresh token for a new pair. Returns the API's Set-Cookie
+ * headers, or null if it declined — in which case the API has already
+ * cleared both cookies and the visitor gets the login page, which is the
+ * correct outcome for an expired or revoked session.
+ */
+async function refreshSession(request: NextRequest): Promise<string[] | null> {
+  const base = apiBase();
+  if (!base) return null;
+
+  try {
+    const response = await fetch(`${base}/api/v1/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        cookie: request.headers.get('cookie') ?? '',
+        // The API only believes this when API_TRUST_PROXY is on, and the
+        // per-IP limits are worthless without it.
+        'x-forwarded-for': request.headers.get('x-forwarded-for') ?? '',
+      },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(5000),
+    });
+    const setCookie = response.headers.getSetCookie();
+    return setCookie.length > 0 ? setCookie : null;
+  } catch {
+    // A refresh that cannot reach the API must not take the page down with
+    // it. The request proceeds unauthenticated and lands on /login.
+    return null;
+  }
+}
+
+/**
+ * Re-scopes the refresh cookie to `/` on the way out.
+ *
+ * The API scopes it to `/api/v1/auth`, which is right on ITS origin and
+ * meaningless on this one — nothing is served there, so the browser would
+ * hold a cookie it never sends and the next refresh would never happen.
+ * src/lib/auth-cookies.ts does the same thing for the login response; this is
+ * the same rule on the refresh path, and the two must agree or a refreshed
+ * session would silently revert to unrenewable.
+ */
+function rescopeRefreshCookie(header: string): string {
+  if (!header.startsWith(`${REFRESH_COOKIE}=`)) return header;
+  return header.replace(/;\s*Path=[^;]*/i, '; Path=/');
+}
+
+/** `name=value` pairs from Set-Cookie headers, for splicing into the request. */
+function cookiePairs(setCookieHeaders: string[]): { name: string; value: string }[] {
+  return setCookieHeaders
+    .map((header) => header.split(';', 1)[0] ?? '')
+    .map((pair) => {
+      const index = pair.indexOf('=');
+      return index === -1 ? null : { name: pair.slice(0, index).trim(), value: pair.slice(index + 1).trim() };
+    })
+    .filter((pair): pair is { name: string; value: string } => pair !== null);
+}
+
+export async function proxy(request: NextRequest): Promise<NextResponse> {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   const nonce = btoa(String.fromCharCode(...bytes));
@@ -104,7 +217,28 @@ export function proxy(request: NextRequest): NextResponse {
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('content-security-policy', csp);
 
+  // Refresh BEFORE the render, and splice the new access token into the
+  // request the render will see. Setting it only on the response would leave
+  // this page rendering unauthenticated — a redirect to /login on the very
+  // request that just renewed the session.
+  const refreshed = shouldRefresh(request) ? await refreshSession(request) : null;
+  if (refreshed) {
+    const jar = new Map(request.cookies.getAll().map((c) => [c.name, c.value]));
+    for (const { name, value } of cookiePairs(refreshed)) {
+      if (value === '') jar.delete(name);
+      else jar.set(name, value);
+    }
+    requestHeaders.set(
+      'cookie',
+      [...jar].map(([name, value]) => `${name}=${value}`).join('; '),
+    );
+  }
+
   const response = NextResponse.next({ request: { headers: requestHeaders } });
+
+  // Hand the browser the rotated pair, verbatim — attributes included, so
+  // maxAge and the re-scoped path come straight from the API.
+  if (refreshed) for (const header of refreshed) response.headers.append('set-cookie', rescopeRefreshCookie(header));
 
   response.headers.set('content-security-policy', csp);
   response.headers.set('x-content-type-options', 'nosniff');
