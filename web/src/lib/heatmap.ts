@@ -129,19 +129,19 @@ export const HEATMAP_WINDOW_STEPS: readonly HeatmapWindowStep[] = [
   // for cells by a full column. 25 rather than 24 because the th cannot go
   // BELOW its min-content width — declaring 24 leaves the label 0.39px wider
   // than the reserved space, and that fraction costs a whole column.
-  { minViewportWidth: 0, weeks: 12, cellPx: 20, gapPx: 2, labelPx: 25 },
+  { minViewportWidth: 0, weeks: 12, cellPx: 18, gapPx: 2, labelPx: 25 },
   // Tablet: from 834, NOT from the nav's own 768 breakpoint. 26 weeks needs
   // ~530px and 768px only leaves 498 once the sidebar and card are taken out,
   // so a step starting at 768 could never honour its own number — it was
   // overflowing from its first pixel. 834 is also the iPad portrait width
   // this design is aimed at (§14.2). 26 * (16 + 3) + 36 = 530 against 564.
-  { minViewportWidth: 834, weeks: 26, cellPx: 16, gapPx: 3, labelPx: 36 },
+  { minViewportWidth: 834, weeks: 26, cellPx: 14, gapPx: 3, labelPx: 36 },
   // Desktop: from 1360, for the same reason — 53 weeks needs ~1043px, and
   // below 1340 the content column has not yet reached the 1160px cap that
   // makes that possible. The full year is the promise that actually matters,
   // so the step waits until it can keep it. 53 * (16 + 3) + 36 = 1043
   // against 1054 available.
-  { minViewportWidth: 1360, weeks: 53, cellPx: 16, gapPx: 3, labelPx: 36 },
+  { minViewportWidth: 1360, weeks: 53, cellPx: 14, gapPx: 3, labelPx: 36 },
 ];
 
 /** The step that applies at `viewportWidth`. */

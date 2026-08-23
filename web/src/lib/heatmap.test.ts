@@ -126,7 +126,14 @@ describe('the window actually fits the viewport it is for', () => {
     for (const step of HEATMAP_WINDOW_STEPS) {
       expect(step.cellPx).toBeGreaterThanOrEqual(12);
     }
-    expect(HEATMAP_WINDOW_STEPS[0]!.cellPx).toBeGreaterThanOrEqual(20);
+    // 18, lowered from 20 on request ("a little too big, make them 10%
+    // smaller"). Recorded rather than quietly edited, because this is the
+    // PHONE step and it is the one number here with a cost: the cell is
+    // already far below a comfortable touch target, and every reduction makes
+    // a mis-tap likelier on the device where the grid is tightest. Design §10
+    // originally specified 22, and Gate 4 still has an open question asking
+    // whether the cell size works in the hand at all.
+    expect(HEATMAP_WINDOW_STEPS[0]!.cellPx).toBeGreaterThanOrEqual(18);
   });
 });
 

@@ -41,7 +41,7 @@
  */
 .scroller {
   --hm-window-weeks: 12;
-  --hm-cell: 20px;
+  --hm-cell: 18px;
   --hm-gap: 2px;
   /* Not 0px: the weekday `th` lays out to its text's min-content width
      whatever this says, so 0 only ever hid a column's worth of space from
@@ -80,6 +80,21 @@
   flex: 0 0 calc(var(--hm-cell) + var(--hm-gap));
   white-space: nowrap;
   overflow: visible;
+  /*
+   * WITHOUT THIS THE MONTH LABELS WIDEN THE GRID. A flex item's default
+   * `min-width: auto` resolves to its own min-content, and `flex-shrink: 0`
+   * does not prevent that floor from applying — so a cell declared 17px wide
+   * lays out at ~19px if it contains "Sep". Twelve labelled cells did that
+   * and the strip came out 12px wider than the table below it, which made
+   * `.rail` (width: max-content) 12px wider than the scroller. The grid then
+   * sat permanently scrolled by those 12px, hiding the first column under
+   * the sticky weekday label: the 26-week window showed 25.
+   *
+   * It only appeared when the cells shrank. At the old 19px pitch a month
+   * label happened to fit, so the floor never bound and the bug was
+   * invisible — the layout had always been one font metric away from it.
+   */
+  min-width: 0;
 }
 
 .grid {
@@ -99,7 +114,13 @@
   /* Stays put while the weeks scroll under it. */
   position: sticky;
   left: 0;
-  background: var(--color-page);
+  /*
+   * The CARD's background, not the page's. This column scrolls over the grid
+   * and sat in page white against the raised surface everything else here is
+   * drawn on — a bright stripe beside the month labels, which have no
+   * background of their own and so show the card through.
+   */
+  background: var(--color-surface-raised);
 }
 
 .weekdayText {
@@ -261,7 +282,7 @@
 @media (min-width: 834px) {
   .scroller {
     --hm-window-weeks: 26;
-    --hm-cell: 16px;
+    --hm-cell: 14px;
     --hm-gap: 3px;
     --hm-label: 36px;
   }
@@ -273,7 +294,7 @@
 @media (min-width: 1360px) {
   .scroller {
     --hm-window-weeks: 53;
-    --hm-cell: 16px;
+    --hm-cell: 14px;
     --hm-gap: 3px;
     --hm-label: 36px;
   }
