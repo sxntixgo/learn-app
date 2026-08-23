@@ -242,6 +242,57 @@ describe.sequential('runImportPipeline', () => {
     }
   });
 
+  it('REPORTS a failure instead of throwing when the database connection itself is unusable', async () => {
+    // The doc comment on runImportPipeline promises it "never throws — every
+    // failure is reported through onEvent/the return value". That promise is
+    // load-bearing for the caller: api/src/routes/admin.ts streams these
+    // events, so by the time something fails the response is already
+    // half-written and an exception has nowhere to go. It cannot be turned
+    // into a stream event, and the client sees a truncated stream with no
+    // reason in it.
+    //
+    // The failure simulated here is the one the catch-all was written for: a
+    // broken connection, not a broken repo. A client whose transaction has
+    // already been aborted rejects EVERY subsequent statement with 25P02 —
+    // including the `failed` import_runs row the pipeline would like to write
+    // about the failure — which is exactly the "the connection itself is what
+    // broke" case, and the one where a naive handler double-faults.
+    const slug = 'run-import-dead-connection';
+    const repo = await makeValidRepo(slug);
+    const client = await pool.connect();
+    const events: ImportProgressEvent[] = [];
+    try {
+      await client.query('begin');
+      await client.query('select 1 / 0').catch(() => undefined); // aborts the transaction
+      const before = await cloneTempEntries();
+
+      const result = await runImportPipeline(client, { url: repo.url, allowFileUrl: true }, (e) => events.push(e));
+
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected failure');
+      expect(result.problems.join('\n')).toMatch(/current transaction is aborted/i);
+
+      // The clone succeeded; the very first statement after it did not, so
+      // the pipeline never reached 'validating'.
+      expect(events.map((e) => e.stage)).toEqual(['cloning', 'failed']);
+      const failed = events.at(-1)!;
+      expect(failed.problems).toEqual(result.problems);
+      // No run id, because writing the row is itself what failed — reported
+      // honestly rather than masked with a second, invented failure.
+      expect(failed.importRunId).toBeUndefined();
+
+      // And the temp clone is still removed (design §4: no content left on
+      // disk after an import), which only holds if the `finally` runs on this
+      // path too.
+      expect(await cloneTempEntries()).toEqual(before);
+    } finally {
+      await client.query('rollback').catch(() => undefined);
+      client.release();
+      await cleanupRun(slug, repo.url);
+      await cleanupRepo(repo);
+    }
+  });
+
   it('fails at the write stage on an undeclared track, relying on importCourse’s own row rather than writing a second one', async () => {
     const slug = 'run-import-bad-track';
     const repo = await makeBadTrackRepo(slug);

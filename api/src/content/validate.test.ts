@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateCourseManifest, validateBlocks } from './validate.ts';
+import { BADGE_CRITERION_TYPES, validateBadgeCriteria, validateCourseManifest, validateBlocks } from './validate.ts';
 
 function validCourseManifest() {
   return {
@@ -394,5 +394,93 @@ describe('validateBlocks', () => {
       const result = validateBlocks([figure]);
       expect(result.valid).toBe(false);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateBadgeCriteria — THE CLOSED VOCABULARY of design §9.3.
+//
+// `badges.criteria` is a jsonb column, so the database cannot express "exactly
+// these eight types, each with its own required fields". This function is the
+// only thing that can, and BOTH write paths (the importer and the admin CRUD)
+// run a value through it. A criteria object that slipped past it would produce
+// a badge whose criterion no evaluator in progression/criteria.ts understands
+// — a badge nobody can ever earn, and nothing would ever report that.
+//
+// It also owns an error-quality promise that is easy to regress by
+// "simplifying" it into a single `oneOf` compile: validating against all eight
+// branches at once produces 23 ajv errors, none of which says the useful
+// thing. The last two tests below are what would fail if someone did that.
+// ---------------------------------------------------------------------------
+describe('validateBadgeCriteria', () => {
+  it('accepts a well-formed criterion of a known type', () => {
+    expect(validateBadgeCriteria({ type: 'streak_days', days: 7 })).toEqual({ valid: true, errors: [] });
+    expect(validateBadgeCriteria({ type: 'course_completed', course: 'code-review' })).toEqual({
+      valid: true,
+      errors: [],
+    });
+  });
+
+  it('refuses anything that is not a criteria OBJECT, including an array', () => {
+    // An array is the one that matters: `typeof [] === 'object'`, so a check
+    // written the obvious way would let a list of criteria through as if it
+    // were one criterion, and then read `.type` off it as undefined.
+    for (const notAnObject of [null, 'streak_days', 7, [{ type: 'streak_days', days: 7 }]]) {
+      const result = validateBadgeCriteria(notAnObject);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toEqual([{ path: '/', message: 'must be a criteria object' }]);
+    }
+  });
+
+  it('refuses a criteria object whose `type` is missing or is not a string, naming /type', () => {
+    for (const badType of [undefined, 7, null, ['streak_days']]) {
+      const result = validateBadgeCriteria({ type: badType, days: 7 });
+      expect(result.valid).toBe(false);
+      expect(result.errors).toEqual([{ path: '/type', message: 'is required and must be a string' }]);
+    }
+  });
+
+  it('refuses an unknown type with ONE error that lists the whole allowed vocabulary', () => {
+    // design §9.3: "adding a ninth type is a deliberate platform change", so an
+    // unrecognised type is never a near-miss worth guessing at — the caller
+    // gets the closed list instead.
+    const result = validateBadgeCriteria({ type: 'lessons_read', count: 3 });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.path).toBe('/type');
+    for (const type of BADGE_CRITERION_TYPES) {
+      expect(result.errors[0]!.message).toContain(type);
+    }
+  });
+
+  it('reports a misspelled field against the criterion’s OWN branch, not against all eight', () => {
+    // The regression this guards: validating {type: "streak_days", dayz: 7}
+    // against the whole eight-branch oneOf yields 23 errors — one set per
+    // branch that failed, plus "must match exactly one schema in oneOf" — and
+    // buries the two that are actually about streak_days. Dispatching on
+    // `type` first is what keeps the count at two.
+    const result = validateBadgeCriteria({ type: 'streak_days', dayz: 7 });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toEqual([
+      { path: '/', message: "must have required property 'days'" },
+      { path: '/', message: 'must NOT have additional properties' },
+    ]);
+    // Nothing about the seven types the author did not ask for, and no
+    // "must match exactly one schema in oneOf" to read past.
+    expect(JSON.stringify(result.errors)).not.toContain('perfect_quiz');
+    expect(JSON.stringify(result.errors)).not.toContain('oneOf');
+  });
+
+  it('refuses a known type that is missing its own required field', () => {
+    const result = validateBadgeCriteria({ type: 'track_score', track: 'cx' });
+    expect(result.valid).toBe(false);
+    expect(JSON.stringify(result.errors)).toContain('min');
+  });
+
+  it('exposes the eight type names read off the schema, never a second hand-kept list', () => {
+    // If this ever disagrees with schemas/badge.schema.json, the message above
+    // is lying to authors about what they may write.
+    expect(BADGE_CRITERION_TYPES).toContain('streak_days');
+    expect(BADGE_CRITERION_TYPES).toHaveLength(8);
   });
 });

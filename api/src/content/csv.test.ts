@@ -54,6 +54,15 @@ describe('parseChartCsv', () => {
     expect(() => parseChartCsv(['label,value', ',5'].join('\n'))).toThrow(/row 2.*label/is);
   });
 
+  it('refuses a row with fewer cells than the header instead of reading `undefined` as a value', () => {
+    // A ragged row is the commonest hand-edited-CSV mistake. Without the
+    // fallback to "", the missing cell arrives as undefined: `Number(undefined)`
+    // is NaN (caught by luck) but `undefined.trim()` is a TypeError, and a
+    // sidecar file would crash the importer instead of naming the row.
+    expect(() => parseChartCsv('label,value\nApril\n')).toThrow(/row 2.*"value" is not a number, got ""/);
+    expect(() => parseChartCsv('value,label\n5\n')).toThrow(/row 2.*empty "label"/);
+  });
+
   it('throws when the file has a header but no data rows', () => {
     expect(() => parseChartCsv('label,value\n')).toThrow(/no data rows/i);
   });

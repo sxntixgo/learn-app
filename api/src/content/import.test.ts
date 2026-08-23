@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import pg from 'pg';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { importCourse } from './import.ts';
+import type { LoadedCourse } from './manifest.ts';
 import { loadCourse } from './manifest.ts';
 
 const run = promisify(execFile);
@@ -102,6 +103,33 @@ async function importDir(
   } finally {
     client.release();
   }
+}
+
+/**
+ * A LoadedCourse built directly, without a manifest on disk.
+ *
+ * importCourse's contract is a LoadedCourse, not a directory — tools/src/e2e-seed.ts
+ * already assembles one by hand — so its refusals have to hold for a course
+ * course.schema.json never saw. That is the only way to reach the shapes the
+ * schema itself would have rejected upstream.
+ */
+function handBuiltCourse(slug: string): LoadedCourse {
+  return {
+    slug,
+    title: 'Hand-built Course',
+    tracks: [],
+    modules: [
+      {
+        id: 'intro',
+        title: 'Introduction',
+        lessons: [
+          { srcPath: 'm/one.md', title: 'One', kind: 'lesson', blocks: [{ type: 'prose', html: '<p>Prose.</p>' }] },
+        ],
+      },
+    ],
+    degrees: [],
+    badges: [],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -756,6 +784,185 @@ describe.sequential('importCourse', () => {
   });
 
   // ===========================================================================
+  // planCourse — the manifest shapes refused BEFORE a single row is written.
+  //
+  // The transaction would have kept the database safe either way; these
+  // refusals exist purely for error quality (design §8). A duplicate slug that
+  // reached Postgres comes back as `23505 duplicate key value violates unique
+  // constraint "lessons_course_id_slug_key"`, which does not tell an author
+  // which two FILES to look at — and finding out means reading the importer's
+  // slug derivation by hand. Each test below asserts the message names the
+  // thing the author has to go and edit, because that naming IS the feature.
+  // ===========================================================================
+  describe('manifest shapes refused before any write', () => {
+    it('refuses a manifest that declares the same module id twice, naming the id', async () => {
+      // course.schema.json cannot express "unique within the course" for
+      // module ids, so this is the only thing standing between a copy-pasted
+      // module block and two modules fighting over one (course_id, key) row.
+      const slug = `${SLUG_PREFIX}-dupe-module`;
+      const dirPath = path.join(tmp, 'dupe-module');
+      await writeCourse(dirPath, {
+        slug,
+        modules: [
+          { id: 'intro', title: 'Introduction', lessons: [lesson('a/one.md', 'One')] },
+          { id: 'intro', title: 'Introduction Again', lessons: [lesson('b/two.md', 'Two')] },
+        ],
+      });
+
+      await expect(importDir(dirPath)).rejects.toThrow('course.yaml: module "intro" is declared twice.');
+      expect((await pool.query(`select 1 from courses where slug = $1`, [slug])).rowCount).toBe(0);
+    });
+
+    it('refuses two lessons that derive the same slug, naming BOTH files', async () => {
+      // A module holding both README.md and index.md is an ordinary repo
+      // layout, and both collapse to the bare module slug (that collapse is
+      // deliberate — it makes modules/01-intro/README.md read as "/intro").
+      // The author cannot see the collision in the manifest, so the error has
+      // to hand them both filenames and tell them the fix.
+      const slug = `${SLUG_PREFIX}-slug-clash`;
+      const dirPath = path.join(tmp, 'slug-clash');
+      await writeCourse(dirPath, {
+        slug,
+        modules: [
+          {
+            id: 'intro',
+            title: 'Introduction',
+            lessons: [lesson('m/README.md', 'Overview'), lesson('m/index.md', 'Index')],
+          },
+        ],
+      });
+
+      const error = await importDir(dirPath).catch((err: unknown) => err as Error);
+      expect(error).toBeInstanceOf(Error);
+      expect(error.message).toContain('m/index.md');
+      expect(error.message).toContain('m/README.md');
+      expect(error.message).toContain('derives the same lesson slug "intro"');
+      expect(error.message).toMatch(/rename one of the two files/i);
+      expect((await pool.query(`select 1 from courses where slug = $1`, [slug])).rowCount).toBe(0);
+    });
+
+    it('refuses a lesson whose blocks fail the schema, with the JSON Pointer to the bad field', async () => {
+      // importCourse is reachable without validate-only mode ever having run
+      // (the CLI's directory import, tools/src/e2e-seed.ts), so it re-checks
+      // the blocks itself. Storing a quiz with pass: 4 would create a lesson
+      // no student could ever pass and nothing would report it.
+      const slug = `${SLUG_PREFIX}-bad-blocks`;
+      const dirPath = path.join(tmp, 'bad-blocks');
+      await writeCourse(dirPath, {
+        slug,
+        modules: [
+          {
+            id: 'intro',
+            title: 'Introduction',
+            lessons: [
+              {
+                file: 'm/quiz.md',
+                body: '---\ntitle: Quiz\n---\n\n```quiz\npass: 4\nquestions: []\n```\n',
+              },
+            ],
+          },
+        ],
+      });
+
+      const error = await importDir(dirPath).catch((err: unknown) => err as Error);
+      expect(error).toBeInstanceOf(Error);
+      expect(error.message).toMatch(/invalid blocks, refusing to write/);
+      expect(error.message).toContain('m/quiz.md:/0/pass');
+      expect((await pool.query(`select 1 from courses where slug = $1`, [slug])).rowCount).toBe(0);
+    });
+
+    it('refuses a badge whose criteria are outside the closed vocabulary', async () => {
+      // A manifest-loaded course cannot get here (course.schema.json rejects
+      // the badge first), but importCourse takes a LoadedCourse from any
+      // assembler — tools/src/e2e-seed.ts builds one by hand. A badge whose
+      // criteria no evaluator in progression/criteria.ts understands is a
+      // badge nobody can ever earn, and nothing downstream would notice.
+      const slug = `${SLUG_PREFIX}-bad-badge`;
+      const badgeSlug = `${SLUG_PREFIX}-badge-nonsense`;
+      const client = await pool.connect();
+      try {
+        const error = await importCourse(client, {
+          ...handBuiltCourse(slug),
+          badges: [{ slug: badgeSlug, title: 'Nonsense', criteria: { type: 'vibes', count: 3 } }],
+        }).catch((err: unknown) => err as Error);
+
+        expect(error).toBeInstanceOf(Error);
+        expect(error.message).toMatch(/badge "[^"]+" is not valid, refusing to write/);
+        expect(error.message).toContain(`badges/${badgeSlug}`);
+      } finally {
+        client.release();
+      }
+
+      expect((await pool.query(`select 1 from badges where slug = $1`, [badgeSlug])).rowCount).toBe(0);
+      // One transaction per course: the course itself never landed either.
+      expect((await pool.query(`select 1 from courses where slug = $1`, [slug])).rowCount).toBe(0);
+    });
+  });
+
+  it('imports a module that has no lessons at all without tripping over the empty slug list', async () => {
+    // course.schema.json requires minItems: 1 on `lessons`, so this shape can
+    // only arrive from a hand-assembled LoadedCourse (tools/src/e2e-seed.ts) —
+    // but "no lesson wants any slug" is exactly the input that makes a
+    // `slug = any(ARRAY[]::text[])` query match nothing while a carelessly
+    // written one would match EVERY lesson of the course and rename them all.
+    const slug = `${SLUG_PREFIX}-empty-module`;
+    const client = await pool.connect();
+    try {
+      const course: LoadedCourse = { ...handBuiltCourse(slug), modules: [{ id: 'intro', title: 'Empty', lessons: [] }] };
+      const result = await importCourse(client, course);
+      expect(result.counts.modules.created).toBe(1);
+      expect(result.counts.lessons).toEqual({ created: 0, updated: 0, skipped: 0, archived: 0 });
+    } finally {
+      client.release();
+    }
+
+    expect(await lessonRows(slug)).toEqual([]);
+    const modules = await pool.query(
+      `select key, archived_at from modules where course_id = (select id from courses where slug = $1)`,
+      [slug],
+    );
+    expect(modules.rows).toEqual([{ key: 'intro', archived_at: null }]);
+  });
+
+  it('updates a track in place when the manifest re-styles it, keeping its id', async () => {
+    // tracks.id is a foreign key target for quiz_attempts and rubric_scores
+    // (design §7). Renaming a track in the repo must therefore be an UPDATE,
+    // never a delete-and-reinsert — the second would take every attempt scored
+    // against that track with it.
+    const slug = `${SLUG_PREFIX}-track-update`;
+    const dirPath = path.join(tmp, 'track-update');
+    const spec: CourseSpec = {
+      slug,
+      tracks: [{ id: 'cx', name: 'Complexity', hue: 'blue' }],
+      modules: [{ id: 'intro', title: 'Introduction', lessons: [lesson('m/one.md', 'One')] }],
+    };
+    await writeCourse(dirPath, spec);
+
+    const first = await importDir(dirPath);
+    expect(first.counts.tracks).toEqual({ created: 1, updated: 0, skipped: 0, archived: 0 });
+    const before = await pool.query<{ id: string }>(
+      `select id from tracks where course_id = (select id from courses where slug = $1)`,
+      [slug],
+    );
+
+    // Unchanged re-import rewrites nothing.
+    expect((await importDir(dirPath)).counts.tracks.skipped).toBe(1);
+
+    spec.tracks = [{ id: 'cx', name: 'Complexity & Depth', hue: 'maroon' }];
+    await writeCourse(dirPath, spec);
+    const third = await importDir(dirPath);
+    expect(third.counts.tracks).toEqual({ created: 0, updated: 1, skipped: 0, archived: 0 });
+
+    const after = await pool.query<{ id: string; name: string; hue: string }>(
+      `select id, name, hue from tracks where course_id = (select id from courses where slug = $1)`,
+      [slug],
+    );
+    expect(after.rows[0]!.id).toBe(before.rows[0]!.id);
+    expect(after.rows[0]!.name).toBe('Complexity & Depth');
+    expect(after.rows[0]!.hue).toBe('maroon');
+  });
+
+  // ===========================================================================
   // Design §9.2 / §9.3: the two optional manifest keys, and the ONE refusal.
   // ===========================================================================
   describe('degrees and badges', () => {
@@ -830,6 +1037,55 @@ describe.sequential('importCourse', () => {
       await writeCourse(dirPath, spec);
       const third = await importDir(dirPath);
       expect(third.counts.badges.updated).toBe(1);
+    });
+
+    it('updates a degree in place when the repo changes it, rather than creating a second one', async () => {
+      // user_degrees.degree_id is `on delete restrict` (migration 0013): the
+      // row a student's awarded degree points at has to survive every re-sync
+      // of the repo that declares it, so a retitled or re-scoped degree must
+      // be an UPDATE of the same id — never a delete, and never a second row
+      // quietly competing for the same slug.
+      const slug = `${SLUG_PREFIX}-degree-update`;
+      const degreeSlug = `${SLUG_PREFIX}-degree-evolving`;
+      const dirPath = path.join(tmp, 'degree-update');
+
+      const spec: CourseSpec = {
+        slug,
+        modules: [{ id: 'intro', title: 'Introduction', lessons: [lesson('m/one.md', 'One')] }],
+        degrees: [{ slug: degreeSlug, title: 'Provisional Title', required: [slug] }],
+      };
+      await writeCourse(dirPath, spec);
+
+      const first = await importDir(dirPath);
+      expect(first.counts.degrees).toEqual({ created: 1, updated: 0, skipped: 0, archived: 0 });
+      const before = await pool.query<{ id: string }>(`select id from degrees where slug = $1`, [degreeSlug]);
+
+      spec.degrees = [
+        {
+          slug: degreeSlug,
+          title: 'Settled Title',
+          description: 'Now it has one',
+          required: [slug],
+          electives: { choose: 1, from: [`${SLUG_PREFIX}-elsewhere`] },
+        },
+      ];
+      await writeCourse(dirPath, spec);
+      const second = await importDir(dirPath);
+      expect(second.counts.degrees).toEqual({ created: 0, updated: 1, skipped: 0, archived: 0 });
+
+      const after = await pool.query<{
+        id: string;
+        title: string;
+        description: string | null;
+        electives_choose: number;
+        electives_from: string[];
+      }>(`select id, title, description, electives_choose, electives_from from degrees where slug = $1`, [degreeSlug]);
+      expect(after.rows).toHaveLength(1);
+      expect(after.rows[0]!.id).toBe(before.rows[0]!.id);
+      expect(after.rows[0]!.title).toBe('Settled Title');
+      expect(after.rows[0]!.description).toBe('Now it has one');
+      expect(after.rows[0]!.electives_choose).toBe(1);
+      expect(after.rows[0]!.electives_from).toEqual([`${SLUG_PREFIX}-elsewhere`]);
     });
 
     it('REFUSES to overwrite an admin-created badge, and leaves it exactly as it was', async () => {
