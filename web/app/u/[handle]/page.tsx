@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation';
 import { fetchProfile } from '../../../src/lib/api';
 import type { Profile } from '../../../src/lib/api';
 import Avatar from '../../_shell/Avatar';
+import { anySectionHasContent, sectionHasContent } from '../../../src/lib/profile-sections';
 import Heatmap from '../../me/Heatmap';
 import styles from './profile.module.css';
 
@@ -120,7 +121,14 @@ export default async function ProfilePage({ params }: { params: Promise<{ handle
 
   const { sections } = profile;
   const name = displayNameOf(profile);
-  const empty = Object.keys(sections).length === 0;
+  /*
+   * "Nothing to show" now means no section with CONTENT, not no section
+   * shared. A present-but-empty section renders nothing at all — a new
+   * account used to show four headings in a row, each apologising for having
+   * nothing under it, which says nothing about the person and pushes
+   * whatever they do have below the fold.
+   */
+  const empty = !anySectionHasContent(sections);
 
   return (
     <main className={styles.page}>
@@ -152,72 +160,64 @@ export default async function ProfilePage({ params }: { params: Promise<{ handle
         </p>
       ) : null}
 
-      {sections.badges ? (
+      {sectionHasContent(sections, 'badges') ? (
         <section className={styles.section} aria-labelledby="profile-badges">
           <h2 className={styles.sectionTitle} id="profile-badges">
             Badges
           </h2>
-          {sections.badges.length === 0 ? (
-            <p className={styles.sectionEmpty}>No badges yet.</p>
-          ) : (
-            <ul className={styles.badgeList}>
-              {sections.badges.map((badge) => (
-                <li className={styles.badge} key={badge.slug}>
-                  <span className={styles.badgeTitle}>{badge.title}</span>
-                  {badge.description ? <span className={styles.badgeDescription}>{badge.description}</span> : null}
-                  {badge.awardedAt ? (
-                    <span className={styles.badgeDate}>Earned {formatDate(badge.awardedAt)}</span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
+          <ul className={styles.badgeList}>
+            {sections.badges?.map((badge) => (
+              <li className={styles.badge} key={badge.slug}>
+                <span className={styles.badgeTitle}>{badge.title}</span>
+                {badge.description ? <span className={styles.badgeDescription}>{badge.description}</span> : null}
+                {badge.awardedAt ? (
+                  <span className={styles.badgeDate}>Earned {formatDate(badge.awardedAt)}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
 
-      {sections.degrees ? (
+      {sectionHasContent(sections, 'degrees') ? (
         <section className={styles.section} aria-labelledby="profile-degrees">
           <h2 className={styles.sectionTitle} id="profile-degrees">
             Degrees
           </h2>
-          {sections.degrees.length === 0 ? (
-            <p className={styles.sectionEmpty}>No degrees defined yet.</p>
-          ) : (
-            <ul className={styles.degreeList}>
-              {sections.degrees.map((degree) => (
-                <li className={styles.degree} key={degree.slug}>
-                  <span className={styles.degreeTitle}>{degree.title}</span>
-                  <span className={styles.degreeState}>
-                    {degree.earned ? `Earned${degree.awardedAt ? ` ${formatDate(degree.awardedAt)}` : ''}` : 'In progress'}
-                  </span>
-                  {/* The number is written out, not left to the bar: a
-                      colour-only progress indicator is unreadable for a
-                      significant number of people (design §10/§14). */}
-                  <span className={styles.degreePercent}>{degree.percent}%</span>
-                  <span
-                    className={styles.degreeBar}
-                    role="img"
-                    aria-label={`${degree.percent}% complete`}
-                    style={{ ['--degree-percent' as string]: `${degree.percent}%` }}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
+          <ul className={styles.degreeList}>
+            {sections.degrees?.map((degree) => (
+              <li className={styles.degree} key={degree.slug}>
+                <span className={styles.degreeTitle}>{degree.title}</span>
+                <span className={styles.degreeState}>
+                  {degree.earned ? `Earned${degree.awardedAt ? ` ${formatDate(degree.awardedAt)}` : ''}` : 'In progress'}
+                </span>
+                {/* The number is written out, not left to the bar: a
+                    colour-only progress indicator is unreadable for a
+                    significant number of people (design §10/§14). */}
+                <span className={styles.degreePercent}>{degree.percent}%</span>
+                <span
+                  className={styles.degreeBar}
+                  role="img"
+                  aria-label={`${degree.percent}% complete`}
+                  style={{ ['--degree-percent' as string]: `${degree.percent}%` }}
+                />
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
 
-      {sections.courses ? (
+      {sectionHasContent(sections, 'courses') ? (
         <section className={styles.section} aria-labelledby="profile-courses">
           <h2 className={styles.sectionTitle} id="profile-courses">
             Courses
           </h2>
           <h3 className={styles.subTitle}>Completed</h3>
-          {sections.courses.completed.length === 0 ? (
+          {sections.courses!.completed.length === 0 ? (
             <p className={styles.sectionEmpty}>Nothing completed yet.</p>
           ) : (
             <ul className={styles.courseList}>
-              {sections.courses.completed.map((course) => (
+              {sections.courses!.completed.map((course) => (
                 <li className={styles.course} key={course.slug}>
                   {/* §12: a course has a public landing page; the lessons
                       themselves stay behind login, and this links to the
@@ -233,11 +233,11 @@ export default async function ProfilePage({ params }: { params: Promise<{ handle
             </ul>
           )}
           <h3 className={styles.subTitle}>In progress</h3>
-          {sections.courses.inProgress.length === 0 ? (
+          {sections.courses!.inProgress.length === 0 ? (
             <p className={styles.sectionEmpty}>Nothing in progress.</p>
           ) : (
             <ul className={styles.courseList}>
-              {sections.courses.inProgress.map((course) => (
+              {sections.courses!.inProgress.map((course) => (
                 <li className={styles.course} key={course.slug}>
                   <Link className={styles.courseLink} href={`/courses/${course.slug}`}>
                     {course.title}
@@ -265,39 +265,35 @@ export default async function ProfilePage({ params }: { params: Promise<{ handle
         </section>
       ) : null}
 
-      {sections.activity_feed ? (
+      {sectionHasContent(sections, 'activity_feed') ? (
         <section className={styles.section} aria-labelledby="profile-feed">
           <h2 className={styles.sectionTitle} id="profile-feed">
             Recent activity
           </h2>
-          {sections.activity_feed.length === 0 ? (
-            <p className={styles.sectionEmpty}>Nothing recent.</p>
-          ) : (
-            <ol className={styles.feed}>
-              {sections.activity_feed.map((event, index) => (
-                <li className={styles.event} key={`${event.occurredAt}-${index}`}>
-                  <span className={styles.eventType}>{event.type.replace(/_/g, ' ')}</span>
-                  <span className={styles.eventWhat}>
-                    {event.lesson?.slug && event.course ? (
-                      // Only reachable for a signed-in viewer: the API omits
-                      // the slug for everyone else (§12).
-                      <Link
-                        className={styles.eventLink}
-                        href={`/courses/${event.course.slug}/lessons/${event.lesson.slug}`}
-                      >
-                        {event.lesson.title ?? event.lesson.slug}
-                      </Link>
-                    ) : (
-                      (event.lesson?.title ?? event.course?.title ?? '')
-                    )}
-                  </span>
-                  <time className={styles.eventDate} dateTime={event.occurredAt}>
-                    {formatDate(event.occurredAt)}
-                  </time>
-                </li>
-              ))}
-            </ol>
-          )}
+          <ol className={styles.feed}>
+            {sections.activity_feed?.map((event, index) => (
+              <li className={styles.event} key={`${event.occurredAt}-${index}`}>
+                <span className={styles.eventType}>{event.type.replace(/_/g, ' ')}</span>
+                <span className={styles.eventWhat}>
+                  {event.lesson?.slug && event.course ? (
+                    // Only reachable for a signed-in viewer: the API omits
+                    // the slug for everyone else (§12).
+                    <Link
+                      className={styles.eventLink}
+                      href={`/courses/${event.course.slug}/lessons/${event.lesson.slug}`}
+                    >
+                      {event.lesson.title ?? event.lesson.slug}
+                    </Link>
+                  ) : (
+                    (event.lesson?.title ?? event.course?.title ?? '')
+                  )}
+                </span>
+                <time className={styles.eventDate} dateTime={event.occurredAt}>
+                  {formatDate(event.occurredAt)}
+                </time>
+              </li>
+            ))}
+          </ol>
         </section>
       ) : null}
     </main>
