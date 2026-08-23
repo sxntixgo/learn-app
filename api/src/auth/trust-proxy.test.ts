@@ -59,6 +59,29 @@ describe('parseTrustProxy', () => {
     expect(warning).toBeNull();
   });
 
+  it('warns for a padded zero, which the false-ish spelling check does not catch', () => {
+    // "0" is caught by the false-ish branch and needs no warning, but "00",
+    // "000" and friends fall through to the hop-count branch and parse as the
+    // number zero. Passing `trustProxy: 0` to Fastify would be read as falsy
+    // — the right behaviour by accident — while reading to a human like a
+    // configured hop count, so the operator has to be told the setting did
+    // not mean what it looks like.
+    const { value, warning } = parseTrustProxy('00');
+    expect(value).toBe(false);
+    expect(warning).toContain(TRUST_PROXY_ENV);
+    expect(warning).toContain('trust nothing');
+  });
+
+  it('treats a list of nothing but separators as trust-nothing', () => {
+    // A half-edited compose file ("API_TRUST_PROXY=,") must not hand Fastify
+    // an empty array: `trustProxy: []` trusts no hop but is a shape the
+    // proxy-addr layer has no reason to accept, and a boot-time throw here
+    // reads as a bug in the API rather than as a typo in the deployment.
+    for (const raw of [',', ' , ', ',,,']) {
+      expect(parseTrustProxy(raw)).toEqual({ value: false, warning: null });
+    }
+  });
+
   it('never silently returns true for an unrecognised value', () => {
     // The dangerous failure is a typo that lands on "trust everything".
     for (const raw of ['ture', 'yes please', 'caddy', '-1', 'null']) {
