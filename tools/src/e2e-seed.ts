@@ -148,6 +148,26 @@ export const E2E_AVATAR_PASSWORD = 'a-long-enough-avatar-password';
  * then correctly returns 401 and the spec fails for a reason that has
  * nothing to do with refresh.
  */
+/**
+ * Two accounts whose CREDENTIAL is the subject, for the password spec.
+ *
+ * Dedicated, and for a blunter reason than the other fixtures: that spec
+ * changes the password. Pointing it at a shared account would leave every
+ * other spec unable to sign in, and the failure would look like a broken
+ * login rather than a fixture collision.
+ *
+ * Two of them because the bug that prompted the feature was an ADMIN having
+ * no way to change their password — the account screen returned early for
+ * admins with a single sentence — so the admin path needs its own coverage.
+ */
+export const E2E_PASSWORD_EMAIL = 'e2e-password@example.test';
+export const E2E_PASSWORD_HANDLE = 'e2e-password';
+export const E2E_PASSWORD_PASSWORD = 'a-long-enough-password-user';
+
+export const E2E_PASSWORD_ADMIN_EMAIL = 'e2e-password-admin@example.test';
+export const E2E_PASSWORD_ADMIN_HANDLE = 'e2e-password-admin';
+export const E2E_PASSWORD_ADMIN_PASSWORD = 'a-long-enough-admin-password';
+
 export const E2E_SESSION_EMAIL = 'e2e-session@example.test';
 export const E2E_SESSION_HANDLE = 'e2e-session';
 export const E2E_SESSION_PASSWORD = 'a-long-enough-session-password';
@@ -269,6 +289,10 @@ export interface E2eFixtures {
    * — see E2E_DELETABLE_EMAIL's own comment for why this one, uniquely, has
    * no other spec depending on it.
    */
+  /** A student whose password the password spec changes. Nothing else may sign in as it. */
+  passwordUser: { email: string; password: string; handle: string };
+  /** An ADMIN whose password the password spec changes — the role the bug was reported for. */
+  passwordAdmin: { email: string; password: string; handle: string };
   /** A student nothing else signs in as, so the refresh spec's token family is undisturbed. */
   sessionUser: {
     email: string;
@@ -500,6 +524,21 @@ async function ensureDeletableUser(client: pg.PoolClient): Promise<void> {
   );
   const userId = user.rows[0]!.id;
   await client.query(`insert into user_roles (user_id, role) values ($1, 'student')`, [userId]);
+}
+
+/** The password spec's two accounts, reset each run so the starting password is known. */
+async function ensurePasswordUsers(client: pg.PoolClient): Promise<void> {
+  for (const [address, handle, password, role, label] of [
+    [E2E_PASSWORD_EMAIL, E2E_PASSWORD_HANDLE, E2E_PASSWORD_PASSWORD, 'student', 'E2E Password'],
+    [E2E_PASSWORD_ADMIN_EMAIL, E2E_PASSWORD_ADMIN_HANDLE, E2E_PASSWORD_ADMIN_PASSWORD, 'admin', 'E2E Password Admin'],
+  ] as const) {
+    await resetInvitedAccount(client, address);
+    const user = await client.query<{ id: string }>(
+      `insert into users (email, handle, password_hash, display_name) values ($1, $2, $3, $4) returning id`,
+      [address, handle, await hashPassword(password), label],
+    );
+    await client.query(`insert into user_roles (user_id, role) values ($1, $2)`, [user.rows[0]!.id, role]);
+  }
 }
 
 /** The refresh spec's account. Nothing else signs in as it, so its token family is undisturbed. */
@@ -763,6 +802,7 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
     await ensureAvatarUser(client);
     await ensureFeedUser(client, courseId);
     await ensureSessionUser(client, courseId);
+    await ensurePasswordUsers(client);
     return {
       courseSlug,
       lessonSlug,
@@ -785,6 +825,16 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
         email: E2E_AVATAR_EMAIL,
         password: E2E_AVATAR_PASSWORD,
         handle: E2E_AVATAR_HANDLE,
+      },
+      passwordUser: {
+        email: E2E_PASSWORD_EMAIL,
+        password: E2E_PASSWORD_PASSWORD,
+        handle: E2E_PASSWORD_HANDLE,
+      },
+      passwordAdmin: {
+        email: E2E_PASSWORD_ADMIN_EMAIL,
+        password: E2E_PASSWORD_ADMIN_PASSWORD,
+        handle: E2E_PASSWORD_ADMIN_HANDLE,
       },
       sessionUser: {
         email: E2E_SESSION_EMAIL,

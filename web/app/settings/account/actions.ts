@@ -9,7 +9,7 @@
  */
 
 import { redirect } from 'next/navigation';
-import { deleteMyAccount } from '../../../src/lib/api';
+import { changePassword, deleteMyAccount } from '../../../src/lib/api';
 
 export interface DeleteAccountFormState {
   error: string | null;
@@ -34,4 +34,36 @@ export async function deleteAccountAction(
   // Thrown by next/navigation — must not be caught, so this happens after
   // the only place in this function that could fail.
   redirect('/login?deleted=1');
+}
+
+/**
+ * Changing the account's own password.
+ *
+ * The values are read out of FormData rather than taken as arguments so the
+ * form posts normally, and neither password is ever put in a URL, a redirect,
+ * or a returned object — the result carries a message and nothing else.
+ */
+export type ChangePasswordActionResult = { ok: true } | { ok: false; message: string };
+
+export async function changePasswordAction(formData: FormData): Promise<ChangePasswordActionResult> {
+  const currentPassword = String(formData.get('currentPassword') ?? '');
+  const newPassword = String(formData.get('newPassword') ?? '');
+  const confirmPassword = String(formData.get('confirmPassword') ?? '');
+
+  // The confirmation is a CLIENT-SIDE concern and is checked here rather than
+  // sent on: the API has no business knowing a person typed it twice, and a
+  // third password field in the request body would be a third place it could
+  // be logged.
+  if (newPassword !== confirmPassword) {
+    return { ok: false, message: 'The new passwords do not match.' };
+  }
+
+  const result = await changePassword(currentPassword, newPassword);
+  if (result.ok) return { ok: true };
+  return {
+    ok: false,
+    message: result.retryAfterSeconds
+      ? `${result.message} Try again in ${result.retryAfterSeconds} seconds.`
+      : result.message,
+  };
 }

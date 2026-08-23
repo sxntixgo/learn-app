@@ -996,6 +996,44 @@ export async function login(email: string, password: string, deviceLabel?: strin
   return { ok: false, message };
 }
 
+export type ChangePasswordResult = { ok: true } | { ok: false; message: string; retryAfterSeconds?: number };
+
+/**
+ * Changes the signed-in account's password.
+ *
+ * `relaySetCookies` IS LOAD-BEARING HERE, not housekeeping. The API revokes
+ * every refresh-token family on success and issues a fresh pair for this
+ * device. Without relaying them the browser keeps cookies whose refresh token
+ * has just been revoked: the access token would keep working for its
+ * remaining minutes and then the session would end, so the symptom of
+ * forgetting this line is "changing my password logs me out a quarter of an
+ * hour later".
+ *
+ * Forwarded address for the same reason as login: the route is rate-limited
+ * per IP as well as per account, and without it every attempt on the
+ * instance shares one counter.
+ */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<ChangePasswordResult> {
+  const res = await fetch(`${apiBase()}/api/v1/auth/password`, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()), ...(await forwardedHeaders()) },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+
+  if (res.ok) {
+    await relaySetCookies(res);
+    return { ok: true };
+  }
+
+  const message = await errorMessage(res, 'Could not change your password.');
+  if (res.status === 429) {
+    const retryAfter = Number(res.headers.get('Retry-After'));
+    return { ok: false, message, retryAfterSeconds: Number.isFinite(retryAfter) ? retryAfter : undefined };
+  }
+  return { ok: false, message };
+}
+
 /**
  * Ends the current session (Task D's Sign-out control). Keyed off the
  * refresh cookie by the API itself, not the actor, so this always succeeds —

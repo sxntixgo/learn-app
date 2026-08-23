@@ -2,11 +2,12 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { fetchIsAdmin, fetchMeOrNull } from '../../../src/lib/api';
 import { loginRedirectPath } from '../../../src/lib/next-path';
+import ChangePasswordForm from './ChangePasswordForm';
 import DeleteAccountForm from './DeleteAccountForm';
 import styles from './account.module.css';
 
 export const metadata: Metadata = {
-  title: 'Export & delete account — Learn App',
+  title: 'Account — Learn App',
   robots: { index: false, follow: false },
 };
 
@@ -41,23 +42,42 @@ export default async function AccountSettingsPage() {
   }
 
   const isAdmin = await fetchIsAdmin();
-  if (isAdmin) {
-    return (
-      <main className={styles.page}>
-        <h1 className={styles.title}>Export &amp; delete account</h1>
+
+  return (
+    <main className={styles.page}>
+      <h1 className={styles.title}>Account</h1>
+
+      {/*
+       * PASSWORD FIRST, AND BEFORE THE ADMIN BRANCH BELOW. `me:password:update`
+       * grants to every role, unlike `me:export`/`me:delete` — an admin
+       * account is instance infrastructure that cannot leave, but it very much
+       * can be compromised, and there is no reset flow anywhere in this design
+       * (§2 excludes password-reset mail and SMTP).
+       *
+       * The admin case used to return early from this page with a single
+       * sentence, which is how an admin came to have no way of changing their
+       * password at all: the only screen that could host the form refused to
+       * render anything else for them.
+       */}
+      <section className={styles.group} aria-labelledby="password-heading">
+        <h2 className={styles.groupTitle} id="password-heading">
+          Change your password
+        </h2>
+        <p className={styles.groupNote}>
+          There is no password-reset email on this instance, by design. This form is the only way to change your
+          password, so keep the new one somewhere safe. Changing it signs out every other session.
+        </p>
+        <ChangePasswordForm />
+      </section>
+
+      {isAdmin ? (
         <p className={styles.empty}>
           Data export and account deletion aren&rsquo;t available for an admin account — an admin account is
           instance infrastructure, not a learner or teacher record. If you need to leave this instance, ask another
           administrator to remove your admin access first.
         </p>
-      </main>
-    );
-  }
-
-  return (
-    <main className={styles.page}>
-      <h1 className={styles.title}>Export &amp; delete account</h1>
-
+      ) : (
+        <>
       <section className={styles.group} aria-labelledby="export-heading">
         <h2 className={styles.groupTitle} id="export-heading">
           Download your data
@@ -101,6 +121,8 @@ export default async function AccountSettingsPage() {
 
         <DeleteAccountForm />
       </section>
+        </>
+      )}
     </main>
   );
 }

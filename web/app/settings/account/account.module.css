@@ -171,3 +171,72 @@
     padding-inline: var(--space-4);
   }
 }
+
+/* ---- change password ------------------------------------------------------
+ *
+ * Deliberately plainer than the delete form below it. That one is wrapped in
+ * a warning box because it is irreversible; this one is ordinary maintenance
+ * and should not look alarming.
+ */
+
+.passwordForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 24rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+}
+
+.label {
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-0) var(--space-1);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--color-page);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 1px;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.save {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: var(--space-1) var(--space-4);
+  border: var(--border-regular) solid var(--color-link);
+  border-radius: var(--radius-md);
+  background: var(--color-link);
+  color: var(--color-page);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.save:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.saved {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
