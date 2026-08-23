@@ -55,13 +55,13 @@ export default async function MePage() {
        * profile now, and without this line the only route to them is a menu
        * the reader has to think to open.
        */}
-      <p className={styles.profileLinkRow}>
-        {me?.hasProfile && me.handle ? (
+      {me?.hasProfile && me.handle ? (
+        <p className={styles.profileLinkRow}>
           <Link className={styles.profileLink} href={`/u/${me.handle}`}>
             Your badges, degrees and activity grid are on your profile
           </Link>
-        ) : null}
-      </p>
+        </p>
+      ) : null}
 
       <section className={styles.feed} aria-labelledby="feed-heading">
         <h2 className={styles.sectionTitle} id="feed-heading">

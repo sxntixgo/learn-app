@@ -17,10 +17,9 @@
  */
 
 import { useRef, useState, useTransition } from 'react';
+import { MIN_PASSWORD_LENGTH } from '../../../src/lib/password-rules';
 import { changePasswordAction } from './actions';
 import styles from './account.module.css';
-
-export const MIN_PASSWORD_LENGTH = 12;
 
 export default function ChangePasswordForm() {
   const form = useRef<HTMLFormElement>(null);

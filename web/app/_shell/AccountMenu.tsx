@@ -21,7 +21,7 @@
  * client one. Passing it through keeps it on the server where it belongs.
  */
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import Link from 'next/link';
 import type { Me } from '../../src/lib/api';
 import { logoutAction } from './auth-actions';
@@ -36,13 +36,18 @@ export interface AccountMenuProps {
 export default function AccountMenu({ user, themeControl }: AccountMenuProps) {
   const menu = useRef<HTMLDetailsElement>(null);
 
+  /**
+   * One way to close it. There were four — the effect's own, and an inline
+   * `menu.current!.open = false` on each link, every one of them a non-null
+   * assertion that would throw if the ref were ever unset.
+   */
+  const close = useCallback(() => {
+    if (menu.current) menu.current.open = false;
+  }, []);
+
   useEffect(() => {
     const element = menu.current;
     if (!element) return;
-
-    const close = () => {
-      element.open = false;
-    };
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || !element.open) return;
@@ -64,7 +69,7 @@ export default function AccountMenu({ user, themeControl }: AccountMenuProps) {
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('pointerdown', onPointerDown);
     };
-  }, []);
+  }, [close]);
 
   /*
    * WHICH LINKS APPEAR IS DECIDED BY THE API, not guessed here. `hasProfile`
@@ -86,16 +91,16 @@ export default function AccountMenu({ user, themeControl }: AccountMenuProps) {
 
       <div className={styles.panel}>
         {profilePath ? (
-          <Link className={styles.item} href={profilePath} onClick={() => (menu.current!.open = false)}>
+          <Link className={styles.item} href={profilePath} onClick={close}>
             Your profile
           </Link>
         ) : null}
         {user.hasProfile ? (
-          <Link className={styles.item} href="/settings/profile" onClick={() => (menu.current!.open = false)}>
+          <Link className={styles.item} href="/settings/profile" onClick={close}>
             Profile &amp; visibility
           </Link>
         ) : null}
-        <Link className={styles.item} href="/settings/account" onClick={() => (menu.current!.open = false)}>
+        <Link className={styles.item} href="/settings/account" onClick={close}>
           Account &amp; password
         </Link>
 

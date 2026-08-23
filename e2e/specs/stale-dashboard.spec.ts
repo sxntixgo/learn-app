@@ -67,3 +67,31 @@ test('the dashboard shows the completion immediately, even when it was already p
   await expect(page.getByRole('heading', { name: 'Recent activity' })).toBeVisible();
   await expect(page.getByText('Completed “Getting started” in E2E Course')).toBeVisible();
 });
+
+test('the dashboard is the feed and nothing else', async ({ page }) => {
+  /*
+   * The point of splitting /me from the profile was that the two had been
+   * rendering the same four things from the same data. Every remaining
+   * "Activity heatmap" assertion in this suite is now on the profile, so
+   * putting the grid — or the badge shelf, or the degree list — back on the
+   * dashboard would fail nothing at all.
+   *
+   * This is that assertion. It is a negative, which normally earns its keep
+   * poorly; here the whole change IS the absence.
+   */
+  await signIn(page, '/me');
+  await expect(page).toHaveURL(/\/me$/);
+
+  // The one thing it should have.
+  await expect(page.getByRole('heading', { name: 'Recent activity' })).toBeVisible();
+
+  // The things that moved to the profile.
+  await expect(page.getByRole('grid', { name: /Activity heatmap/ })).toHaveCount(0);
+  for (const heading of ['Badges', 'Degrees']) {
+    await expect(page.getByRole('heading', { name: heading, exact: true }), heading).toHaveCount(0);
+  }
+
+  // And the way back to them, so they are not reachable only by remembering
+  // to open a menu.
+  await expect(page.getByRole('link', { name: /on your profile/ })).toBeVisible();
+});
