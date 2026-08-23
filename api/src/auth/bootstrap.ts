@@ -198,6 +198,13 @@ async function insertUser(
 }
 
 /**
+ * The one thing a wrong setup token is ever told. Shared by the cheap
+ * pre-check and the atomic claim so the two cannot drift into distinguishable
+ * answers — which half refused you is not information a caller gets.
+ */
+const UNAUTHORIZED_MESSAGE = 'Invalid setup token.';
+
+/**
  * Claims the instance and creates the operator + student pair, atomically.
  *
  * The whole thing is one transaction. Either the instance is marked
@@ -211,6 +218,39 @@ export async function bootstrapInstance(
   request: BootstrapRequest,
   deps: BootstrapDeps = {},
 ): Promise<BootstrapResult> {
+  // THE TOKEN IS CHECKED BEFORE ANY PASSWORD IS HASHED.
+  //
+  // This route is unauthenticated and unthrottled by design — the setup token
+  // is what stands in for both. Hashing first therefore handed any anonymous
+  // caller two Argon2id computations (19 MiB and ~100ms EACH, by design) for
+  // the cost of one HTTP request, with no token and no account, on an
+  // instance that may already be claimed. That is a CPU and memory
+  // exhaustion primitive, and it survived bootstrap: the `gone` path below
+  // also only returned after both hashes had already run.
+  //
+  // So: a cheap read first, and the expensive work only for a caller who
+  // actually holds the token. This read is NOT the authorization — the
+  // atomic claim inside the transaction still is, and it re-checks the same
+  // hash under the row lock, so a token revoked in the microseconds between
+  // the two still loses. It exists purely to make the failure path cheap.
+  const precheck = await pool.query<{ bootstrapped_at: Date | null; token_matches: boolean }>(
+    `select bootstrapped_at,
+            (setup_token_hash is not null and setup_token_hash = $1) as token_matches
+       from instance_state
+      where id = 1`,
+    [hashSetupToken(request.setupToken)],
+  );
+  const pre = precheck.rows[0];
+  if (!pre) {
+    throw new Error('instance_state has no row — run migrations before serving requests');
+  }
+  if (pre.bootstrapped_at !== null) {
+    return { ok: false, reason: 'gone', message: 'This instance has already been set up.' };
+  }
+  if (!pre.token_matches) {
+    return { ok: false, reason: 'unauthorized', message: UNAUTHORIZED_MESSAGE };
+  }
+
   // Hashing happens before the transaction opens: it is the slowest step by
   // far (Argon2id is meant to be), and doing it while holding the
   // instance_state row lock would make every concurrent claimant wait on it.
@@ -272,7 +312,7 @@ export async function bootstrapInstance(
       if (after.rows[0]?.bootstrapped_at != null) {
         return { ok: false, reason: 'conflict', message: 'Another request claimed this instance first.' };
       }
-      return { ok: false, reason: 'unauthorized', message: 'Invalid setup token.' };
+      return { ok: false, reason: 'unauthorized', message: UNAUTHORIZED_MESSAGE };
     }
 
     // The student account first: the operator account points at it (design

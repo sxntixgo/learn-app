@@ -441,4 +441,99 @@ describe('accepting an invite (design §12, §13)', () => {
       ).toBe(0);
     });
   });
+
+  /**
+   * THE EXPENSIVE WORK HAPPENS ONLY FOR A CALLER WHO HOLDS A LIVE INVITE.
+   *
+   * acceptInvite is reachable without an account — the token IS the
+   * credential — and nothing rate-limits it. It used to run Argon2id (19 MiB,
+   * ~100ms, deliberately) BEFORE the claim, so one anonymous request with a
+   * junk token bought a memory-hard hash from anybody who could reach the
+   * port.
+   *
+   * Counted rather than timed: the ordering is the property, and a counter
+   * cannot flake the way a stopwatch can.
+   */
+  describe('a caller without a usable invite cannot make the server do Argon2id work', () => {
+    function countingHasher() {
+      let calls = 0;
+      return {
+        calls: () => calls,
+        hashPassword: async (plaintext: string): Promise<string> => {
+          calls += 1;
+          return `hashed:${plaintext}`;
+        },
+      };
+    }
+
+    it('hashes nothing for a token that matches no invite', async () => {
+      const hasher = countingHasher();
+      const result = await acceptInvite(
+        pool,
+        {
+          token: 'this-token-was-never-issued',
+          handle: next(),
+          password: PASSWORD,
+          displayName: null,
+          timezone: null,
+          actorId: null,
+        },
+        { hashPassword: hasher.hashPassword },
+      );
+
+      expect(result.ok).toBe(false);
+      expect(hasher.calls(), 'an unknown token still cost the server an Argon2id hash').toBe(0);
+    });
+
+    it('hashes nothing for an invite that was already accepted', async () => {
+      const invite = await issue(issuer, { kind: 'platform' });
+      const first = await acceptInvite(
+        pool,
+        { token: invite.token, handle: next(), password: PASSWORD, displayName: null, timezone: null, actorId: null },
+        { hashPassword },
+      );
+      expect(first.ok).toBe(true);
+
+      const hasher = countingHasher();
+      const second = await acceptInvite(
+        pool,
+        { token: invite.token, handle: next(), password: PASSWORD, displayName: null, timezone: null, actorId: null },
+        { hashPassword: hasher.hashPassword },
+      );
+
+      expect(second.ok).toBe(false);
+      expect(hasher.calls(), 'a spent invite still cost the server an Argon2id hash').toBe(0);
+    });
+
+    it('hashes nothing for a revoked invite', async () => {
+      const invite = await issue(issuer, { kind: 'platform' });
+      await pool.query('update invites set revoked_at = now() where id = $1', [invite.id]);
+
+      const hasher = countingHasher();
+      const result = await acceptInvite(
+        pool,
+        { token: invite.token, handle: next(), password: PASSWORD, displayName: null, timezone: null, actorId: null },
+        { hashPassword: hasher.hashPassword },
+      );
+
+      expect(result.ok).toBe(false);
+      expect(hasher.calls()).toBe(0);
+    });
+
+    it('still hashes for the invitee who does hold a live invite', async () => {
+      // The guard must not have become "never hash".
+      const invite = await issue(issuer, { kind: 'platform' });
+      const hasher = countingHasher();
+
+      const result = await acceptInvite(
+        pool,
+        { token: invite.token, handle: next(), password: PASSWORD, displayName: null, timezone: null, actorId: null },
+        { hashPassword: hasher.hashPassword },
+      );
+
+      expect(result.ok).toBe(true);
+      expect(hasher.calls()).toBe(1);
+    });
+  });
+
 });

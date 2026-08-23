@@ -394,9 +394,13 @@ describe('invitation routes (design §12)', () => {
       const issued = await issueCourseInvite();
 
       const anonymous = await buildServer({ actor: ANONYMOUS_ACTOR });
+      // The token travels in a HEADER, not the query string: Fastify logs
+      // `req.url`, so `?token=` put a live invite token into the container
+      // log in plaintext (api/src/log-redaction.ts).
       const preview = await anonymous.inject({
         method: 'GET',
-        url: `/api/v1/invites/lookup?token=${encodeURIComponent(issued.token)}`,
+        url: '/api/v1/invites/lookup',
+        headers: { 'x-invite-token': issued.token },
       });
       expect(preview.statusCode).toBe(200);
       const body = JSON.parse(preview.payload) as { courseSlug: string; needsAccount: boolean; email: string };
@@ -407,10 +411,49 @@ describe('invitation routes (design §12)', () => {
       await pool.query('update invites set revoked_at = now() where id = $1', [issued.invite.id]);
       const gone = await anonymous.inject({
         method: 'GET',
-        url: `/api/v1/invites/lookup?token=${encodeURIComponent(issued.token)}`,
+        url: '/api/v1/invites/lookup',
+        headers: { 'x-invite-token': issued.token },
       });
       await anonymous.close();
       expect(gone.statusCode).toBe(410);
+    });
+
+
+    it('refuses a lookup with no X-Invite-Token header', async () => {
+      const anonymous = await buildServer({ actor: ANONYMOUS_ACTOR });
+      const response = await anonymous.inject({ method: 'GET', url: '/api/v1/invites/lookup' });
+      await anonymous.close();
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('IGNORES a token in the query string — the old spelling must not still work', async () => {
+      // The whole point of the move is that a token never appears in a URL.
+      // If the query parameter kept working, every existing caller would keep
+      // leaking it into the log and nothing would have been fixed.
+      const issued = await issueCourseInvite();
+      const anonymous = await buildServer({ actor: ANONYMOUS_ACTOR });
+      const response = await anonymous.inject({
+        method: 'GET',
+        url: `/api/v1/invites/lookup?token=${encodeURIComponent(issued.token)}`,
+      });
+      await anonymous.close();
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('cannot be smuggled a valid token by REPEATING the header', async () => {
+      // Node joins a repeated header into "a,b" rather than handing over an
+      // array, so the value hashes to nothing and dies as an unusable token.
+      // Asserted because the alternative — a parser that picked the first
+      // value — would make the header a place to hide one.
+      const issued = await issueCourseInvite();
+      const anonymous = await buildServer({ actor: ANONYMOUS_ACTOR });
+      const response = await anonymous.inject({
+        method: 'GET',
+        url: '/api/v1/invites/lookup',
+        headers: { 'x-invite-token': [issued.token, 'decoy'] as unknown as string },
+      });
+      await anonymous.close();
+      expect(response.statusCode).toBe(410);
     });
 
     it('REGISTERS AND ENROLS IN ONE STEP, then refuses the spent link', async () => {

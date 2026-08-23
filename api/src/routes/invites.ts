@@ -318,15 +318,27 @@ export function registerInviteRoutes(fastify: FastifyInstance, deps: InviteRoute
   // ---------------------------------------------------------------------------
   // GET /api/v1/invites/lookup?token=… — what a link is for (unauthenticated)
   // ---------------------------------------------------------------------------
-  fastify.get<{ Querystring: { token?: string } }>('/api/v1/invites/lookup', async (request, reply) => {
+  // THE TOKEN ARRIVES IN A HEADER, not a query parameter. Fastify logs
+  // `req.url` on every request, so `?token=...` put a live invite token into
+  // the container log in plaintext — and Caddy's access log records the URI
+  // as well. Neither logs request headers. api/src/log-redaction.ts redacts
+  // the query string too, belt and braces, for whatever gets added next.
+  fastify.get('/api/v1/invites/lookup', async (request, reply) => {
     const actor = actorFor(request, deps);
     if (!can(actor, 'invite:preview')) {
       return reply.code(403).send({ message: 'Forbidden' });
     }
 
-    const token = request.query.token;
-    if (typeof token !== 'string' || token === '') {
-      return reply.code(400).send({ message: 'token is required.' });
+    // Fastify lowercases incoming header names. Node joins a REPEATED header
+    // into one comma-separated string rather than an array (arrays are only
+    // for set-cookie), so a duplicated header yields "a,b" — a value that
+    // matches no stored hash and falls through to the same 410 as any other
+    // bad token. Nothing to special-case: it cannot smuggle a valid token past
+    // the lookup.
+    const header = request.headers['x-invite-token'];
+    const token = typeof header === 'string' ? header.trim() : '';
+    if (token === '') {
+      return reply.code(400).send({ message: 'The X-Invite-Token header is required.' });
     }
 
     const { rows } = await getPool().query<{

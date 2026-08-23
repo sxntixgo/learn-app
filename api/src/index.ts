@@ -33,6 +33,13 @@ import { getSigningKeys } from './auth/keys.ts';
 import { hashPassword } from './auth/password.ts';
 import { getPool } from './db.ts';
 import { ensureSetupToken } from './auth/setup-token.ts';
+import { redactingRequestSerializer } from './log-redaction.ts';
+import {
+  TRUST_PROXY_ENV,
+  describeTrustProxy,
+  parseTrustProxy,
+  type TrustProxySetting,
+} from './auth/trust-proxy.ts';
 
 // CourseRouteDeps, ProgressRouteDeps, MeRouteDeps, and AdminRouteDeps are
 // structurally identical ({can?, actor?}) but declared separately in each
@@ -52,20 +59,44 @@ export type BuildServerOptions = CourseRouteDeps &
   AdminPeopleRouteDeps &
   SubmissionRouteDeps & {
     /**
-     * Whether to believe `X-Forwarded-For`. OFF unless explicitly enabled,
-     * because a trusted-by-default proxy header lets any client forge the
-     * address the login rate limiter counts against. Behind the design's
-     * Caddy (§4) it must be on, or every request looks like it came from the
-     * proxy and the per-IP limit collapses into a global one.
+     * WHICH HOP to believe `X-Forwarded-For` from. See auth/trust-proxy.ts:
+     * a boolean cannot express this safely — `false` collapses every caller
+     * into one rate-limit bucket behind a proxy, and `true` lets a client
+     * forge the header outright. Defaults to parsing `API_TRUST_PROXY`.
      */
-    trustProxy?: boolean;
+    trustProxy?: TrustProxySetting;
   };
 
+/**
+ * The logger configuration, exported so it can be asserted on.
+ *
+ * `req` is overridden because pino's default serializer logs `req.url` whole,
+ * query string included — which wrote live invite tokens to stdout. See
+ * log-redaction.ts. Exported rather than inlined because pino writes through
+ * sonic-boom straight to fd 1, so a test cannot capture the real output by
+ * hooking `process.stdout.write`; asserting on the wiring is the only way to
+ * catch this being reverted.
+ */
+export const LOGGER_OPTIONS = {
+  serializers: { req: redactingRequestSerializer },
+} as const;
+
 export async function buildServer(options: BuildServerOptions = {}) {
+  const parsedTrustProxy = parseTrustProxy(process.env[TRUST_PROXY_ENV]);
+  const trustProxy = options.trustProxy ?? parsedTrustProxy.value;
+
   const fastify = Fastify({
-    logger: true,
-    trustProxy: options.trustProxy ?? process.env.API_TRUST_PROXY === 'true',
+    logger: LOGGER_OPTIONS,
+    trustProxy,
   });
+
+  // The rate limiters key on `request.ip`, so what this resolved to is a
+  // security-relevant fact about the deployment. Printed once, at the level
+  // the failure mode deserves.
+  if (options.trustProxy === undefined && parsedTrustProxy.warning !== null) {
+    fastify.log.warn(parsedTrustProxy.warning);
+  }
+  fastify.log.info(`Trusting X-Forwarded-For from: ${describeTrustProxy(trustProxy)}`);
 
   // Security response headers. Registered first so they apply to every
   // response, including ones short-circuited by a later hook or an error.

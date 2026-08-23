@@ -504,4 +504,86 @@ describe('POST /api/v1/setup', () => {
       }
     });
   });
+
+  /**
+   * THE EXPENSIVE WORK HAPPENS ONLY FOR A CALLER WHO HOLDS THE TOKEN.
+   *
+   * POST /api/v1/setup is unauthenticated and unthrottled — the setup token
+   * stands in for both. It used to hash BOTH passwords with Argon2id (19 MiB
+   * and ~100ms each, deliberately) before looking at that token at all, and
+   * before noticing the instance was already claimed. One anonymous HTTP
+   * request therefore bought two memory-hard hashes, forever, from anyone who
+   * could reach the port.
+   *
+   * These pin the ordering rather than the timing: a counting hasher is
+   * deterministic where a stopwatch is not.
+   */
+  describe('an unauthenticated caller cannot make the server do Argon2id work', () => {
+    function countingHasher() {
+      let calls = 0;
+      return {
+        calls: () => calls,
+        hashPassword: async (plaintext: string): Promise<string> => {
+          calls += 1;
+          return `hashed:${plaintext}`;
+        },
+      };
+    }
+
+    it('hashes nothing when the setup token is wrong', async () => {
+      const hasher = countingHasher();
+      await server.close();
+      server = await buildServer({ hashPassword: hasher.hashPassword });
+
+      const response = await server.inject({
+        method: 'POST',
+        url: '/api/v1/setup',
+        payload: validBody({ setupToken: 'not-the-token' }),
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(hasher.calls(), 'a wrong token still cost the server an Argon2id hash').toBe(0);
+    });
+
+    it('hashes nothing when the instance is already claimed', async () => {
+      // The `gone` path was reached only AFTER both hashes, so the DoS
+      // outlived the bootstrap it was supposed to be gated by.
+      // The token hash must go too: instance_state_token_closed_once_claimed
+      // enforces that a claimed instance holds no live setup token.
+      await pool.query('update instance_state set bootstrapped_at = now(), setup_token_hash = null where id = 1');
+
+      const hasher = countingHasher();
+      await server.close();
+      server = await buildServer({ hashPassword: hasher.hashPassword });
+
+      const response = await server.inject({ method: 'POST', url: '/api/v1/setup', payload: validBody() });
+
+      expect(response.statusCode).toBe(410);
+      expect(hasher.calls(), 'a claimed instance still cost the server an Argon2id hash').toBe(0);
+    });
+
+    it('still hashes both passwords for the caller who does hold the token', async () => {
+      // The guard above must not have turned into "never hash".
+      const hasher = countingHasher();
+      await server.close();
+      server = await buildServer({ hashPassword: hasher.hashPassword });
+
+      const response = await server.inject({ method: 'POST', url: '/api/v1/setup', payload: validBody() });
+
+      expect(response.statusCode).toBe(201);
+      expect(hasher.calls()).toBe(2);
+    });
+
+    it('tells a wrong token and a claimed instance apart without saying which half failed', async () => {
+      // Both refusals carry the same fixed message as before; only the status
+      // distinguishes them, exactly as routes/setup.ts documents.
+      const wrong = await server.inject({
+        method: 'POST',
+        url: '/api/v1/setup',
+        payload: validBody({ setupToken: 'not-the-token' }),
+      });
+      expect(wrong.json()).toEqual({ message: 'Invalid setup token.' });
+    });
+  });
+
 });

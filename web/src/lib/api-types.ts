@@ -4195,10 +4195,11 @@ export interface operations {
     };
     previewInvite: {
         parameters: {
-            query: {
-                token: string;
+            query?: never;
+            header: {
+                /** @description The invite token. A HEADER and not a query parameter on purpose: Fastify logs `req.url` on every request, so a token in the query string was written to the container log in plaintext — and the reverse proxy's access log records the URI too. Headers are in neither. See api/src/log-redaction.ts. */
+                "X-Invite-Token": string;
             };
-            header?: never;
             path?: never;
             cookie?: never;
         };

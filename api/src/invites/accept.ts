@@ -112,6 +112,32 @@ export async function acceptInvite(
   request: AcceptInviteRequest,
   deps: AcceptInviteDeps = {},
 ): Promise<AcceptInviteResult> {
+  // THE INVITE IS CHECKED BEFORE THE PASSWORD IS HASHED.
+  //
+  // This route is unauthenticated — the invite token is the credential — and
+  // it is not rate-limited. Hashing first therefore gave any anonymous caller
+  // an Argon2id computation (19 MiB, ~100ms, deliberately) per HTTP request
+  // while holding no valid token at all: a CPU and memory exhaustion
+  // primitive reachable by anyone who can see the port.
+  //
+  // A cheap read first, so only a caller who actually holds a live invite
+  // pays for the expensive part. This is NOT the authorization: the atomic
+  // claim below still is, and it re-tests every one of these conditions in
+  // its WHERE under the row lock. An invite that dies in the microseconds
+  // between the two is refused there, exactly as before.
+  const precheck = await pool.query(
+    `select 1
+       from invites
+      where token_hash = $1
+        and accepted_at is null
+        and revoked_at is null
+        and expires_at > now()`,
+    [hashInviteToken(request.token)],
+  );
+  if (precheck.rowCount === 0) {
+    return refuse('unusable', UNUSABLE);
+  }
+
   // Hashed before the transaction opens: Argon2id is deliberately slow, and
   // holding the invite's row lock across it would make a racing acceptance
   // wait for work that is about to be thrown away.

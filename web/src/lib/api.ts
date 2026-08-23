@@ -596,9 +596,15 @@ export async function revokeInvite(inviteId: string): Promise<RevokeInviteResult
  * bouncing a signed-out invitee to /login.
  */
 export async function previewInvite(token: string): Promise<InvitePreview | null> {
-  const res = await fetch(`${apiBase()}/api/v1/invites/lookup?token=${encodeURIComponent(token)}`, {
+  const res = await fetch(`${apiBase()}/api/v1/invites/lookup`, {
     cache: 'no-store',
-    headers: { ...(await authHeaders()), ...(await forwardedHeaders()) },
+    // A HEADER, not `?token=`: the API logs `req.url` on every request, so a
+    // token in the query string landed in the container log in plaintext.
+    headers: {
+      'X-Invite-Token': token,
+      ...(await authHeaders()),
+      ...(await forwardedHeaders()),
+    },
   });
   if (res.status === 410 || res.status === 400) {
     return null;

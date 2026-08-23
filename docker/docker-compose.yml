@@ -40,6 +40,16 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-learn}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-learn_dev}
       API_PORT: '3001'
+      # The API's direct peer here is the `web` container (and, in front of
+      # that, whatever proxy terminates TLS), never the visitor. Without this
+      # every request carries the same source address and the per-IP rate
+      # limiters collapse into ONE bucket shared by everybody — five failed
+      # logins would lock out the whole instance.
+      #
+      # `private` and not `true`: `true` trusts every hop, which lets a client
+      # forge X-Forwarded-For and give itself a fresh bucket per request. See
+      # api/src/auth/trust-proxy.ts.
+      API_TRUST_PROXY: ${API_TRUST_PROXY:-private}
     # No healthcheck override. api.Dockerfile declares one, pointing at a
     # committed script — see the note there for why an inline `node -e` probe
     # in a compose file is a bad idea.
