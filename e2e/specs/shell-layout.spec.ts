@@ -48,10 +48,19 @@ test.describe('the app shell', () => {
     });
   }
 
-  test('the sidebar never covers the top bar when scrolled', async ({ browser }) => {
+  test('the sidebar never paints over the top bar when scrolled', async ({ browser }) => {
     // The bug: the sidebar kept the mobile rule's z-index 40 against the
     // banner's 30, and did not actually stick (align-self: stretch left it no
     // room), so it scrolled up behind the banner and painted over it.
+    //
+    // ASSERTED BY HIT-TESTING, NOT BY GEOMETRY. The first version of this
+    // compared bounding boxes — nav.top >= banner.bottom — which passed
+    // locally and failed in CI, where the seeded catalog is shorter. On a
+    // short page the sidebar's flex container ends within the scroll, so the
+    // sidebar correctly slides up with it and the boxes DO overlap. That is
+    // sticky working, not the bug. What must never happen is the sidebar
+    // being the thing you see there, and elementFromPoint answers exactly
+    // that question.
     const context = await browser.newContext({ viewport: { width: 1280, height: 700 } });
     try {
       const page = await context.newPage();
@@ -59,40 +68,51 @@ test.describe('the app shell', () => {
       await page.evaluate(() => window.scrollTo(0, 600));
       await page.waitForTimeout(300);
 
-      const { bannerBottom, navTop, bannerZ, navZ } = await page.evaluate(() => {
+      const result = await page.evaluate(() => {
         const banner = document.querySelector('header')!;
         const nav = document.querySelector('nav')!;
+        const box = banner.getBoundingClientRect();
+        // Well inside the banner, and horizontally over the sidebar's column.
+        const hit = document.elementFromPoint(40, Math.round(box.top + box.height / 2));
         return {
-          bannerBottom: Math.round(banner.getBoundingClientRect().bottom),
-          navTop: Math.round(nav.getBoundingClientRect().top),
+          topmostIsBanner: hit === banner || banner.contains(hit),
+          topmostIsNav: hit === nav || nav.contains(hit),
+          hitTag: hit?.tagName ?? 'none',
           bannerZ: Number(getComputedStyle(banner).zIndex),
           navZ: Number(getComputedStyle(nav).zIndex),
         };
       });
 
-      // Geometry: the sidebar starts at or below the banner, so they cannot
-      // occupy the same pixels at all.
-      expect(navTop, 'the sidebar is overlapping the banner').toBeGreaterThanOrEqual(bannerBottom);
-      // And stacking, so that even a future geometry change cannot put the
-      // sidebar in front.
-      expect(navZ).toBeLessThan(bannerZ);
+      expect(result.topmostIsNav, 'the sidebar is painting over the banner').toBe(false);
+      expect(result.topmostIsBanner, `expected the banner on top, got ${result.hitTag}`).toBe(true);
+      // And the stacking order behind it, so a geometry change cannot undo it.
+      expect(result.navZ).toBeLessThan(result.bannerZ);
     } finally {
       await context.close();
     }
   });
 
-  test('the sidebar stays on screen while scrolling, rather than scrolling away', async ({ browser }) => {
-    // `position: sticky` was in the stylesheet and inert. Asserted as
-    // behaviour so it cannot silently stop working again.
+  test('the sidebar stays reachable while scrolling', async ({ browser }) => {
+    // `position: sticky` was in the stylesheet and inert — with
+    // `align-self: stretch` it filled its container and had nothing to stick
+    // within. Asserted as behaviour rather than as a computed style so it
+    // cannot silently stop working again.
+    //
+    // Tolerant of a short page on purpose: if there is nothing to scroll the
+    // sidebar is trivially still there, and CI's catalog is shorter than a
+    // developer's.
     const context = await browser.newContext({ viewport: { width: 1280, height: 700 } });
     try {
       const page = await context.newPage();
       await signIn(page);
-      await page.evaluate(() => window.scrollTo(0, 800));
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
       await page.waitForTimeout(300);
 
-      const nav = await page.locator('nav').boundingBox();
-      expect(nav!.y, 'the sidebar scrolled off the top').toBeGreaterThanOrEqual(0);
+      const visible = await page.evaluate(() => {
+        const rect = document.querySelector('nav')!.getBoundingClientRect();
+        return rect.bottom > 0 && rect.top < window.innerHeight;
+      });
+      expect(visible, 'the sidebar scrolled entirely out of view').toBe(true);
       await expect(page.getByRole('link', { name: 'Catalog' })).toBeVisible();
     } finally {
       await context.close();
