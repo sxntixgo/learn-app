@@ -2174,9 +2174,15 @@ export interface components {
             expiresAt: string;
             /** @description True when accepting will register a new account (show the handle/password form); false when the address already has one (show "sign in as this address to accept"). */
             needsAccount: boolean;
+            /** @description The continuation token, present ONLY on the request that spent the link (X-Invite-Token) and null when the caller presented a claim. It is what the accept step must present. Store it somewhere that is not a URL — the web app uses an httpOnly, path-scoped cookie — because keeping it in one is the problem the exchange exists to solve. */
+            claimToken?: string | null;
         };
+        /** @description Exactly one credential is required. `claimToken` is what a browser flow presents: the link was already spent when it was opened, and the claim is what came back. `token` remains for a direct API client that never opened a preview — once a link has been opened its URL token is consumed and answers 410. */
         InviteAcceptRequest: {
-            token: string;
+            /** @description The raw token from the link. Dead once the link has been opened. */
+            token?: string | null;
+            /** @description The continuation token from InvitePreview.claimToken. Takes precedence when both are sent. */
+            claimToken?: string | null;
             /** @description Required when the invitation registers an account. */
             handle?: string | null;
             /** @description At least 12 characters. Required when the invitation registers an account. */
@@ -4196,9 +4202,14 @@ export interface operations {
     previewInvite: {
         parameters: {
             query?: never;
-            header: {
-                /** @description The invite token. A HEADER and not a query parameter on purpose: Fastify logs `req.url` on every request, so a token in the query string was written to the container log in plaintext — and the reverse proxy's access log records the URI too. Headers are in neither. See api/src/log-redaction.ts. */
-                "X-Invite-Token": string;
+            header?: {
+                /**
+                 * @description The token from the invite link. Presenting it SPENDS the link: the invitation is marked consumed and a short-lived `claimToken` comes back in the response body. A second request with the same token answers 410.
+                 *     A HEADER and not a query parameter on purpose: Fastify logs `req.url` on every request, so a token in the query string was written to the container log in plaintext — and the reverse proxy's access log records the URI too. Headers are in neither.
+                 */
+                "X-Invite-Token"?: string;
+                /** @description The continuation token issued when the link was spent. Reads the same invitation again without consuming anything, which is what makes a page reload — and the "sign in as this address, then come back" path — work. Exactly one of these two headers is required. */
+                "X-Invite-Claim"?: string;
             };
             path?: never;
             cookie?: never;

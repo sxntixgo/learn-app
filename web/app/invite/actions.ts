@@ -22,16 +22,21 @@
  * single-use, and a retry would 410.
  */
 
+import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { acceptInvite, login } from '../../../src/lib/api';
-import { loginRedirectPath } from '../../../src/lib/next-path';
+import { acceptInvite, login } from '../../src/lib/api';
+import { loginRedirectPath } from '../../src/lib/next-path';
+import { INVITE_CLAIM_COOKIE, INVITE_CLAIM_COOKIE_OPTIONS } from '../../src/lib/invite-cookie';
 
 export interface AcceptFormState {
   error: string | null;
 }
 
 export async function acceptInviteAction(_prev: AcceptFormState, formData: FormData): Promise<AcceptFormState> {
-  const token = String(formData.get('token') ?? '');
+  // From the httpOnly cookie the link exchange set, never from the form: a
+  // credential in a form field is a credential in the page, and the whole
+  // point of spending the link on arrival was to get it out of reach.
+  const claimToken = (await cookies()).get(INVITE_CLAIM_COOKIE)?.value ?? '';
   const email = String(formData.get('email') ?? '');
   const handle = String(formData.get('handle') ?? '').trim();
   const password = String(formData.get('password') ?? '');
@@ -40,7 +45,8 @@ export async function acceptInviteAction(_prev: AcceptFormState, formData: FormD
   const registering = handle !== '' || password !== '';
 
   const accepted = await acceptInvite({
-    token,
+    token: null,
+    claimToken,
     handle: registering ? handle : null,
     password: registering ? password : null,
     displayName: displayName === '' ? null : displayName,
@@ -50,6 +56,11 @@ export async function acceptInviteAction(_prev: AcceptFormState, formData: FormD
   if (!accepted.ok) {
     return { error: accepted.message };
   }
+
+  // The invitation is spent, so the claim is too. The API already cleared its
+  // side inside the accept transaction; this stops the browser presenting a
+  // dead credential on every later /invite request.
+  (await cookies()).set(INVITE_CLAIM_COOKIE, '', { ...INVITE_CLAIM_COOKIE_OPTIONS, maxAge: 0 });
 
   const destination = accepted.result.courseSlug
     ? `/courses/${encodeURIComponent(accepted.result.courseSlug)}`

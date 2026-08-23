@@ -27,12 +27,10 @@ import styles from './accept.module.css';
 const INITIAL_STATE: AcceptFormState = { error: null };
 
 export default function AcceptForm({
-  token,
   email,
   needsAccount,
   courseTitle,
 }: {
-  token: string;
   email: string;
   needsAccount: boolean;
   courseTitle: string | null;
@@ -50,7 +48,6 @@ export default function AcceptForm({
 
   return (
     <form action={formAction} className={styles.form}>
-      <input type="hidden" name="token" value={token} />
       <input type="hidden" name="email" value={email} />
       <input type="hidden" name="timezone" value={timezone} />
 

@@ -11,7 +11,15 @@ import { isValidTimeZone } from '../time/timezone.ts';
 import type { InviteKind } from '../invites/issue.ts';
 import { issueInvite, refundExpiredInvites, remainingBudget, revokeInvite } from '../invites/issue.ts';
 import { acceptInvite } from '../invites/accept.ts';
-import { DEFAULT_INVITE_TTL_DAYS, MAX_INVITE_TTL_DAYS, MIN_INVITE_TTL_DAYS, hashInviteToken } from '../invites/token.ts';
+import {
+  CLAIM_TOKEN_TTL_MINUTES,
+  DEFAULT_INVITE_TTL_DAYS,
+  MAX_INVITE_TTL_DAYS,
+  MIN_INVITE_TTL_DAYS,
+  generateClaimToken,
+  hashClaimToken,
+  hashInviteToken,
+} from '../invites/token.ts';
 
 // =============================================================================
 // INVITATIONS (design §12, §13).
@@ -140,10 +148,32 @@ interface CreateBody {
 
 interface AcceptBody {
   token?: unknown;
+  claimToken?: unknown;
   handle?: unknown;
   password?: unknown;
   displayName?: unknown;
   timezone?: unknown;
+}
+
+
+/**
+ * One header value as a trimmed string.
+ *
+ * Node joins a repeated header into "a,b" rather than handing over an array,
+ * so a duplicated header simply yields a value that hashes to nothing — it
+ * cannot smuggle a real token past the lookup.
+ */
+function readHeader(value: string | string[] | undefined): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/** The columns both halves of the lookup return. */
+interface InvitePreviewRow {
+  kind: InviteKind;
+  email: string;
+  expires_at: Date;
+  creates_account: boolean;
+  course_id: string | null;
 }
 
 export function registerInviteRoutes(fastify: FastifyInstance, deps: InviteRouteDeps = {}): void {
@@ -335,40 +365,70 @@ export function registerInviteRoutes(fastify: FastifyInstance, deps: InviteRoute
     // matches no stored hash and falls through to the same 410 as any other
     // bad token. Nothing to special-case: it cannot smuggle a valid token past
     // the lookup.
-    const header = request.headers['x-invite-token'];
-    const token = typeof header === 'string' ? header.trim() : '';
-    if (token === '') {
-      return reply.code(400).send({ message: 'The X-Invite-Token header is required.' });
+    const headerToken = readHeader(request.headers['x-invite-token']);
+    const headerClaim = readHeader(request.headers['x-invite-claim']);
+    if (headerToken === '' && headerClaim === '') {
+      return reply.code(400).send({ message: 'The X-Invite-Token or X-Invite-Claim header is required.' });
     }
 
-    const { rows } = await getPool().query<{
-      kind: InviteKind;
-      email: string;
-      course_slug: string | null;
-      course_title: string | null;
-      expires_at: Date;
-      accepted_at: Date | null;
-      revoked_at: Date | null;
-      creates_account: boolean;
-    }>(
-      `select i.kind, i.email, i.expires_at, i.accepted_at, i.revoked_at, i.creates_account,
-              c.slug as course_slug, c.title as course_title
-         from invites i
-         left join courses c on c.id = i.course_id
-        where i.token_hash = $1`,
-      [hashInviteToken(token)],
-    );
+    // THE LINK IS SPENT BY BEING OPENED.
+    //
+    // Presenting the URL token consumes it — atomically, in one UPDATE, so
+    // two concurrent opens cannot both succeed — and mints a claim token in
+    // its place. The claim goes back in the response BODY and the web app
+    // puts it in an httpOnly cookie, so it never enters a URL, a proxy access
+    // log, browser history or a Referer. A URL token recovered from a log
+    // afterwards matches nothing.
+    //
+    // Presenting the claim instead is a plain read: the page has to survive a
+    // reload, and the "sign in as this address, then come back" path returns
+    // here a second time.
+    const issuedClaim = headerClaim === '' ? generateClaimToken() : null;
+
+    const { rows } = issuedClaim !== null
+      ? await getPool().query<InvitePreviewRow>(
+          `update invites i
+              set token_consumed_at = now(),
+                  claim_token_hash = $2,
+                  -- Never outliving the invite itself: a short continuation
+                  -- window cannot extend a link past its own expiry.
+                  claim_expires_at = least(now() + ($3 || ' minutes')::interval, i.expires_at)
+            where i.token_hash = $1
+              and i.token_consumed_at is null
+              and i.accepted_at is null
+              and i.revoked_at is null
+              and i.expires_at > now()
+            returning i.kind, i.email, i.expires_at, i.creates_account, i.course_id`,
+          [hashInviteToken(headerToken), hashClaimToken(issuedClaim), String(CLAIM_TOKEN_TTL_MINUTES)],
+        )
+      : await getPool().query<InvitePreviewRow>(
+          `select i.kind, i.email, i.expires_at, i.creates_account, i.course_id
+             from invites i
+            where i.claim_token_hash = $1
+              and i.claim_expires_at > now()
+              and i.accepted_at is null
+              and i.revoked_at is null
+              and i.expires_at > now()`,
+          [hashClaimToken(headerClaim)],
+        );
+
     const invite = rows[0];
-    if (
-      !invite ||
-      invite.accepted_at !== null ||
-      invite.revoked_at !== null ||
-      invite.expires_at.getTime() <= Date.now()
-    ) {
-      // 410, and the same message for all four cases: a caller cannot learn
-      // which flavour of dead a token they do not hold is.
+    if (!invite) {
+      // 410, and the same message for every way of being dead — unknown,
+      // expired, revoked, already accepted, or a link that has already been
+      // opened. A caller cannot learn which flavour of dead a token they do
+      // not hold is.
       return reply.code(410).send({ message: UNUSABLE });
     }
+
+    const course = invite.course_id === null
+      ? { slug: null, title: null }
+      : (
+          await getPool().query<{ slug: string; title: string }>(
+            'select slug, title from courses where id = $1',
+            [invite.course_id],
+          )
+        ).rows[0] ?? { slug: null, title: null };
 
     // Re-checked at read time rather than trusted from `creates_account`
     // alone: the invite may have been issued before the address got an
@@ -380,10 +440,14 @@ export function registerInviteRoutes(fastify: FastifyInstance, deps: InviteRoute
     return reply.code(200).send({
       kind: invite.kind,
       email: invite.email,
-      courseSlug: invite.course_slug,
-      courseTitle: invite.course_title,
+      courseSlug: course.slug,
+      courseTitle: course.title,
       expiresAt: invite.expires_at,
       needsAccount: invite.creates_account && existing.rowCount === 0,
+      // Present ONLY on the request that spent the link. The caller must
+      // store it somewhere that is not a URL; web puts it in an httpOnly
+      // cookie. Absent when the caller already presented a claim.
+      claimToken: issuedClaim,
     });
   });
 
@@ -397,9 +461,14 @@ export function registerInviteRoutes(fastify: FastifyInstance, deps: InviteRoute
     }
 
     const body = request.body ?? {};
-    const token = body.token;
-    if (typeof token !== 'string' || token.trim() === '') {
-      return reply.code(400).send({ message: 'token is required.' });
+    // Either credential is acceptable, and the claim wins when both arrive.
+    // A browser flow always sends the claim: the link was spent when it was
+    // opened, so its URL token is already consumed and would match nothing.
+    // `token` remains for a direct API client that never opened a preview.
+    const token = typeof body.token === 'string' ? body.token.trim() : '';
+    const claimToken = typeof body.claimToken === 'string' ? body.claimToken.trim() : '';
+    if (token === '' && claimToken === '') {
+      return reply.code(400).send({ message: 'token or claimToken is required.' });
     }
 
     // Validated BEFORE anything touches the invite, so a bad handle cannot
@@ -437,7 +506,8 @@ export function registerInviteRoutes(fastify: FastifyInstance, deps: InviteRoute
     const result = await acceptInvite(
       getPool(),
       {
-        token: token.trim(),
+        token: token === '' ? null : token,
+        claimToken: claimToken === '' ? null : claimToken,
         handle,
         password,
         displayName: displayName === '' ? null : displayName,

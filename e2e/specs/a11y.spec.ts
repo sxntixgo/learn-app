@@ -94,16 +94,29 @@ interface RouteCase {
   session: 'anon' | 'student' | 'teacher' | 'admin';
   /** The URL this route must actually resolve to — guards against silently axe-scanning a login redirect. */
   expectUrl: RegExp;
+  /**
+   * Text that must be on the page before axe runs.
+   *
+   * `expectUrl` alone stopped being enough for the invite route: an opened
+   * link and a SPENT one both land on /invite, so a consumed fixture would
+   * have axe-scanning the "this invitation is not valid" page while the URL
+   * assertion still passed — a silently weaker test. This makes that loud.
+   */
+  expectVisible?: string;
 }
 
 const ROUTES: RouteCase[] = [
   // Anonymous — reachable while signed out by design (§13, §12).
   { name: 'sign in', path: '/login', session: 'anon', expectUrl: /\/login(\?|$)/ },
   {
+    // The link SPENDS itself on open (db/migrations/0020): its route handler
+    // exchanges the URL token for a claim cookie and redirects to /invite, so
+    // the scanned URL is the clean one, not the token-bearing one.
     name: 'accept invitation',
     path: fixtures.a11yInvite.acceptPath,
     session: 'anon',
-    expectUrl: new RegExp(`${fixtures.a11yInvite.acceptPath}$`),
+    expectUrl: /\/invite$/,
+    expectVisible: 'You are invited',
   },
   { name: 'kitchen sink', path: '/kitchen-sink', session: 'anon', expectUrl: /\/kitchen-sink$/ },
 
@@ -206,6 +219,9 @@ for (const route of ROUTES) {
     await withPage(browser, baseURL, state, async (page) => {
       await page.goto(route.path);
       await expect(page).toHaveURL(route.expectUrl);
+      if (route.expectVisible) {
+        await expect(page.getByText(route.expectVisible).first()).toBeVisible();
+      }
 
       const results = await new AxeBuilder({ page }).analyze();
       logViolations(route.name, results);

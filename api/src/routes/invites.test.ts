@@ -51,6 +51,19 @@ const OWNED_SLUG = `${PREFIX}-owned`;
 const OTHER_SLUG = `${PREFIX}-other`;
 
 let counter = 0;
+/**
+ * Opens `n` pooled connections and releases them.
+ *
+ * Without this the "concurrent" requests are not concurrent where it counts:
+ * the first handler gets a warm client and finishes while the second is still
+ * doing a TCP connect and auth handshake, so it arrives to find the link
+ * already spent instead of racing for it. Same reasoning as setup.test.ts.
+ */
+async function warmPool(n: number): Promise<void> {
+  const clients = await Promise.all(Array.from({ length: n }, () => pool.connect()));
+  for (const client of clients) client.release();
+}
+
 function next(): string {
   counter += 1;
   return `${PREFIX}${counter}`;
@@ -408,11 +421,17 @@ describe('invitation routes (design §12)', () => {
       expect(body.needsAccount).toBe(true);
       expect(body.email).toBe(issued.invite.email);
 
+      // The link is spent by that first open, so re-reading uses the CLAIM it
+      // returned — otherwise this would 410 because the link was consumed and
+      // the revocation below would never actually be under test.
+      const claim = (JSON.parse(preview.payload) as { claimToken: string }).claimToken;
+      expect(claim, 'opening a link must return a claim token').toBeTruthy();
+
       await pool.query('update invites set revoked_at = now() where id = $1', [issued.invite.id]);
       const gone = await anonymous.inject({
         method: 'GET',
         url: '/api/v1/invites/lookup',
-        headers: { 'x-invite-token': issued.token },
+        headers: { 'x-invite-claim': claim },
       });
       await anonymous.close();
       expect(gone.statusCode).toBe(410);
@@ -454,6 +473,180 @@ describe('invitation routes (design §12)', () => {
       });
       await anonymous.close();
       expect(response.statusCode).toBe(410);
+    });
+
+
+    /**
+     * AN INVITE LINK IS SPENT BY BEING OPENED.
+     *
+     * The URL token is the credential, and a URL is the worst place to keep
+     * one: the reverse proxy access-logs the path, the browser keeps it in
+     * history, and it rides along in Referer. So opening the link consumes it
+     * and mints a short-lived claim that travels in a response BODY. A token
+     * recovered from a log afterwards opens nothing.
+     */
+    describe('the link is single-use; the claim carries the rest of the flow', () => {
+      async function open(server: FastifyInstance, header: 'x-invite-token' | 'x-invite-claim', value: string) {
+        return server.inject({ method: 'GET', url: '/api/v1/invites/lookup', headers: { [header]: value } });
+      }
+
+      it('opens once, and the SAME LINK is dead the second time', async () => {
+        const issued = await issueCourseInvite();
+        const anonymous = await buildServer({ actor: ANONYMOUS_ACTOR });
+
+        const first = await open(anonymous, 'x-invite-token', issued.token);
+        expect(first.statusCode).toBe(200);
+
+        const second = await open(anonymous, 'x-invite-token', issued.token);
+        await anonymous.close();
+
+        // This is the whole feature: a token found in a log later is spent.
+        expect(second.statusCode).toBe(410);
+      });
+
+      it('records that the link was consumed rather than deleting the hash', () => {
+        // An operator asking "was this link ever opened, and when?" gets an
+        // answer; `token_hash` is `not null unique` and stays put.
+        return (async () => {
+          const issued = await issueCourseInvite();
+          const anonymous = await buildServer({ actor: ANONYMOUS_ACTOR });
+          await open(anonymous, 'x-invite-token', issued.token);
+          await anonymous.close();
+
+          const { rows } = await pool.query<{ token_consumed_at: Date | null; token_hash: string }>(
+            'select token_consumed_at, token_hash from invites where id = $1',
+            [issued.invite.id],
+          );
+          expect(rows[0]!.token_consumed_at).not.toBeNull();
+          expect(rows[0]!.token_hash).toBeTruthy();
+        })();
+      });
+
+      it('re-reads with the claim, so a page reload still works', async () => {
+        const issued = await issueCourseInvite();
+        const anonymous = await buildServer({ actor: ANONYMOUS_ACTOR });
+
+        const first = await open(anonymous, 'x-invite-token', issued.token);
+        const claim = (JSON.parse(first.payload) as { claimToken: string }).claimToken;
+
+        const reload = await open(anonymous, 'x-invite-claim', claim);
+        await anonymous.close();
+
+        expect(reload.statusCode).toBe(200);
+        const body = JSON.parse(reload.payload) as { email: string; claimToken: string | null };
+        expect(body.email).toBe(issued.invite.email);
+        // Re-reading mints nothing: one link, one claim.
+        expect(body.claimToken).toBeNull();
+      });
+
+      it('ACCEPTS with the claim, and the claim dies with the acceptance', async () => {
+        const issued = await issueCourseInvite();
+        const anonymous = await buildServer({ actor: ANONYMOUS_ACTOR });
+        const first = await open(anonymous, 'x-invite-token', issued.token);
+        const claim = (JSON.parse(first.payload) as { claimToken: string }).claimToken;
+
+        const accepted = await anonymous.inject({
+          method: 'POST',
+          url: '/api/v1/invites/accept',
+          payload: { claimToken: claim, handle: next(), password: 'a-long-enough-password' },
+        });
+        expect(accepted.statusCode).toBe(201);
+
+        const reused = await anonymous.inject({
+          method: 'POST',
+          url: '/api/v1/invites/accept',
+          payload: { claimToken: claim, handle: next(), password: 'a-long-enough-password' },
+        });
+        await anonymous.close();
+        expect(reused.statusCode).toBe(410);
+      });
+
+      it('refuses the RAW TOKEN at accept once the link has been opened', async () => {
+        // Otherwise the exchange would be theatre: a token from a log would
+        // still register an account, just by skipping the preview.
+        const issued = await issueCourseInvite();
+        const anonymous = await buildServer({ actor: ANONYMOUS_ACTOR });
+        await open(anonymous, 'x-invite-token', issued.token);
+
+        const response = await anonymous.inject({
+          method: 'POST',
+          url: '/api/v1/invites/accept',
+          payload: { token: issued.token, handle: next(), password: 'a-long-enough-password' },
+        });
+        await anonymous.close();
+        expect(response.statusCode).toBe(410);
+      });
+
+      it('still accepts a raw token when the link was NEVER opened', async () => {
+        // A direct API client that skips the preview is a legitimate caller,
+        // and its token is still single-use.
+        const issued = await issueCourseInvite();
+        const anonymous = await buildServer({ actor: ANONYMOUS_ACTOR });
+
+        const response = await anonymous.inject({
+          method: 'POST',
+          url: '/api/v1/invites/accept',
+          payload: { token: issued.token, handle: next(), password: 'a-long-enough-password' },
+        });
+        await anonymous.close();
+        expect(response.statusCode).toBe(201);
+      });
+
+      it('refuses an expired claim', async () => {
+        const issued = await issueCourseInvite();
+        const anonymous = await buildServer({ actor: ANONYMOUS_ACTOR });
+        const first = await open(anonymous, 'x-invite-token', issued.token);
+        const claim = (JSON.parse(first.payload) as { claimToken: string }).claimToken;
+
+        await pool.query("update invites set claim_expires_at = now() - interval '1 second' where id = $1", [
+          issued.invite.id,
+        ]);
+
+        const late = await open(anonymous, 'x-invite-claim', claim);
+        await anonymous.close();
+        expect(late.statusCode).toBe(410);
+      });
+
+      it('never lets a claim outlive the invitation itself', async () => {
+        // A 30-minute continuation window must not extend a link that expires
+        // in five minutes.
+        const issued = await issueCourseInvite();
+        await pool.query("update invites set expires_at = now() + interval '5 minutes' where id = $1", [
+          issued.invite.id,
+        ]);
+
+        const anonymous = await buildServer({ actor: ANONYMOUS_ACTOR });
+        await open(anonymous, 'x-invite-token', issued.token);
+        await anonymous.close();
+
+        const { rows } = await pool.query<{ ok: boolean }>(
+          'select claim_expires_at <= expires_at as ok from invites where id = $1',
+          [issued.invite.id],
+        );
+        expect(rows[0]!.ok).toBe(true);
+      });
+
+      it('TWO SIMULTANEOUS OPENS of one link yield exactly one claim', async () => {
+        const issued = await issueCourseInvite();
+        await warmPool(2);
+        const anonymous = await buildServer({ actor: ANONYMOUS_ACTOR });
+
+        const [a, b] = await Promise.all([
+          open(anonymous, 'x-invite-token', issued.token),
+          open(anonymous, 'x-invite-token', issued.token),
+        ]);
+        await anonymous.close();
+
+        const codes = [a.statusCode, b.statusCode].sort();
+        expect(codes).toEqual([200, 410]);
+      });
+
+      it('refuses a request carrying neither header', async () => {
+        const anonymous = await buildServer({ actor: ANONYMOUS_ACTOR });
+        const response = await anonymous.inject({ method: 'GET', url: '/api/v1/invites/lookup' });
+        await anonymous.close();
+        expect(response.statusCode).toBe(400);
+      });
     });
 
     it('REGISTERS AND ENROLS IN ONE STEP, then refuses the spent link', async () => {

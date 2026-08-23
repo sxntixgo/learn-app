@@ -595,13 +595,21 @@ export async function revokeInvite(inviteId: string): Promise<RevokeInviteResult
  * a dead link answers 410 and the accept page says so, rather than
  * bouncing a signed-out invitee to /login.
  */
-export async function previewInvite(token: string): Promise<InvitePreview | null> {
+export async function previewInvite(
+  secret: { kind: 'link'; token: string } | { kind: 'claim'; token: string },
+): Promise<InvitePreview | null> {
+  // HEADERS, never a query string: the API logs `req.url`, so a token there
+  // landed in the container log in plaintext (api/src/log-redaction.ts).
+  //
+  // `link` SPENDS the invitation. The API consumes the URL token and returns
+  // a short-lived `claimToken` in the body, which the caller must store
+  // somewhere that is not a URL — web puts it in an httpOnly cookie. `claim`
+  // re-reads the same invitation without spending anything, which is what
+  // makes a page reload (and the "sign in, then come back" path) work.
   const res = await fetch(`${apiBase()}/api/v1/invites/lookup`, {
     cache: 'no-store',
-    // A HEADER, not `?token=`: the API logs `req.url` on every request, so a
-    // token in the query string landed in the container log in plaintext.
     headers: {
-      'X-Invite-Token': token,
+      [secret.kind === 'link' ? 'X-Invite-Token' : 'X-Invite-Claim']: secret.token,
       ...(await authHeaders()),
       ...(await forwardedHeaders()),
     },

@@ -186,6 +186,17 @@ export const E2E_FEED_PASSWORD = 'a-long-enough-feed-password';
  */
 const E2E_A11Y_INVITE_EMAIL = 'e2e-a11y-invite@example.test';
 
+/**
+ * A THIRD platform invite, for invite-link.spec.ts.
+ *
+ * Its own, and not a share of either of the two above, for the reason that
+ * spec exists to prove: an invite link is spent by being OPENED (migration
+ * 0020). Playwright runs `fullyParallel`, so a spec that opens a link another
+ * worker is about to open would consume it out from under them — the same
+ * cross-file coupling `avatarUser` and `passwordUser` are separate for.
+ */
+const E2E_BURN_INVITE_EMAIL = 'e2e-burn-invite@example.test';
+
 const INVITE_TTL_DAYS = 14;
 
 // Real markdown through the real parser (seed.ts does the same), so the
@@ -276,6 +287,15 @@ export interface E2eFixtures {
   };
   /** Phase 15 task 4: a live, never-consumed invite distinct from `invite` — see E2E_A11Y_INVITE_EMAIL. */
   a11yInvite: {
+    acceptPath: string;
+  };
+  /**
+   * Phase 17: the invite link invite-link.spec.ts spends. Single-use by
+   * design, so nothing else may touch it.
+   */
+  burnInvite: {
+    email: string;
+    token: string;
     acceptPath: string;
   };
   /** Phase 15 task 4: the grading view — a real submitted exercise, owned by `teacherUser`, submitted by `viewportUser`. */
@@ -795,6 +815,7 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
     const issuerId = await ensureIssuer(client);
     const invite = await issueFreshPlatformInvite(client, issuerId, E2E_INVITE_EMAIL);
     const a11yInvite = await issueFreshPlatformInvite(client, issuerId, E2E_A11Y_INVITE_EMAIL);
+    const burnInvite = await issueFreshPlatformInvite(client, issuerId, E2E_BURN_INVITE_EMAIL);
     const viewportUserId = await ensureViewportUser(client);
     await ensureTeacherUser(client, courseSlug);
     const exercise = await ensureExerciseSubmission(client, courseId, viewportUserId);
@@ -811,6 +832,11 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
       adminUser: { email: E2E_ISSUER_EMAIL, password: E2E_ADMIN_PASSWORD },
       teacherUser: { email: E2E_TEACHER_EMAIL, password: E2E_TEACHER_PASSWORD },
       a11yInvite: { acceptPath: a11yInvite.acceptPath },
+      burnInvite: {
+        email: E2E_BURN_INVITE_EMAIL,
+        token: burnInvite.token,
+        acceptPath: burnInvite.acceptPath,
+      },
       exerciseSubmission: {
         courseSlug,
         lessonSlug: exercise.lessonSlug,

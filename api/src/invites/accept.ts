@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import type { HashPassword } from '../auth/bootstrap.ts';
-import { hashInviteToken } from './token.ts';
+import { hashClaimToken, hashInviteToken } from './token.ts';
 
 // Accepting an invite (design §12, §13).
 //
@@ -44,7 +44,18 @@ import { hashInviteToken } from './token.ts';
 //                            paid for.
 
 export interface AcceptInviteRequest {
-  token: string;
+  /**
+   * The URL token from the invite link, for a caller that never opened a
+   * preview (a direct API client). Once a link HAS been opened this is dead —
+   * `token_consumed_at` is set — and `claimToken` is the way in.
+   */
+  token: string | null;
+  /**
+   * The continuation token minted when the link was opened, presented by the
+   * web app from its httpOnly cookie. Exactly one of this and `token` is
+   * expected; this one wins when both are present.
+   */
+  claimToken?: string | null;
   /** Required for the registration shape; null when accepting as a signed-in account. */
   handle: string | null;
   password: string | null;
@@ -107,6 +118,32 @@ const UNUSABLE = 'This invitation link is not valid. It may have expired, been r
  * with `password_hash = NULL`, which means "no credential" — nothing can
  * authenticate as it. The route always passes the real hasher.
  */
+
+/**
+ * Which secret the caller presented, and the SQL predicate that matches it.
+ *
+ * A claim token beats a URL token when both arrive: the claim only exists
+ * because the link was already opened, at which point the URL token is spent
+ * and would match nothing anyway.
+ *
+ * The `match` fragments are literals chosen here, never interpolated from
+ * caller input — the secret itself is always parameter $1.
+ */
+function inviteCredential(request: AcceptInviteRequest): { match: string; hash: string } | null {
+  const claim = typeof request.claimToken === 'string' ? request.claimToken.trim() : '';
+  if (claim !== '') {
+    return { match: 'claim_token_hash = $1 and claim_expires_at > now()', hash: hashClaimToken(claim) };
+  }
+
+  const token = typeof request.token === 'string' ? request.token.trim() : '';
+  if (token !== '') {
+    // `token_consumed_at is null` is what makes opening the link spend it.
+    return { match: 'token_hash = $1 and token_consumed_at is null', hash: hashInviteToken(token) };
+  }
+
+  return null;
+}
+
 export async function acceptInvite(
   pool: pg.Pool,
   request: AcceptInviteRequest,
@@ -125,14 +162,21 @@ export async function acceptInvite(
   // claim below still is, and it re-tests every one of these conditions in
   // its WHERE under the row lock. An invite that dies in the microseconds
   // between the two is refused there, exactly as before.
+  // Which secret is being presented decides which column identifies the row.
+  // Both are single-use and both are checked again, atomically, in the claim
+  // below — this is only the cheap refusal.
+  const credential = inviteCredential(request);
+  if (credential === null) {
+    return refuse('unusable', UNUSABLE);
+  }
+
   const precheck = await pool.query(
-    `select 1
-       from invites
-      where token_hash = $1
+    `select 1 from invites
+      where ${credential.match}
         and accepted_at is null
         and revoked_at is null
         and expires_at > now()`,
-    [hashInviteToken(request.token)],
+    [credential.hash],
   );
   if (precheck.rowCount === 0) {
     return refuse('unusable', UNUSABLE);
@@ -152,13 +196,18 @@ export async function acceptInvite(
     // window between "this invite is usable" and "this invite is mine".
     const claim = await client.query<ClaimedInvite>(
       `update invites
-          set accepted_at = now()
-        where token_hash = $1
+          set accepted_at = now(),
+              -- The claim dies with the acceptance it authorised. Leaving a
+              -- live continuation token on a spent invite would be a second
+              -- credential nobody is watching.
+              claim_token_hash = null,
+              claim_expires_at = null
+        where ${credential.match}
           and accepted_at is null
           and revoked_at is null
           and expires_at > now()
         returning id, kind, email, course_id, creates_account, issued_by`,
-      [hashInviteToken(request.token)],
+      [credential.hash],
     );
     const invite = claim.rows[0];
     if (!invite) {

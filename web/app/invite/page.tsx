@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { fetchMeOrNull, previewInvite } from '../../../src/lib/api';
-import { loginRedirectPath } from '../../../src/lib/next-path';
+import { cookies } from 'next/headers';
+import { fetchMeOrNull, previewInvite } from '../../src/lib/api';
+import { loginRedirectPath } from '../../src/lib/next-path';
+import { INVITE_CLAIM_COOKIE } from '../../src/lib/invite-cookie';
 import AcceptForm from './AcceptForm';
 import styles from './accept.module.css';
 
@@ -14,10 +16,15 @@ export const metadata: Metadata = {
  * token", the one exception being first-run bootstrap).
  *
  * REACHABLE WHILE SIGNED OUT, and it has to be: the invitee has no account
- * yet, which is the entire point. The token in the URL is the credential —
- * 256 bits, stored only as a SHA-256 — so this page uses `previewInvite`,
- * which is not routed through `apiFetch` and therefore never bounces an
- * anonymous invitee to /login (that would be a loop they could not leave).
+ * yet, which is the entire point. So this page uses `previewInvite`, which is
+ * not routed through `apiFetch` and therefore never bounces an anonymous
+ * invitee to /login (that would be a loop they could not leave).
+ *
+ * THERE IS NO TOKEN IN THIS URL. The link at /invite/<token> is spent by
+ * being opened: its route handler exchanges the URL token for a short-lived
+ * claim in an httpOnly cookie and redirects here. This page reads that
+ * cookie. Everything after the first hop — history, Referer, the proxy's
+ * access log — sees only `/invite`.
  *
  * FOUR STATES:
  *   dead link            unknown, expired, revoked, or already used — the
@@ -33,9 +40,17 @@ export const metadata: Metadata = {
  *                        link found in a mailbox may not be turned into
  *                        somebody else's enrolment.
  */
-export default async function AcceptInvitePage({ params }: { params: Promise<{ token: string }> }) {
-  const { token } = await params;
-  const [invite, me] = await Promise.all([previewInvite(token), fetchMeOrNull()]);
+export default async function AcceptInvitePage() {
+  const claim = (await cookies()).get(INVITE_CLAIM_COOKIE)?.value ?? '';
+
+  // No cookie is the same outcome as a dead link, deliberately: arriving here
+  // directly, following a spent link, and following a revoked one are
+  // indistinguishable. The API already refuses to say which flavour of dead a
+  // token is; this page must not leak it either.
+  const [invite, me] = await Promise.all([
+    claim === '' ? Promise.resolve(null) : previewInvite({ kind: 'claim', token: claim }),
+    fetchMeOrNull(),
+  ]);
 
   if (invite === null) {
     return (
@@ -56,7 +71,9 @@ export default async function AcceptInvitePage({ params }: { params: Promise<{ t
   }
 
   const signedIn = me !== null;
-  const acceptPath = `/invite/${encodeURIComponent(token)}`;
+  // Back to THIS page, not to the link — the link is spent, and the claim
+  // cookie is what carries the invitation from here.
+  const acceptPath = '/invite';
 
   return (
     <main className={styles.page}>
@@ -67,9 +84,9 @@ export default async function AcceptInvitePage({ params }: { params: Promise<{ t
       </p>
 
       {invite.needsAccount ? (
-        <AcceptForm token={token} email={invite.email} needsAccount courseTitle={invite.courseTitle} />
+        <AcceptForm email={invite.email} needsAccount courseTitle={invite.courseTitle} />
       ) : signedIn ? (
-        <AcceptForm token={token} email={invite.email} needsAccount={false} courseTitle={invite.courseTitle} />
+        <AcceptForm email={invite.email} needsAccount={false} courseTitle={invite.courseTitle} />
       ) : (
         <p className={styles.intro}>
           That address already has an account, so this invitation grants course access rather than creating one.{' '}

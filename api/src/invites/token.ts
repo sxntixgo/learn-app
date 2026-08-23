@@ -40,3 +40,30 @@ export function generateInviteToken(): string {
 export function hashInviteToken(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex');
 }
+
+// ---------------------------------------------------------------------------
+// CLAIM TOKENS — the second half of "an invite link is spent when opened".
+//
+// The URL token survives one request. Opening the link consumes it and mints
+// one of these, which travels in a response BODY and lives in an httpOnly
+// cookie, never in a URL — so the proxy access log, browser history and
+// Referer never see it. The accept step presents this, not the link token.
+//
+// Same construction as the URL token, and deliberately not the same function:
+// these two have different lifetimes (14 days versus minutes) and different
+// call sites, exactly the reasoning in this file's header for keeping invite
+// and setup tokens apart.
+// ---------------------------------------------------------------------------
+
+/** How long a claim lives once a link has been opened. */
+export const CLAIM_TOKEN_TTL_MINUTES = 30;
+
+/** A fresh 256-bit claim token. */
+export function generateClaimToken(): string {
+  return randomBytes(INVITE_TOKEN_BYTES).toString('base64url');
+}
+
+/** The only form of the claim token that is ever persisted. */
+export function hashClaimToken(token: string): string {
+  return createHash('sha256').update(token, 'utf8').digest('hex');
+}
