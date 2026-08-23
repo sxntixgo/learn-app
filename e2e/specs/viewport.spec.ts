@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import type { E2eFixtures } from '../../tools/src/e2e-seed.ts';
+import { E2E_VIEWPORT_HANDLE } from '../../tools/src/e2e-seed.ts';
 import { HEATMAP_WINDOW_STEPS, visibleWeeksForWidth } from '../../web/src/lib/heatmap.ts';
 
 // Phase 15 task 3: viewport specs at 375 / 834 / 1440 (plan's Phase 15,
@@ -57,16 +58,25 @@ const DESKTOP = { width: 1440, height: 900 };
 //      spec files do in their own workers.
 test.describe.configure({ mode: 'serial' });
 
+/*
+ * THE HEATMAP MOVED. It used to be on /me, which was the profile in disguise
+ * — the same grid, badges and degrees rendered on both pages from the same
+ * data. /me is the activity feed now and the grid lives only on the profile,
+ * so this file drives it there. Nothing about the window policy it measures
+ * changed.
+ */
+const HEATMAP_PAGE = `/u/${E2E_VIEWPORT_HANDLE}`;
+
 let authState: Awaited<ReturnType<BrowserContext['storageState']>>;
 
 test.beforeAll(async ({ browser, baseURL }) => {
   const context = await browser.newContext({ baseURL });
   const page = await context.newPage();
-  await page.goto(`/login?next=${encodeURIComponent('/me')}`);
+  await page.goto(`/login?next=${encodeURIComponent(HEATMAP_PAGE)}`);
   await page.getByLabel('Email').fill(fixtures.viewportUser.email);
   await page.getByLabel('Password').fill(fixtures.viewportUser.password);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.waitForURL(/\/me$/);
+  await page.waitForURL(new RegExp(`${HEATMAP_PAGE}$`));
   authState = await context.storageState();
   await context.close();
 });
@@ -103,7 +113,7 @@ test.describe('the app shell switches shape at the shell breakpoint', () => {
   for (const { width, height, shape } of CASES) {
     test(`${width}x${height} renders the ${shape}`, async ({ browser, baseURL }) => {
       await withAuthedPage(browser, baseURL, { width, height }, async (page) => {
-        await page.goto('/me');
+        await page.goto(HEATMAP_PAGE);
 
         const nav = page.getByRole('navigation', { name: 'Primary' });
         await expect(nav).toBeVisible();
@@ -184,7 +194,7 @@ test.describe('the contribution heatmap window (design §10)', () => {
 
   test('genuinely shows more weeks without scrolling as the viewport widens', async ({ browser, baseURL }) => {
     await withAuthedPage(browser, baseURL, PHONE, async (page) => {
-      await page.goto('/me');
+      await page.goto(HEATMAP_PAGE);
       const phone = await visibleWeekColumns(page);
 
       await page.setViewportSize(TABLET);
@@ -221,7 +231,7 @@ test.describe('the contribution heatmap window (design §10)', () => {
     // an imaginary page: it counts columns that are genuinely unclipped in a
     // real browser.
     await withAuthedPage(browser, baseURL, PHONE, async (page) => {
-      await page.goto('/me');
+      await page.goto(HEATMAP_PAGE);
 
       for (const step of HEATMAP_WINDOW_STEPS) {
         const width = Math.max(step.minViewportWidth, 375);

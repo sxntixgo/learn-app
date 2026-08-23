@@ -124,7 +124,7 @@ const ROUTES: RouteCase[] = [
     session: 'student',
     expectUrl: new RegExp(`/courses/${fixtures.courseSlug}/lessons/${fixtures.lessonSlug}$`),
   },
-  { name: 'dashboard (heatmap)', path: '/me', session: 'student', expectUrl: /\/me$/ },
+  { name: 'dashboard (activity feed)', path: '/me', session: 'student', expectUrl: /\/me$/ },
   { name: 'profile settings', path: '/settings/profile', session: 'student', expectUrl: /\/settings\/profile$/ },
   // Plan: "Account deletion and data export". Read-only for this pass — the
   // form is loaded and scanned, never submitted, so this never touches
@@ -240,7 +240,9 @@ async function tabUntilFocused(page: Page, locator: ReturnType<Page['locator']>,
 test.describe('keyboard-only traversal (plan, Phase 15 task 4: "the grid is reachable and escapable by keyboard")', () => {
   test('the heatmap grid is reachable and escapable by keyboard', async ({ browser, baseURL }) => {
     await withPage(browser, baseURL, studentState, async (page) => {
-      await page.goto('/me');
+      // The grid is on the profile now — /me became the activity feed, and
+      // the two pages had been rendering the same heatmap from the same data.
+      await page.goto(`/u/${E2E_VIEWPORT_HANDLE}`);
 
       const grid = page.getByRole('grid', { name: /Activity heatmap/ });
       await expect(grid).toBeVisible();

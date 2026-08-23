@@ -158,8 +158,13 @@ describe('the shipped CSS implements the declared window policy', () => {
     }
   });
 
-  it('me.module.css declares the same page gutters and max width', () => {
-    const cssPath = path.join(WEB_DIR, 'app', 'me', 'me.module.css');
+  it('the page hosting the heatmap declares the same gutters and max width', () => {
+    // profile.module.css, not me.module.css: /me became the activity feed and
+    // the heatmap lives only on the profile now. The geometry contract has to
+    // follow the grid, or it describes a container the heatmap is not in —
+    // which is exactly how the profile came to show 42 of its 53 columns
+    // without anything failing.
+    const cssPath = path.join(WEB_DIR, 'app', 'u', '[handle]', 'profile.module.css');
     const vars = readCssVarsByBreakpoint(cssPath, ['--page-gutter']);
 
     // Against PAGE_GUTTER_STEPS, not HEATMAP_WINDOW_STEPS: the page changes

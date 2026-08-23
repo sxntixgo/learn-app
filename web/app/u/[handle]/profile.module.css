@@ -7,11 +7,43 @@
  * at least 44px tall.
  */
 
+/*
+ * THE SAME GEOMETRY THE DASHBOARD USED TO HAVE, because the heatmap lives
+ * here now.
+ *
+ * `--page-gutter` and the max width are part of the contract
+ * src/lib/heatmap.test.ts checks: the heatmap window has to fit inside
+ * `min(viewport, max-width) - 2 * --page-gutter` at every breakpoint, and
+ * design §10 asks for 53 weeks on desktop.
+ *
+ * At the old `--measure-full` (76ch, about 800px) it never did. The profile
+ * has always shown 42 of its 53 columns and scrolled for the rest — nobody
+ * noticed because the window policy was only ever measured on /me, which had
+ * the wider container. Moving the heatmap here made the mismatch the tested
+ * page's problem rather than an untested page's secret.
+ *
+ * Prose is unaffected: `.bio` keeps `--measure-prose`, and the page was never
+ * a prose page anyway — it is badges, degrees, course lists and a year grid.
+ */
 .page {
-  max-width: var(--measure-full);
+  --page-gutter: 16px;
+
+  max-width: 1160px;
   margin: 0 auto;
-  padding: var(--space-4) var(--space-3) var(--space-7);
+  padding: var(--space-4) var(--page-gutter) var(--space-7);
   color: var(--color-text);
+}
+
+@media (min-width: 768px) {
+  .page {
+    --page-gutter: 24px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .page {
+    --page-gutter: 32px;
+  }
 }
 
 .header {
