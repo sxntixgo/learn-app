@@ -517,6 +517,16 @@ const MATRIX: readonly MatrixCase[] = [
   },
   {
     row: 'Account (not a §5 row): every authenticated identity, own record only',
+    action: 'me:password:update',
+    resource: ownData,
+    // Admin included, unlike me:delete. Rotating a credential cannot orphan
+    // the instance the way self-deleting the last operator would, and there
+    // is no reset flow anywhere in this design — so this is the only way any
+    // account can ever change its password.
+    expected: [DENY, ALLOW, ALLOW, ALLOW, ALLOW],
+  },
+  {
+    row: 'Account (not a §5 row): every authenticated identity, own record only',
     action: 'session:revoke:all',
     resource: ownData,
     expected: [DENY, ALLOW, ALLOW, ALLOW, ALLOW],

@@ -508,6 +508,14 @@ const MATRIX = {
   // predicate. Self-scoped, always.
   'me:read': { row: 'Account (not a §5 row)', student: SELF, teacher: SELF, admin: SELF },
   'me:update': { row: 'Account (not a §5 row)', student: SELF, teacher: SELF, admin: SELF },
+  // Changing your own password. Every role, SELF — unlike `me:delete`, which
+  // excludes admin because self-deleting the last operator leaves nobody able
+  // to administer the instance. Rotating a credential has no such hazard, and
+  // an admin who cannot change their password is an admin who keeps a
+  // compromised one: there is no reset flow here at all (design §2 excludes
+  // password-reset mail along with SMTP), so this route is the ONLY way any
+  // account can ever change its credential.
+  'me:password:update': { row: 'Account (not a §5 row)', student: SELF, teacher: SELF, admin: SELF },
   'session:revoke:all': { row: 'Account (not a §5 row)', student: SELF, teacher: SELF, admin: SELF },
 
   // ---- NOT A §5 ROW: the first-run bootstrap (§5.2) ------------------------

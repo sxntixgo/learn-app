@@ -26,12 +26,16 @@ type TimezoneSource = 'set' | 'default';
 interface UserRow {
   id: string;
   display_name: string | null;
+  handle: string | null;
   timezone: string | null;
 }
 
 interface MeResponse {
   id: string;
   displayName: string | null;
+  handle: string | null;
+  /** Whether `/api/v1/profiles/{handle}` will serve this account — false for operators (§5.1). */
+  hasProfile: boolean;
   timezone: string;
   timezoneSource: TimezoneSource;
   /** Design §12's platform-invite budget, 0 for everyone it was never granted to. */
@@ -57,17 +61,33 @@ const MAX_ACTIVITY_LIMIT = 100;
 
 /** Loads the users row backing `actor`, or null if somehow absent. */
 async function findUser(actorId: string): Promise<UserRow | null> {
-  const result = await getPool().query<UserRow>('select id, display_name, timezone from users where id = $1', [
+  const result = await getPool().query<UserRow>('select id, display_name, handle, timezone from users where id = $1', [
     actorId,
   ]);
   return result.rows[0] ?? null;
 }
 
 /** Shapes a users row into the public Me response (design §15's UTC fallback). */
-function toMeResponse(row: UserRow, inviteBudget: number): MeResponse {
+/**
+ * `hasProfile` mirrors what `/api/v1/profiles/:handle` will actually serve:
+ * `findProfileSubject` requires the student role, because §5.1 gives operator
+ * accounts "no enrollments, no progress, no badges, and no public profile".
+ *
+ * It exists so the shell can decide whether the account holder's own name is
+ * a link WITHOUT guessing. Without it the header either links everyone —
+ * sending admins to a 404 — or links nobody, which is what it did: the
+ * profile was reachable only from the dashboard.
+ *
+ * The API reports the two facts (who you are, whether you have a profile);
+ * it deliberately does not report a URL. `/u/:handle` is web's routing, not
+ * the API's, and the two are kept apart everywhere else here too.
+ */
+function toMeResponse(row: UserRow, inviteBudget: number, isStudent: boolean): MeResponse {
   return {
     id: row.id,
     displayName: row.display_name,
+    handle: row.handle,
+    hasProfile: isStudent && row.handle !== null,
     timezone: row.timezone ?? DEFAULT_TIMEZONE,
     timezoneSource: row.timezone ? 'set' : 'default',
     inviteBudget,
@@ -121,7 +141,7 @@ export function registerMeRoutes(fastify: FastifyInstance, deps: MeRouteDeps = {
       return reply.code(404).send({ message: `User not found: ${actor.id}` });
     }
 
-    return reply.code(200).send(toMeResponse(userRow, await inviteBudgetFor(actor.id)));
+    return reply.code(200).send(toMeResponse(userRow, await inviteBudgetFor(actor.id), actor.roles.includes('student')));
   });
 
   fastify.patch<{ Body: MeUpdateBody }>('/api/v1/me', async (request, reply) => {
@@ -146,7 +166,7 @@ export function registerMeRoutes(fastify: FastifyInstance, deps: MeRouteDeps = {
     }
 
     const result = await getPool().query<UserRow>(
-      'update users set timezone = $2 where id = $1 returning id, display_name, timezone',
+      'update users set timezone = $2 where id = $1 returning id, display_name, handle, timezone',
       [actor.id, timezone],
     );
     const userRow = result.rows[0];
@@ -154,7 +174,7 @@ export function registerMeRoutes(fastify: FastifyInstance, deps: MeRouteDeps = {
       return reply.code(404).send({ message: `User not found: ${actor.id}` });
     }
 
-    return reply.code(200).send(toMeResponse(userRow, await inviteBudgetFor(actor.id)));
+    return reply.code(200).send(toMeResponse(userRow, await inviteBudgetFor(actor.id), actor.roles.includes('student')));
   });
 
   fastify.get<{ Querystring: { limit?: string } }>('/api/v1/me/activity', async (request, reply) => {

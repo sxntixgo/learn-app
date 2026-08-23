@@ -2,6 +2,14 @@
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+
+  /*
+   * The banner's height, in one place because THREE rules depend on agreeing
+   * about it: the banner's own min-height, the sticky offset of the desktop
+   * sidebar, and the sidebar's height. When they disagreed, the sidebar stuck
+   * to the top of the viewport — behind the banner — and painted over it.
+   */
+  --banner-height: 4rem;
 }
 
 /* Clearance for the fixed bottom tab bar so it never covers the tail of the
@@ -24,9 +32,17 @@
 }
 
 @media (min-width: 768px) {
-  .root {
-    /* Nav is an in-flow sidebar here, not a fixed overlay — no clearance
-       needed. */
+  /*
+   * SAME SELECTOR AS THE RULE IT CANCELS. This was `.root`, which is (0,1,0)
+   * against the attribute selector's (0,2,0) — so it never won, and 72px of
+   * page background sat below the footer at EVERY width, including the ones
+   * with no fixed tab bar to clear. Measured, not guessed: the gap was 72px
+   * at 1440 as well as at 375.
+   *
+   * Nav is an in-flow sidebar here, not a fixed overlay, so there is nothing
+   * to reserve space for.
+   */
+  .root[data-nav-visible='true'] {
     padding-bottom: 0;
   }
 }

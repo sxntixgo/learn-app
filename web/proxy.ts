@@ -123,6 +123,24 @@ function isDocumentNavigation(request: NextRequest): boolean {
   // Next's own client sends these on payload fetches and prefetches.
   if (request.headers.has('rsc') || request.headers.has('next-router-prefetch')) return false;
   if (request.headers.get('sec-fetch-dest') === 'iframe') return false;
+
+  // NOT ON A CROSS-SITE NAVIGATION. Found by reviewing this for abuse rather
+  // than for correctness: SameSite=Lax attaches the session cookies to a
+  // top-level cross-site GET, so any page anywhere could send a visitor here
+  // and force a rotation. Two at once — two windows opened together — and the
+  // second presents a token the first already spent, which the API correctly
+  // treats as theft and answers by revoking the whole family.
+  //
+  // That is a third party logging someone out at will, with no credentials
+  // and no access to anything. A cross-site arrival now simply renders
+  // signed-out, and the visitor's next same-origin navigation refreshes.
+  //
+  // Absent header: older browsers only. Treated as untrusted, because the
+  // cost of not refreshing is one sign-in and the cost of refreshing is a
+  // session somebody else can destroy.
+  const site = request.headers.get('sec-fetch-site');
+  if (site !== 'same-origin' && site !== 'none') return false;
+
   return true;
 }
 
@@ -147,15 +165,18 @@ function apiBase(): string | undefined {
 async function refreshSession(request: NextRequest): Promise<string[] | null> {
   const base = apiBase();
   if (!base) return null;
+  const forwardedFor = request.headers.get('x-forwarded-for');
 
   try {
     const response = await fetch(`${base}/api/v1/auth/refresh`, {
       method: 'POST',
       headers: {
         cookie: request.headers.get('cookie') ?? '',
-        // The API only believes this when API_TRUST_PROXY is on, and the
-        // per-IP limits are worthless without it.
-        'x-forwarded-for': request.headers.get('x-forwarded-for') ?? '',
+        // Only when there IS one. Sending an empty x-forwarded-for is worse
+        // than sending none: with API_TRUST_PROXY on the API parses it where
+        // it would otherwise use the socket address, and a degenerate value
+        // collapses per-IP rate-limit keys together.
+        ...(forwardedFor ? { 'x-forwarded-for': forwardedFor } : {}),
       },
       cache: 'no-store',
       signal: AbortSignal.timeout(5000),

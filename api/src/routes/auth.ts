@@ -4,7 +4,8 @@ import type { Actor, Role } from '../policy/can.ts';
 import { can as defaultCan } from '../policy/can.ts';
 import { actorFor } from '../auth/actor.ts';
 import { signAccessToken } from '../auth/access-token.ts';
-import { verifyPassword, MAX_PASSWORD_LENGTH } from '../auth/password.ts';
+import { hashPassword, verifyPassword, MAX_PASSWORD_LENGTH } from '../auth/password.ts';
+import { MIN_PASSWORD_LENGTH } from '../auth/account-fields.ts';
 import { loadRoles } from '../auth/roles.ts';
 import {
   issueRefreshToken,
@@ -238,6 +239,91 @@ export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRouteDeps
     clearSessionCookies(reply);
     return reply.code(204).send();
   });
+
+  /**
+   * Change your own password (design §13).
+   *
+   * THE ONLY CREDENTIAL-CHANGE PATH IN THE SYSTEM. §2 excludes password-reset
+   * mail and SMTP from the design entirely, so there is no "forgot password"
+   * and no admin override: an account that cannot use this route can never
+   * change its password at all. That is why the matrix grants it to admin as
+   * well, unlike `me:delete`.
+   *
+   * THE CURRENT PASSWORD IS REQUIRED even though the caller already holds a
+   * valid session. A session proves possession of a browser, not knowledge of
+   * the credential — an unlocked laptop should not be able to lock its owner
+   * out of their own instance.
+   *
+   * Rate-limited on the same limiter as login, keyed the same way. This is a
+   * password-guessing oracle otherwise: unlimited attempts at
+   * `currentPassword` with no lockout.
+   */
+  fastify.post<{ Body: { currentPassword?: unknown; newPassword?: unknown } }>(
+    '/api/v1/auth/password',
+    async (request, reply) => {
+      const actor = actorFor(request, deps);
+
+      if (!can(actor, 'me:password:update', { userId: actor.id })) {
+        return reply.code(403).send({ message: 'Forbidden' });
+      }
+
+      const body = request.body ?? {};
+      const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
+      const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
+
+      // Shape first, before the expensive verify and before anything is read
+      // — same order as every other route here.
+      if (newPassword.length < MIN_PASSWORD_LENGTH) {
+        return reply.code(400).send({ message: `newPassword must be at least ${MIN_PASSWORD_LENGTH} characters.` });
+      }
+      if (newPassword.length > MAX_PASSWORD_LENGTH) {
+        return reply.code(400).send({ message: `newPassword must be at most ${MAX_PASSWORD_LENGTH} characters.` });
+      }
+      if (newPassword === currentPassword) {
+        return reply.code(400).send({ message: 'The new password must be different from the current one.' });
+      }
+
+      const throttleKeys = [`pw-ip:${request.ip}`, `pw-account:${actor.id}`];
+      const decision = rateLimiter.check(throttleKeys);
+      if (!decision.allowed) {
+        reply.header('Retry-After', String(decision.retryAfterSeconds));
+        return reply.code(429).send({ message: 'Too many attempts. Try again later.' });
+      }
+
+      const pool = getPool();
+      const { rows } = await pool.query<{ password_hash: string | null }>(
+        'select password_hash from users where id = $1',
+        [actor.id],
+      );
+      const stored = rows[0];
+      if (!stored || !(await verifyPassword(stored.password_hash, currentPassword))) {
+        rateLimiter.recordFailure(throttleKeys);
+        // Same shape as a failed login, deliberately: this must not become a
+        // way to confirm a password from inside a stolen session any faster
+        // than the login route allows from outside one.
+        return reply.code(401).send({ message: 'Incorrect password.' });
+      }
+      rateLimiter.reset(throttleKeys);
+
+      await pool.query('update users set password_hash = $2 where id = $1', [actor.id, await hashPassword(newPassword)]);
+
+      // EVERY OTHER SESSION GOES. Changing a password because someone else may
+      // know it accomplishes nothing while their session keeps working.
+      await revokeAllForUser(pool, actor.id);
+
+      // ...and a fresh one for this device, so the person who just did it is
+      // not signed out by their own action.
+      const roles = await loadRoles(pool, actor.id);
+      const refresh = await issueRefreshToken(pool, { userId: actor.id, deviceLabel: null });
+      setSessionCookies(reply, {
+        accessToken: await signAccessToken({ userId: actor.id, roles }, keys()),
+        refreshToken: refresh.token,
+        refreshExpiresAt: refresh.expiresAt,
+      });
+
+      return reply.code(204).send();
+    },
+  );
 
   fastify.post('/api/v1/auth/logout-all', async (request, reply) => {
     const actor = actorFor(request, deps);

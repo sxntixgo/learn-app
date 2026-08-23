@@ -95,12 +95,34 @@
 
 @media (min-width: 768px) {
   .nav {
+    /*
+     * STICKY BELOW THE BANNER, AND BENEATH IT IN THE STACK.
+     *
+     * Both halves were wrong, and measurement found the second one. It said
+     * `position: sticky; top: 0` — but with `align-self: stretch` the element
+     * filled its flex parent exactly, so there was no room inside the
+     * containing block for it to stick to anything. It did not stick at all:
+     * scrolled 600px, its top measured -536, i.e. it had scrolled away with
+     * the content like any static element.
+     *
+     * Having scrolled up behind the banner, it then painted OVER it, because
+     * the mobile rule's `z-index: 40` was never reset here and the banner is
+     * 30. That is the reported symptom: the left of the top bar disappearing
+     * under the sidebar on scroll.
+     *
+     * `flex-start` + an explicit height gives sticky something to work
+     * within; `top` is the banner's height so the sidebar parks under it
+     * rather than behind it.
+     */
     position: sticky;
-    top: 0;
+    top: var(--banner-height);
     left: auto;
     right: auto;
     bottom: auto;
-    align-self: stretch;
+    z-index: 10;
+    align-self: flex-start;
+    height: calc(100dvh - var(--banner-height));
+    overflow-y: auto;
     width: 180px;
     flex-shrink: 0;
     display: flex;

@@ -44,6 +44,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change the signed-in account's own password
+         * @description The ONLY way any account can change its credential. There is no reset flow: design §2 excludes password-reset mail and SMTP from the compose file entirely, so an account that loses its password has no recovery path and one that suspects compromise has no rotation path — this route is both.
+         *     Requires the current password, verified with the same Argon2id comparison as login. Possession of a valid session is not sufficient: a borrowed laptop should not be able to lock its owner out.
+         *     ON SUCCESS EVERY OTHER SESSION IS REVOKED. Changing a password because it may be known to someone else is pointless if their session keeps working, so all refresh-token families are killed and a fresh one is issued for the caller's own device — they stay signed in here and nowhere else.
+         */
+        post: operations["changeMyPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/refresh": {
         parameters: {
             query?: never;
@@ -1560,6 +1582,13 @@ export interface components {
             id: string;
             /** @description The actor's display name, or null if unset */
             displayName: ((string | null) | null) | null;
+            /** @description The actor's handle, or null if unset. */
+            handle?: ((string | null) | null) | null;
+            /**
+             * @description Whether this account has a public learner profile at `/u/{handle}`. False for operator accounts: §5.1 gives them "no enrollments, no progress, no badges, and no public profile", and `/api/v1/profiles/{handle}` refuses them for the same reason.
+             *     Reported so a client can decide whether the account holder's own name is a link, rather than guessing and sending admins to a 404. Deliberately a fact and not a URL — `/u/{handle}` is the web app's routing, not this API's.
+             */
+            hasProfile?: boolean;
             /** @description The actor's effective IANA timezone — their stored value, or "UTC" when unset (design §15). */
             timezone: string;
             timezoneSource: components["schemas"]["TimezoneSource"];
@@ -2280,6 +2309,67 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Error"];
                 };
+            };
+        };
+    };
+    changeMyPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Verified before anything changes. */
+                    currentPassword: string;
+                    /** @description Same bounds the bootstrap and invite flows enforce. */
+                    newPassword: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Changed. Both session cookies are re-issued for this device; every other session is gone. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The new password is missing, too short, too long, or the same as the current one */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The current password is wrong. Deliberately indistinguishable from a login failure, and rate-limited the same way. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No session, so there is no password to change */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many attempts against this account or address */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
