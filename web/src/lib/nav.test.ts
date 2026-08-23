@@ -1,25 +1,58 @@
 import { describe, expect, it } from 'vitest';
-import { isNavActive, NAV_DESTINATIONS, visibleNavDestinations, type NavDestination } from './nav';
+import {
+  isNavActive,
+  MANAGE_DESTINATIONS,
+  NAV_DESTINATIONS,
+  visibleNavDestinations,
+  type NavDestination,
+} from './nav';
 
 const catalog = NAV_DESTINATIONS.find((d) => d.href === '/')!;
 const search = NAV_DESTINATIONS.find((d) => d.href === '/search')!;
 const dashboard = NAV_DESTINATIONS.find((d) => d.href === '/me')!;
-const grading = NAV_DESTINATIONS.find((d) => d.href === '/grading')!;
-const admin = NAV_DESTINATIONS.find((d) => d.href === '/admin/imports')!;
-const invites = NAV_DESTINATIONS.find((d) => d.href === '/invites')!;
+const grading = MANAGE_DESTINATIONS.find((d) => d.href === '/grading')!;
+const admin = MANAGE_DESTINATIONS.find((d) => d.href === '/admin/imports')!;
+const invites = MANAGE_DESTINATIONS.find((d) => d.href === '/invites')!;
 
 const FULL_AUDIENCE = { isTeacher: true, canInvite: true, isAdmin: true, canSearch: true };
 
 describe('NAV_DESTINATIONS', () => {
-  it('is exactly Catalog, Search, Dashboard, Grading, Invitations, and Admin', () => {
-    expect(NAV_DESTINATIONS.map((d) => d.href)).toEqual([
-      '/',
-      '/search',
-      '/me',
-      '/grading',
-      '/invites',
-      '/admin/imports',
-    ]);
+  it('is exactly Dashboard, Catalog, Search — the three everyday destinations, in that order', () => {
+    // Order is the assertion, not just membership: Dashboard first because it
+    // is where a session starts.
+    expect(NAV_DESTINATIONS.map((d) => d.href)).toEqual(['/me', '/', '/search']);
+  });
+
+  it('holds no role-gated destination — those live in MANAGE_DESTINATIONS', () => {
+    // The sidebar is for everyone. A link that almost nobody may follow is
+    // not everyday navigation, and putting one back here would quietly undo
+    // the split.
+    for (const destination of NAV_DESTINATIONS) {
+      expect(destination.restrictedToTeacher, `${destination.label} is role-gated`).toBeUndefined();
+      expect(destination.restrictedToInviter, `${destination.label} is role-gated`).toBeUndefined();
+      expect(destination.restrictedToAdmin, `${destination.label} is role-gated`).toBeUndefined();
+    }
+  });
+});
+
+describe('MANAGE_DESTINATIONS', () => {
+  it('is exactly Grading, Invitations, and Admin', () => {
+    expect(MANAGE_DESTINATIONS.map((d) => d.href)).toEqual(['/grading', '/invites', '/admin/imports']);
+  });
+
+  it('gates every one of them — an ungated entry here would be invisible to nobody', () => {
+    for (const destination of MANAGE_DESTINATIONS) {
+      const gated =
+        destination.restrictedToTeacher === true ||
+        destination.restrictedToInviter === true ||
+        destination.restrictedToAdmin === true;
+      expect(gated, `${destination.label} is in Manage but gated to nobody`).toBe(true);
+    }
+  });
+
+  it('shares no href with the sidebar, so nothing is offered in two places', () => {
+    const sidebar = new Set(NAV_DESTINATIONS.map((d) => d.href));
+    expect(MANAGE_DESTINATIONS.filter((d) => sidebar.has(d.href))).toEqual([]);
   });
 
   it('labels the admin destination clearly as admin', () => {
@@ -62,51 +95,60 @@ describe('NAV_DESTINATIONS', () => {
 describe('visibleNavDestinations', () => {
   const student = { isTeacher: false, canInvite: false, isAdmin: false, canSearch: true };
 
-  it('leaves a student with Catalog, Search, and Dashboard only', () => {
-    expect(visibleNavDestinations(student).map((d) => d.href)).toEqual(['/', '/search', '/me']);
+  it('leaves a student with Dashboard, Catalog, and Search only', () => {
+    expect(visibleNavDestinations(student).map((d) => d.href)).toEqual(['/me', '/', '/search']);
   });
 
-  it('keeps every destination, in order, for an account that is everything', () => {
-    expect(visibleNavDestinations(FULL_AUDIENCE).map((d) => d.href)).toEqual([
-      '/',
-      '/search',
-      '/me',
+  it('gives a student NOTHING in the Manage section', () => {
+    expect(visibleNavDestinations(student, MANAGE_DESTINATIONS)).toEqual([]);
+  });
+
+  it('filters the Manage list by the same gate as the sidebar', () => {
+    // One predicate, two lists. A second copy could disagree, and a
+    // destination visible in one place but hidden in the other is a
+    // permissions bug that looks like a rendering bug.
+    const teacher = { isTeacher: true, canInvite: false, isAdmin: false, canSearch: false };
+    expect(visibleNavDestinations(teacher, MANAGE_DESTINATIONS).map((d) => d.href)).toEqual(['/grading']);
+    expect(visibleNavDestinations(FULL_AUDIENCE, MANAGE_DESTINATIONS).map((d) => d.href)).toEqual([
       '/grading',
       '/invites',
       '/admin/imports',
     ]);
   });
 
-  it('gives an admin Invitations and Admin, and no Grading or Search — admin holds neither student nor teacher (§5.1)', () => {
-    expect(
-      visibleNavDestinations({ isTeacher: false, canInvite: true, isAdmin: true, canSearch: false }).map(
-        (d) => d.href,
-      ),
-    ).toEqual(['/', '/me', '/invites', '/admin/imports']);
+  it('keeps all three, in order, for an account that is everything', () => {
+    expect(visibleNavDestinations(FULL_AUDIENCE).map((d) => d.href)).toEqual(['/me', '/', '/search']);
   });
 
-  it('gives a teacher Grading and Invitations, but never Admin or Search — a teacher-only account holds no student role', () => {
-    expect(
-      visibleNavDestinations({ isTeacher: true, canInvite: true, isAdmin: false, canSearch: false }).map(
-        (d) => d.href,
-      ),
-    ).toEqual(['/', '/me', '/grading', '/invites']);
+  it('gives an admin no Search — admin holds neither the student nor the teacher role (§5.1)', () => {
+    const admin = { isTeacher: false, canInvite: true, isAdmin: true, canSearch: false };
+    expect(visibleNavDestinations(admin).map((d) => d.href)).toEqual(['/me', '/']);
+    expect(visibleNavDestinations(admin, MANAGE_DESTINATIONS).map((d) => d.href)).toEqual([
+      '/invites',
+      '/admin/imports',
+    ]);
   });
 
-  it('drops Invitations from a teacher who cannot list any', () => {
-    expect(
-      visibleNavDestinations({ isTeacher: true, canInvite: false, isAdmin: false, canSearch: false }).map(
-        (d) => d.href,
-      ),
-    ).toEqual(['/', '/me', '/grading']);
+  it('gives a teacher Grading and Invitations to manage, but never Admin', () => {
+    const teacher = { isTeacher: true, canInvite: true, isAdmin: false, canSearch: false };
+    expect(visibleNavDestinations(teacher).map((d) => d.href)).toEqual(['/me', '/']);
+    expect(visibleNavDestinations(teacher, MANAGE_DESTINATIONS).map((d) => d.href)).toEqual([
+      '/grading',
+      '/invites',
+    ]);
   });
 
-  it('drops Search from a teacher who also learns — canSearch, not isTeacher, decides it (roles are a set)', () => {
-    expect(
-      visibleNavDestinations({ isTeacher: true, canInvite: false, isAdmin: false, canSearch: true }).map(
-        (d) => d.href,
-      ),
-    ).toEqual(['/', '/search', '/me', '/grading']);
+  it('drops Invitations from a teacher who cannot issue any', () => {
+    const teacher = { isTeacher: true, canInvite: false, isAdmin: false, canSearch: false };
+    expect(visibleNavDestinations(teacher, MANAGE_DESTINATIONS).map((d) => d.href)).toEqual(['/grading']);
+  });
+
+  it('decides Search by canSearch, not by isTeacher — roles are a set', () => {
+    // A teacher who also learns still gets Search; the grant is the same one
+    // as course:list, not a role name.
+    const teacherWhoLearns = { isTeacher: true, canInvite: false, isAdmin: false, canSearch: true };
+    expect(visibleNavDestinations(teacherWhoLearns).map((d) => d.href)).toEqual(['/me', '/', '/search']);
+    expect(visibleNavDestinations(teacherWhoLearns, MANAGE_DESTINATIONS).map((d) => d.href)).toEqual(['/grading']);
   });
 });
 

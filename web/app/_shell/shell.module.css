@@ -21,9 +21,24 @@
   padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
 }
 
+/*
+ * DOES NOT STRETCH. It used to (`flex: 1`), which pushed the footer to the
+ * bottom of the viewport and left the page's own background in between — 185px
+ * of nothing between the last line of content and the footer on a short page,
+ * measured at 720px tall.
+ *
+ * The footer grows instead (see .footer below), so the dark band starts where
+ * the content ends and runs to the bottom. That keeps the property the earlier
+ * fix was after — nothing but footer below the footer, flush to the bottom —
+ * without the gap above it.
+ *
+ * The sidebar is unaffected: nav.module.css gives it its own
+ * `height: calc(100dvh - var(--banner-height))`, so it never depended on this
+ * container stretching.
+ */
 .body {
   display: flex;
-  flex: 1;
+  flex: 0 0 auto;
 }
 
 .content {

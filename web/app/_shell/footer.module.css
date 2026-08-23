@@ -1,8 +1,18 @@
+/*
+ * Grows to fill whatever is left below the content, so on a short page the
+ * band begins immediately under the last line rather than being pinned to the
+ * bottom of the viewport with page background stranded above it.
+ *
+ * `flex: 1 0 auto` and not `margin-top: auto`: the old rule pushed the whole
+ * footer down, which is what created the gap. This makes the footer itself the
+ * element that absorbs the spare height, so the text stays at the top of the
+ * band and the colour runs to the bottom edge.
+ */
 .footer {
   background: var(--color-footer-bg);
   color: var(--color-footer-text);
   padding: 1.25rem 1rem;
-  margin-top: auto;
+  flex: 1 0 auto;
 }
 
 .text {

@@ -10,10 +10,24 @@ import type { ThemePreference } from '../../src/lib/theme';
 import type { Me } from '../../src/lib/api';
 import ThemeToggle from './ThemeToggle';
 import AccountMenu from './AccountMenu';
+import { MANAGE_DESTINATIONS, visibleNavDestinations, type NavAudience } from '../../src/lib/nav';
 import AuthControl from './AuthControl';
 import styles from './top-bar.module.css';
 
-export default function TopBar({ theme, user }: { theme: ThemePreference; user: Me | null }) {
+export default function TopBar({
+  theme,
+  user,
+  audience,
+}: {
+  theme: ThemePreference;
+  user: Me | null;
+  audience: NavAudience;
+}) {
+  // Filtered here rather than inside AccountMenu so the menu stays a
+  // presentational component and the "may this person see this?" decision
+  // stays in the one tested place (src/lib/nav.ts).
+  const manage = user ? visibleNavDestinations(audience, MANAGE_DESTINATIONS) : [];
+
   return (
     <header className={styles.banner}>
       <Link href="/" className={styles.brand}>
@@ -27,7 +41,7 @@ export default function TopBar({ theme, user }: { theme: ThemePreference; user: 
          * no menu to put it in, so it stays where it was.
          */}
         {user ? (
-          <AccountMenu user={user} themeControl={<ThemeToggle current={theme} />} />
+          <AccountMenu user={user} manage={manage} themeControl={<ThemeToggle current={theme} />} />
         ) : (
           <>
             <ThemeToggle current={theme} />

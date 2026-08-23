@@ -6,7 +6,7 @@ import ActivityFeed from './ActivityFeed';
 import styles from './me.module.css';
 
 export const metadata: Metadata = {
-  title: 'Your desk — Learn App',
+  title: 'Dashboard — Learn App',
 };
 
 /**
@@ -48,7 +48,7 @@ export default async function MePage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Your desk</h1>
+      <h1 className={styles.title}>Dashboard</h1>
 
       {/*
        * Where the rest of it went. Badges, degrees and the heatmap are on the

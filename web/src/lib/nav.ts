@@ -91,11 +91,39 @@ export interface NavAudience {
   canSearch: boolean;
 }
 
+/**
+ * THE SIDEBAR: the three places anyone goes every day, in the order they are
+ * reached for — where a session starts, then somewhere to browse, then
+ * somewhere to look inside what you browsed.
+ *
+ * Every label here is also the `<h1>` of the page it opens, enforced by
+ * nav-labels.test.ts. That is not cosmetic: a sidebar reading "Dashboard"
+ * that opens a page headed "Your desk" makes a reader wonder whether they
+ * landed where they meant to. Rename one and the test makes you rename the
+ * other.
+ */
 export const NAV_DESTINATIONS: readonly NavDestination[] = [
+  { href: '/me', label: 'Dashboard' },
   { href: '/', label: 'Catalog', activePrefixes: ['/courses'] },
   { href: '/search', label: 'Search', restrictedToSearch: true },
-  { href: '/me', label: 'Dashboard' },
-  { href: '/grading', label: 'Grading', restrictedToTeacher: true },
+];
+
+/**
+ * THE ACCOUNT MENU'S "MANAGE" SECTION: the role-gated tools.
+ *
+ * These used to sit in the sidebar, permanently, beside three everyday
+ * destinations — while being reachable by, and relevant to, almost nobody.
+ * They are not everyday navigation; they are things you hold a role in order
+ * to do, which is what the account menu is already about.
+ *
+ * They MUST live somewhere, and before this they had no other entry point:
+ * `/no-access` links to them but is an error page, and `AdminNav` only
+ * appears once you are already inside `/admin`. Removing them from the
+ * sidebar without a home would have left three working pages reachable only
+ * by typing their URL.
+ */
+export const MANAGE_DESTINATIONS: readonly NavDestination[] = [
+  { href: '/grading', label: 'Grading queue', restrictedToTeacher: true },
   { href: '/invites', label: 'Invitations', restrictedToInviter: true },
   // Phase 13 adds two more admin screens (people, audit) beside the import
   // one, so Admin claims the whole `/admin` prefix rather than only the
@@ -108,8 +136,15 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = [
  * "should this person ever see this link", rather than three conditions
  * inside JSX.
  */
-export function visibleNavDestinations(audience: NavAudience): readonly NavDestination[] {
-  return NAV_DESTINATIONS.filter(
+export function visibleNavDestinations(
+  audience: NavAudience,
+  // The list is a parameter so the sidebar and the account menu's Manage
+  // section share ONE gate. Two copies of this predicate could disagree, and
+  // a destination visible in one place but hidden in the other is a
+  // permissions bug that looks like a rendering bug.
+  destinations: readonly NavDestination[] = NAV_DESTINATIONS,
+): readonly NavDestination[] {
+  return destinations.filter(
     (destination) =>
       (!destination.restrictedToTeacher || audience.isTeacher) &&
       (!destination.restrictedToInviter || audience.canInvite) &&

@@ -17,7 +17,7 @@ export default async function Home() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Learn App</h1>
+      <h1 className={styles.title}>Catalog</h1>
       <p className={styles.intro}>Browse a course to start reading.</p>
 
       {courses.length === 0 ? (

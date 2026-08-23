@@ -36,7 +36,7 @@ test('register via invite, browse, enrol, read a lesson, complete it, and see it
     // lands the newly-registered, now-signed-in visitor on their own
     // dashboard rather than a course page.
     await expect(page).toHaveURL(/\/me$/);
-    await expect(page.getByRole('heading', { name: 'Your desk' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
   });
 
   await test.step('browse the catalog', async () => {

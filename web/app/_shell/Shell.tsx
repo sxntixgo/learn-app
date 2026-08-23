@@ -31,9 +31,14 @@ export default function Shell({
    *  shell needs to know whether one exists to decide what Nav renders. */
   user: Me | null;
   /**
-   * Which role-restricted destinations Nav should render (design §9.4,
+   * Which role-restricted destinations this account may reach (design §9.4,
    * §12, §5.1). Meaningless when signed out; the layout only asks the API
    * when `user` is non-null.
+   *
+   * Goes to BOTH Nav and TopBar: the sidebar is the three everyday
+   * destinations, and the account menu's Manage section is the role-gated
+   * ones. Same audience, filtered by the same function, so the two cannot
+   * disagree about who may see what.
    */
   audience: NavAudience;
   children: ReactNode;
@@ -41,7 +46,7 @@ export default function Shell({
   const signedIn = user !== null;
   return (
     <div className={styles.root} data-nav-visible={signedIn}>
-      <TopBar theme={theme} user={user} />
+      <TopBar theme={theme} user={user} audience={audience} />
       <div className={styles.body}>
         <Nav signedIn={signedIn} audience={audience} />
         <main className={styles.content}>{children}</main>

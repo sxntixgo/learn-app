@@ -236,7 +236,35 @@
   cursor: default;
 }
 
+/*
+ * The confirmation after a successful change.
+ *
+ * It used to be secondary-grey body text under the button, which is how a
+ * confirmation goes unread: the form clears, a quiet grey line appears below
+ * the fold of the button, and the reader is left unsure anything happened.
+ *
+ * Same structural device as `.error` above — a thick accent left-border,
+ * which is this palette's one "read this" mechanism (there is no success
+ * colour and no danger colour; design's rule 1 keeps the yellow structural,
+ * never a fill and never body text). What separates the two is weight, not
+ * hue: an error is 600 because it demands action, a confirmation is normal
+ * because it only reports.
+ */
 .saved {
   margin: 0;
-  color: var(--color-text-secondary);
+  color: var(--color-text);
+  border-left: var(--border-thick) solid var(--color-accent-yellow);
+  padding-left: var(--space-1);
+}
+
+/*
+ * The same element with nothing to say. It stays in the DOM rather than being
+ * conditionally rendered, because `aria-live` announces changes to a region
+ * that already exists — a region inserted at the same moment as its text is
+ * unreliably announced. So the element persists and only the decoration goes,
+ * otherwise an empty paragraph would leave a stray accent rule floating under
+ * the button.
+ */
+.statusEmpty {
+  margin: 0;
 }

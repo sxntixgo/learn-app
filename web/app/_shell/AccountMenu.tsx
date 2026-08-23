@@ -24,16 +24,24 @@
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import Link from 'next/link';
 import type { Me } from '../../src/lib/api';
+import type { NavDestination } from '../../src/lib/nav';
 import { logoutAction } from './auth-actions';
 import styles from './account-menu.module.css';
 
 export interface AccountMenuProps {
   user: Me;
+  /**
+   * The role-gated destinations this account may reach, already filtered by
+   * TopBar. Empty for most people, and the whole section disappears when it
+   * is — an empty "Manage" heading tells a student that tools exist which
+   * they may not have, which is a disclosure and a distraction at once.
+   */
+  manage: readonly NavDestination[];
   /** ThemeToggle, rendered on the server by the parent. */
   themeControl: ReactNode;
 }
 
-export default function AccountMenu({ user, themeControl }: AccountMenuProps) {
+export default function AccountMenu({ user, manage, themeControl }: AccountMenuProps) {
   const menu = useRef<HTMLDetailsElement>(null);
 
   /**
@@ -103,6 +111,21 @@ export default function AccountMenu({ user, themeControl }: AccountMenuProps) {
         <Link className={styles.item} href="/settings/account" onClick={close}>
           Account &amp; password
         </Link>
+
+        {manage.length > 0 ? (
+          <div className={styles.section}>
+            <span className={styles.sectionLabel} id="account-menu-manage">
+              Manage
+            </span>
+            <div aria-labelledby="account-menu-manage">
+              {manage.map((destination) => (
+                <Link key={destination.href} className={styles.item} href={destination.href} onClick={close}>
+                  {destination.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className={styles.section}>
           <span className={styles.sectionLabel} id="account-menu-theme">

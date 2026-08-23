@@ -7,7 +7,7 @@ import DeleteAccountForm from './DeleteAccountForm';
 import styles from './account.module.css';
 
 export const metadata: Metadata = {
-  title: 'Account — Learn App',
+  title: 'Account & password — Learn App',
   robots: { index: false, follow: false },
 };
 
@@ -45,7 +45,7 @@ export default async function AccountSettingsPage() {
 
   return (
     <main className={styles.page}>
-      <h1 className={styles.title}>Account</h1>
+      <h1 className={styles.title}>Account &amp; password</h1>
 
       {/*
        * PASSWORD FIRST, AND BEFORE THE ADMIN BRANCH BELOW. `me:password:update`
