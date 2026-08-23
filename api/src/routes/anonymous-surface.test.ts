@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { readdir, readFile } from 'node:fs/promises';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { buildServer } from '../index.ts';
@@ -129,8 +132,57 @@ interface Probe {
 
 let probes: Probe[] = [];
 
+// ---------------------------------------------------------------------------
+// MIGRATIONS, APPLIED HERE RATHER THAN ASSUMED.
+//
+// CI runs `npm run migrate` before the suite, so this file passed without a
+// bootstrap of its own. It was relying on file ORDER: vitest runs with
+// `fileParallelism: false`, and `tools/src/migrate.test.ts` drops `courses`,
+// `lessons`, `modules`, `tracks`, `import_runs`, `content_repos` and
+// `schema_migrations` in its `afterAll` so that it can re-run. Anything
+// scheduled after it meets an empty schema.
+//
+// Adding two unrelated test files was enough to reshuffle that order, and
+// every course-scoped probe here began answering 500 ("relation \"courses\"
+// does not exist") instead of the 4xx this file asserts. Reproduce with:
+//
+//   npx vitest run tools/src/migrate.test.ts api/src/routes/anonymous-surface.test.ts
+//
+// Every other DB-touching file in this repo owns a copy of this bootstrap.
+// This one was the exception, and CLAUDE.md already says why it should not
+// be: "Test databases: apply migrations first."
+// ---------------------------------------------------------------------------
+const migrationsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../db/migrations');
+
+async function applyMigrations(): Promise<void> {
+  await pool.query(`
+    create table if not exists schema_migrations (
+      version     text primary key,
+      applied_at  timestamptz not null default now()
+    )
+  `);
+
+  const files = (await readdir(migrationsDir)).filter((f) => f.endsWith('.sql')).sort();
+  const { rows } = await pool.query<{ version: string }>('select version from schema_migrations');
+  const applied = new Set(rows.map((r) => r.version));
+
+  for (const file of files) {
+    const version = file.replace(/\.sql$/, '');
+    if (applied.has(version)) continue;
+
+    const sql = await readFile(path.join(migrationsDir, file), 'utf8');
+    try {
+      await pool.query(sql);
+      await pool.query('insert into schema_migrations (version) values ($1) on conflict do nothing', [version]);
+    } catch (err) {
+      if ((err as { code?: string }).code !== '42P07' /* duplicate_table */) throw err;
+    }
+  }
+}
+
 describe('the unauthenticated surface of the whole API', () => {
   beforeAll(async () => {
+    await applyMigrations();
     setPool(pool);
     const server = await buildServer({ actor: ANONYMOUS_ACTOR });
     try {

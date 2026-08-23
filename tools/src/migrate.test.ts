@@ -72,7 +72,24 @@ async function createCourseAndModule(): Promise<{ courseId: string; moduleId: st
 
 describe('migrate', () => {
   afterAll(async () => {
+    // Reset, then PUT THE SCHEMA BACK. This suite shares one database with
+    // every other DB-touching test file, and vitest runs them sequentially
+    // (`fileParallelism: false`, CLAUDE.md). Dropping `courses`, `lessons`,
+    // `modules` and the rest and then leaving is fine for THIS file — every
+    // test here calls resetDatabase() first — but it hands the next file an
+    // empty schema.
+    //
+    // Most files apply their own migrations and survive it. The ones that
+    // rely on CI's `npm run migrate` step do not, and they fail with
+    // `relation "courses" does not exist` for reasons that have nothing to
+    // do with what they test. That is order-dependent, so it stays hidden
+    // until an unrelated new test file reshuffles the order — which is
+    // exactly how it surfaced.
+    //
+    // Leaving the database as we found it is the fix that does not depend
+    // on all ~40 other files remembering to defend themselves.
     await resetDatabase();
+    await runMigrations(connectionString, migrationsDir);
     await pool.end();
   });
 
