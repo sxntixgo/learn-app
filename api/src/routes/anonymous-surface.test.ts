@@ -88,7 +88,13 @@ function parseRouteTree(tree: string): { method: string; path: string }[] {
   const prefixAtDepth: string[] = [];
 
   for (const line of tree.split('\n')) {
-    const match = /^([^a-zA-Z/]*)(\S+) \(([^)]+)\)\s*$/.exec(line);
+    // The indent class lists the tree-drawing characters EXPLICITLY. It was
+    // `[^a-zA-Z/]*`, which is greedy and also matches a hyphen — so Fastify's
+    // `-all` child of `/logout` had its leading dash eaten and the path came
+    // out as `/api/v1/auth/logoutall`. That route was then probed at an
+    // address nothing serves, and a 404 sits inside the allowed set, so the
+    // assertion passed while covering nothing.
+    const match = /^([\s│├└─]*)(\S+) \(([^)]+)\)\s*$/.exec(line);
     if (!match) continue;
     const [, indent, segment, methods] = match;
     // Fastify draws four characters of tree per level, and a child's label is
