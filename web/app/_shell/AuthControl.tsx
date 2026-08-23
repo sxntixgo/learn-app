@@ -11,6 +11,14 @@ import type { Me } from '../../src/lib/api';
 import { logoutAction } from './auth-actions';
 import styles from './auth-control.module.css';
 
+/**
+ * The SIGNED-OUT half only. Signing out moved into AccountMenu, which is what
+ * the name in the banner opens now — the identity and the control that ends
+ * it belong together, and the banner had grown into five loose controls.
+ *
+ * `user` is still accepted, and still renders the old inline control when
+ * present, so this component is correct on its own. TopBar never passes one.
+ */
 export default function AuthControl({ user }: { user: Me | null }) {
   if (!user) {
     return (

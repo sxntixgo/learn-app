@@ -1,0 +1,123 @@
+.menu {
+  position: relative;
+}
+
+/*
+ * The default disclosure triangle is removed in favour of the chevron in the
+ * markup, which sits after the name rather than before it.
+ */
+.summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-0);
+  min-height: 44px;
+  padding: var(--space-0) var(--space-1);
+  border: var(--border-hairline) solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-banner-text);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary:hover,
+.menu[open] > .summary {
+  border-color: var(--color-banner-divider);
+}
+
+/* Never remove the focus ring — this is the only keyboard affordance here. */
+.summary:focus-visible {
+  outline: var(--border-regular) solid var(--color-link);
+  outline-offset: 2px;
+}
+
+.name {
+  font-weight: 600;
+}
+
+.chevron {
+  font-size: 0.7em;
+  transition: transform 120ms ease-out;
+}
+
+.menu[open] .chevron {
+  transform: rotate(180deg);
+}
+
+.panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--space-0));
+  z-index: 50;
+  min-width: 15rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+  padding: var(--space-1);
+  background: var(--color-surface-raised);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-md);
+  /*
+   * No drop shadow. The first version had one and check-css-tokens refused
+   * it — correctly: there is no shadow colour in the palette, and inventing
+   * a translucent black would be the sixth accent this codebase spends a
+   * lint rule avoiding. The raised surface against the page, plus the
+   * hairline border, already separate the panel; §14 spends delight
+   * elsewhere.
+   */
+}
+
+.item {
+  display: block;
+  min-height: 44px;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.item:hover {
+  background: var(--color-page);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+  padding: var(--space-1);
+  border-top: var(--border-hairline) solid var(--color-border-hairline);
+}
+
+.sectionLabel {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-secondary);
+}
+
+.signOutForm {
+  border-top: var(--border-hairline) solid var(--color-border-hairline);
+  padding-top: var(--space-0);
+}
+
+.signOut {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-1);
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.signOut:hover {
+  background: var(--color-page);
+}
