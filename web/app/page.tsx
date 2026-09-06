@@ -12,7 +12,11 @@ import styles from './page.module.css';
 // an anonymous "browse" view would need its own filtered fetch to avoid
 // showing open-course titles to a visitor who cannot actually open one,
 // and redirect-to-login needs none of that.
-export default async function Home() {
+// NAMED FOR THE SCREEN IT RENDERS. It was `Home()` — harmless while
+// "Home" meant nothing in particular, actively misleading since the design
+// import made Home a destination of its own at /me (spec §2, §7 Q1). This
+// file is Catalog; nothing else changed.
+export default async function CatalogPage() {
   const courses = await withAuthRedirect('/', () => fetchCourses());
 
   return (

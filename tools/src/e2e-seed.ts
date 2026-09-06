@@ -177,6 +177,34 @@ export const E2E_FEED_HANDLE = 'e2e-feed';
 export const E2E_FEED_PASSWORD = 'a-long-enough-feed-password';
 
 /**
+ * The account HOME is measured against, for home.spec.ts.
+ *
+ * Dedicated, and for the reason every other dedicated fixture in this file
+ * is: home.spec.ts asserts on a WHOLE SCREEN — resume banner, streak, this
+ * week, feed rows, two numbered Up next rows, one course row at 0/2 — and
+ * every one of those numbers moves the moment another spec completes a
+ * lesson for the account. `feedUser` is the closest existing fit and is
+ * exactly the wrong one: stale-dashboard.spec.ts marks a lesson complete as
+ * it, in another worker, under `fullyParallel`.
+ *
+ * SEEDED WITH ONE ACTIVITY EVENT, not zero. The M1 artboard's Home is a
+ * populated screen and four of its blocks are empty without history: the
+ * feed has no rows, `currentStreak` is 0, "this week" is 0, and
+ * `pickCurrentCourse` has no recency signal to read. A `course_enrolled`
+ * event is the one the enrolment below would really have written, so this
+ * is the state a reader reaches by joining a course — not a state the app
+ * cannot produce.
+ *
+ * NO LESSON IS COMPLETED. Leaving both lessons unfinished is what gives Up
+ * next its two rows (UP_NEXT_COUNT in web/app/me/page.tsx) and the course
+ * row its 0/2 — the artboard draws two Up next rows, and this fixture is
+ * the only place in the suite that can show them.
+ */
+export const E2E_HOME_EMAIL = 'e2e-home@example.test';
+export const E2E_HOME_HANDLE = 'e2e-home';
+export const E2E_HOME_PASSWORD = 'a-long-enough-home-password';
+
+/**
  * Phase 15 task 4: a second, dedicated platform invite, distinct from
  * `invite` (task 2's, single-use and consumed by core-journeys.spec.ts).
  * The accessibility pass only needs to LOAD /invite/[token] and axe-scan
@@ -218,7 +246,39 @@ const LESSON_MARKDOWN = [
   // needs a genuinely interactive, annotated block reachable from a lesson
   // a session already has (no new course/role fixtures required), not a
   // synthetic one built only for the accessibility spec to look at.
+  //
+  // 2026-09-03 (design import Phase 3, the annotation overlay): the fence
+  // grew from that ONE line to twelve, because a one-line block cannot
+  // fail the geometry it is supposed to prove. The overlay's alignment is
+  // only wrong in ways a single row hides, and each line below is here for
+  // a measurable reason — see e2e/specs/annotation-geometry.spec.ts:
+  //   - line 1 keeps its original text and marker verbatim, so
+  //     core-journeys.spec.ts's `getByText('hello, e2e')` is untouched;
+  //   - lines 1 / 4 / 11 carry annotations, so the block renders more than
+  //     one card and one of them hangs off a TWO-DIGIT line number — the
+  //     gutter is at its widest there, which is precisely where a
+  //     hardcoded card inset drifts furthest from the code column;
+  //   - line 4 is annotated and line 5 is not, so a spec can compare an
+  //     annotated row's code column against an unannotated one's (they
+  //     used to differ by 3.6px, the width a count badge adds to a gutter);
+  //   - line 11 is long enough to overflow the block at 375 and NOWHERE
+  //     else, which gives the sticky gutter and the sticky card a real
+  //     horizontal scroll to survive at the phone width while leaving
+  //     viewport.spec.ts's "a code block is wider at 1440 than at 375"
+  //     comparison (which reads a ROW, and a row is as wide as the widest
+  //     line) still true by a comfortable margin.
   'hello, e2e  # [!note] Seeded so the annotatable code block has something to tab to.',
+  'a second line, so the block is taller',
+  'a third line',
+  'the fourth line is annotated  # [!note] A second card, so more than one anchor is measured.',
+  'the fifth line is not annotated',
+  'a sixth line',
+  'a seventh line',
+  'an eighth line',
+  'a ninth line',
+  'a tenth line',
+  'an eleventh line, long enough to scroll sideways at 375  # [!note] Two-digit gutter.',
+  'a twelfth line',
   '```',
   '',
   // A real ```mermaid fence, so the diagram block has something to draw. The
@@ -321,6 +381,12 @@ export interface E2eFixtures {
   };
   /** A student enrolled but with nothing completed, for the stale-dashboard spec. */
   feedUser: {
+    email: string;
+    password: string;
+    handle: string;
+  };
+  /** A student enrolled, with one activity event and nothing finished, for the Home spec. */
+  homeUser: {
     email: string;
     password: string;
     handle: string;
@@ -601,6 +667,41 @@ async function ensureFeedUser(client: pg.PoolClient, courseId: string): Promise<
 }
 
 /**
+ * The Home spec's account: enrolled, nothing finished, one real event in
+ * its history.
+ *
+ * The event is written directly rather than by driving the enrolment flow,
+ * for the same reason `ensureFeedUser` inserts its enrolment directly —
+ * this fixture's job is to put a known screen in front of home.spec.ts, and
+ * every step of a UI flow in a seed is another thing that can fail for a
+ * reason the spec is not about. `activity_events` is append-only (migration
+ * 0004) so this INSERT is the only shape a write to it can take anyway; the
+ * account is deleted and rebuilt each run by `clearAccumulatedAccounts`, so
+ * events never accumulate.
+ */
+async function ensureHomeUser(client: pg.PoolClient, courseId: string): Promise<void> {
+  await resetInvitedAccount(client, E2E_HOME_EMAIL);
+  const passwordHash = await hashPassword(E2E_HOME_PASSWORD);
+  const user = await client.query<{ id: string }>(
+    `insert into users (email, handle, password_hash, display_name) values ($1, $2, $3, $4) returning id`,
+    [E2E_HOME_EMAIL, E2E_HOME_HANDLE, passwordHash, 'E2E Home'],
+  );
+  const userId = user.rows[0]!.id;
+  await client.query(`insert into user_roles (user_id, role) values ($1, 'student')`, [userId]);
+  await client.query(
+    `insert into enrollments (user_id, course_id) values ($1, $2) on conflict (user_id, course_id) do nothing`,
+    [userId, courseId],
+  );
+  // Dated `now()` on purpose: the streak and the "this week" count are both
+  // windows ending today, so an event backdated even one day would make
+  // both of them zero and the assertions vacuous.
+  await client.query(
+    `insert into activity_events (user_id, type, course_id, occurred_at) values ($1, 'course_enrolled', $2, now())`,
+    [userId, courseId],
+  );
+}
+
+/**
  * Phase 12 (§11.1): the account the avatar spec uploads to. Reset the same
  * way `ensureDeletableUser` is, so every run starts on the identicon.
  */
@@ -822,6 +923,7 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
     await ensureDeletableUser(client);
     await ensureAvatarUser(client);
     await ensureFeedUser(client, courseId);
+    await ensureHomeUser(client, courseId);
     await ensureSessionUser(client, courseId);
     await ensurePasswordUsers(client);
     return {
@@ -871,6 +973,11 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
         email: E2E_FEED_EMAIL,
         password: E2E_FEED_PASSWORD,
         handle: E2E_FEED_HANDLE,
+      },
+      homeUser: {
+        email: E2E_HOME_EMAIL,
+        password: E2E_HOME_PASSWORD,
+        handle: E2E_HOME_HANDLE,
       },
     };
   } finally {

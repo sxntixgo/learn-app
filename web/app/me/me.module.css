@@ -1,11 +1,27 @@
 /*
- * The student's dashboard.
+ * HOME — the merged screen (M1 wide, P2 narrow).
  *
- * This is a breakout container (design §14.1): prose holds the 46ch measure,
- * but the heatmap is a full year of week columns and needs a wider column.
- * `--page-gutter` and the max width below are part of the geometry contract
- * checked by src/lib/heatmap.test.ts — the heatmap window has to fit inside
- * `min(viewport, max-width) - 2 * --page-gutter` at every breakpoint.
+ * It was "the student's dashboard" and then, briefly, the activity feed on
+ * its own. Dashboard is gone as a destination and Home absorbed it
+ * (docs/design/2026-09-02-artboard-spec.md §2), so this file now dresses six
+ * blocks in one column: the resume banner, the timezone line, a two-column
+ * band of Recent activity beside Up next and Degree progress, Your courses,
+ * and the link out to the profile.
+ *
+ * TWO TIERS, ONE SET OF RULES. The boundary is 1024px, the shell's
+ * (app/_shell/nav.module.css's header is its documented home — a literal
+ * plus a comment, because custom properties do not work in media queries).
+ * Narrow is the base and wide is the `min-width` block, so nothing is
+ * hidden at either tier: the band's three panels reflow, the banner's four
+ * parts reflow, and every element the artboards draw is in the DOM once at
+ * both.
+ *
+ * THE HEATMAP IS NOT HERE ANY MORE, and neither is its geometry contract.
+ * `--page-gutter` and the max width used to be checked by
+ * src/lib/heatmap.test.ts; that test reads profile.module.css now, because
+ * the grid moved to /u/{handle}. The gutter steps below are kept at the
+ * same values anyway — they are the page's, and the rest of the app uses
+ * them.
  */
 
 .page {
@@ -21,99 +37,545 @@
   margin: 0 0 1.5rem;
 }
 
-.activity {
-  border: 1px solid var(--color-border-hairline);
-  border-radius: 10px;
-  background: var(--color-surface-raised);
-  padding: 1.25rem;
+/*
+ * Screen-reader-only. Two headings on this page label a region whose own
+ * design is the label — the resume banner is unmistakably "where you left
+ * off" to anyone who can see it — and one stat abbreviation needs a longer
+ * form. Clip rather than `display: none`, which would take them out of the
+ * accessibility tree along with the pixels.
+ */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
-.activityHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem 1.5rem;
-  margin-bottom: 1rem;
+/* ==========================================================================
+   Resume banner
+   ========================================================================== */
+
+/*
+ * Narrow (P2): a teal hero, percent over sentence over action, with the
+ * statistics as a tile row beneath. `order` puts the action above the tiles
+ * without moving the stats out of the banner's DOM order, which is where
+ * they belong for a reader who is listening to the page.
+ */
+.resume {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-rail-bg);
 }
 
-.sectionTitle {
-  font-size: 1.05rem;
+.resumePercent {
+  order: 1;
   margin: 0;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  font-size: clamp(4.5rem, 20vw, 5.5rem);
+  line-height: 0.82;
+  letter-spacing: -0.06em;
+  color: var(--color-rail-text);
 }
 
-.streaks {
-  display: flex;
-  gap: 1.5rem;
-  margin: 0;
+.resumePercentSign {
+  font-size: 0.4em;
+  letter-spacing: -0.02em;
 }
 
-.streak {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+.resumeIdentity {
+  order: 2;
+  min-width: 0;
 }
 
-.streakLabel {
+.resumeEyebrow {
+  margin: 0 0 var(--space-0);
   font-family: var(--font-mono), 'IBM Plex Mono', monospace;
   font-size: 0.65rem;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--color-text-secondary);
+  letter-spacing: 0.1em;
+  color: color-mix(in oklch, var(--color-rail-text) 88%, transparent);
 }
 
-.streakValue {
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
-  font-weight: 700;
-  font-size: 1.1rem;
+.resumeLesson {
+  margin: 0 0 0.15rem;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  font-size: 1.3rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--color-rail-text);
+}
+
+/*
+ * 85%, NOT THE ARTBOARDS' SOFTER STOP. At 78% this measures 4.40:1 on the
+ * banner in dark — under the 4.5 text floor, and passing in light (4.59), so
+ * it is the shape of defect that ships. Same correction, same reason, as
+ * Phase 1 made to light `--color-text-secondary`. src/lib/home-contrast.test.ts
+ * holds it.
+ */
+.resumeCourse {
   margin: 0;
+  font-size: 0.95rem;
+  color: color-mix(in oklch, var(--color-rail-text) 85%, transparent);
+}
+
+/* The narrow tier's tile row (P2); the wide tier's inline pair (M1). */
+.resumeStats {
+  order: 4;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+  padding: var(--space-2);
+  border: var(--border-hairline) solid color-mix(in oklch, var(--color-rail-text) 22%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--color-rail-text) 10%, transparent);
+}
+
+.statValue {
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--color-rail-text);
+}
+
+/*
+ * 92%, and the ground is why. This label sits on `.stat`, which is itself a
+ * 10% wash of the same ink — so the tile lifts the ground and an alpha that
+ * would be fine on the bare banner is not fine here. At 80% it measured
+ * 3.93:1 light / 3.94:1 dark against the 4.5 floor for 9.6px glyphs.
+ */
+.statLabel {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.6rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: color-mix(in oklch, var(--color-rail-text) 92%, transparent);
+}
+
+/* 44px minimum touch target (spec §3, narrow tier), pill per the artboards. */
+.resumeAction {
+  order: 3;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--color-rail-text);
+  color: var(--color-text-on-accent);
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+
+.resumeAction:hover,
+.resumeAction:focus-visible {
+  text-decoration: underline;
 }
 
 /* Unobtrusive by design: a note, not a call to action, and never a picker. */
 .timezoneNote {
   max-width: var(--measure-prose);
-  margin: 1rem 0 0;
-  font-size: 0.8rem;
+  margin: var(--space-2) 0 0;
+  font-size: 0.85rem;
   line-height: 1.5;
   color: var(--color-text-secondary);
 }
 
-/* Badges and degrees: the same card the activity panel uses, so the page
-   reads as one column of panels rather than as three unrelated widgets. */
-.panel {
-  margin-top: 1.5rem;
-  border: 1px solid var(--color-border-hairline);
-  border-radius: 10px;
-  background: var(--color-surface-raised);
-  padding: 1.25rem;
+/* ==========================================================================
+   The band: Recent activity | Up next + Degree progress
+   ========================================================================== */
+
+/*
+ * Narrow order is P2's: Up next, then the feed, then the degree card. Named
+ * areas rather than `order` because the wide tier needs the feed to span two
+ * rows beside the other two, which `order` cannot express.
+ */
+.band {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    'upnext'
+    'feed'
+    'degree';
+  gap: var(--space-5);
+  margin-top: var(--space-5);
 }
 
 .feed {
-  margin-top: 1.5rem;
-  border: 1px solid var(--color-border-hairline);
-  border-radius: 10px;
-  background: var(--color-surface-raised);
-  padding: 1.25rem;
+  grid-area: feed;
+  min-width: 0;
 }
 
-@media (min-width: 768px) {
-  .page {
-    --page-gutter: 24px;
-  }
+.upNext {
+  grid-area: upnext;
+  min-width: 0;
 }
 
-@media (min-width: 1200px) {
-  .page {
-    --page-gutter: 32px;
-  }
+.degree {
+  grid-area: degree;
+  align-self: start;
 }
 
 /*
- * The link out to the §11 profile settings. A 44px target (design §14.2),
- * underlined rather than colour-only.
+ * A section rule: heading on a hairline, with an optional action on the
+ * right ("BROWSE CATALOG →"). Three sections share it, so it is one pair of
+ * rules rather than three.
  */
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-1);
+  border-bottom: var(--border-hairline) solid var(--color-border-hairline);
+}
+
+.sectionTitle {
+  margin: 0 0 var(--space-2);
+  padding-bottom: var(--space-1);
+  border-bottom: var(--border-hairline) solid var(--color-border-hairline);
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+.sectionHead .sectionTitle {
+  flex: 1 1 auto;
+  margin-bottom: 0;
+  border-bottom: none;
+}
+
+.sectionAction {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-accent-gold-text);
+}
+
+/* ==========================================================================
+   Up next
+   ========================================================================== */
+
+.upNextList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * THE INVERTED CARD IS THE CHECKPOINT. Both artboards emphasise exactly one
+ * row and in both it is the quiz, so the selector is `data-kind='quiz'`
+ * rather than `:last-child` or `:first-child`.
+ *
+ * The two grounds are a theme SWAP, not a tint: light draws the checkpoint
+ * as near-black-on-page (an inversion), dark draws it one step BRIGHTER
+ * than the ordinary card. One token cannot be both, so the roles are
+ * re-pointed per theme through local custom properties — the same shape
+ * app/globals.css already uses for Shiki, and no raw colour is introduced
+ * (tools/check-css-tokens.mjs still sees only var()s).
+ */
+.upNextItem {
+  --up-next-bg: var(--color-surface-card);
+  --up-next-border: var(--color-border-hairline);
+  --up-next-title: var(--color-text);
+  --up-next-meta: var(--color-text-secondary);
+  --up-next-number: var(--color-accent-gold-text);
+}
+
+.upNextItem[data-kind='quiz'] {
+  --up-next-bg: var(--color-text);
+  --up-next-border: var(--color-text);
+  --up-next-title: var(--color-page);
+  --up-next-meta: color-mix(in oklch, var(--color-page) 72%, transparent);
+  --up-next-number: var(--color-rail-text);
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(html:not([data-theme='light'])) .upNextItem[data-kind='quiz'] {
+    --up-next-bg: var(--color-surface-raised);
+    --up-next-border: var(--color-surface-raised);
+    --up-next-title: var(--color-text);
+    --up-next-meta: var(--color-text-secondary);
+    --up-next-number: var(--color-rail-text);
+  }
+}
+
+:global(html[data-theme='dark']) .upNextItem[data-kind='quiz'] {
+  --up-next-bg: var(--color-surface-raised);
+  --up-next-border: var(--color-surface-raised);
+  --up-next-title: var(--color-text);
+  --up-next-meta: var(--color-text-secondary);
+  --up-next-number: var(--color-rail-text);
+}
+
+.upNextLink {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-hairline) solid var(--up-next-border);
+  border-radius: var(--radius-lg);
+  background: var(--up-next-bg);
+  color: var(--up-next-title);
+  text-decoration: none;
+}
+
+.upNextLink:hover .upNextTitle,
+.upNextLink:focus-visible .upNextTitle {
+  text-decoration: underline;
+}
+
+.upNextNumber {
+  flex: none;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  font-size: 1.35rem;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--up-next-number);
+}
+
+.upNextBody {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.upNextTitle {
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  color: var(--up-next-title);
+}
+
+.upNextMeta {
+  font-size: 0.8rem;
+  color: var(--up-next-meta);
+}
+
+/* ==========================================================================
+   Degree progress
+   ========================================================================== */
+
+/*
+ * The same theme swap as the checkpoint card, and the brief states this one
+ * outright: "the degree card inverts to teal-on-dark instead of the light
+ * set's cyan block, which would have glared" (spec §5.2.2). Light is a pale
+ * cyan block with deep-teal ink; dark is a deep-teal block with pale ink.
+ * The two are `--color-rail-text` and `--color-rail-bg` exchanged.
+ */
+.degree {
+  --degree-bg: var(--color-rail-text);
+  --degree-ink: var(--color-text-on-accent);
+  --degree-pip: var(--color-rail-bg);
+
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--degree-bg);
+  color: var(--degree-ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(html:not([data-theme='light'])) .degree {
+    --degree-bg: var(--color-rail-bg);
+    --degree-ink: var(--color-rail-text);
+    --degree-pip: var(--color-link);
+  }
+}
+
+:global(html[data-theme='dark']) .degree {
+  --degree-bg: var(--color-rail-bg);
+  --degree-ink: var(--color-rail-text);
+  --degree-pip: var(--color-link);
+}
+
+.degreeEyebrow {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.6rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--degree-ink);
+}
+
+.degreeTitle {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  color: var(--degree-ink);
+}
+
+.degreePips {
+  display: flex;
+  gap: var(--space-0);
+  margin: 0 0 var(--space-1);
+}
+
+.degreePip {
+  flex: 1;
+  height: 8px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--degree-pip) 25%, transparent);
+}
+
+.degreePip[data-filled='true'] {
+  background: var(--degree-pip);
+}
+
+.degreeCount {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--degree-ink);
+}
+
+/* ==========================================================================
+   Your courses
+   ========================================================================== */
+
+.courses {
+  margin-top: var(--space-5);
+}
+
+.coursesEmpty {
+  max-width: var(--measure-prose);
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-secondary);
+}
+
+.courseList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * Narrow (P2): the title over its own progress bar, with the number in the
+ * left column beside both. Wide (M1) puts number, body and a fixed 140px
+ * progress column on one line — see the tier block at the foot of the file.
+ */
+.courseRow {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: var(--border-hairline) solid var(--color-border-hairline);
+}
+
+.courseNumber {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-card);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-link);
+}
+
+.courseBody {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.courseTitle {
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.courseTitle:hover,
+.courseTitle:focus-visible {
+  text-decoration: underline;
+}
+
+.courseMeta {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.courseProgress {
+  display: flex;
+  grid-column: 2;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.bar {
+  flex: 1;
+  height: 5px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--color-text) 12%, transparent);
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-sm);
+  background: var(--color-link);
+}
+
+.courseCount {
+  flex: none;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+}
+
+/* ==========================================================================
+   The link out to the profile (design §11) — a 44px target, underlined
+   rather than colour-only.
+   ========================================================================== */
+
 .profileLinkRow {
-  margin: calc(-1 * var(--space-2)) 0 var(--space-3);
+  margin: var(--space-4) 0 0;
 }
 
 .profileLink {
@@ -122,4 +584,81 @@
   min-height: 44px;
   color: var(--color-link);
   text-decoration: underline;
+}
+
+/* ==========================================================================
+   Density steps and the wide tier
+   ========================================================================== */
+
+@media (min-width: 834px) {
+  .page {
+    --page-gutter: 24px;
+  }
+}
+
+/*
+ * THE TIER BOUNDARY IS 1024px — spec §3, and the shell's own flip
+ * (app/_shell/nav.module.css, which is where the constant is documented).
+ * Above it the rail is permanent and the page has a genuinely wide column;
+ * below it everything above already stacks.
+ */
+@media (min-width: 1024px) {
+  .resume {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: end;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-4) var(--space-4) var(--space-5);
+  }
+
+  .resumePercent {
+    font-size: 4.25rem;
+    line-height: 0.85;
+  }
+
+  .resumeStats {
+    order: 3;
+    grid-template-columns: repeat(3, auto);
+    gap: var(--space-4);
+    padding-bottom: var(--space-0);
+  }
+
+  /* Inline in the banner at this tier, so the tile chrome comes off. */
+  .stat {
+    padding: 0;
+    border: none;
+    background: none;
+  }
+
+  .statValue {
+    font-size: 1.35rem;
+  }
+
+  .resumeAction {
+    order: 4;
+  }
+
+  .band {
+    grid-template-columns: 1.3fr minmax(0, 1fr);
+    grid-template-areas:
+      'feed upnext'
+      'feed degree';
+    align-content: start;
+    gap: var(--space-4) var(--space-5);
+  }
+
+  .courseRow {
+    grid-template-columns: auto minmax(0, 1fr) 180px;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-0);
+  }
+
+  .courseProgress {
+    grid-column: 3;
+  }
+}
+
+@media (min-width: 1440px) {
+  .page {
+    --page-gutter: 32px;
+  }
 }

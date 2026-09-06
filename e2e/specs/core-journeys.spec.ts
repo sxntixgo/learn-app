@@ -33,14 +33,20 @@ test('register via invite, browse, enrol, read a lesson, complete it, and see it
     await page.getByRole('button', { name: 'Create account' }).click();
 
     // No course is attached to the seeded platform invite, so acceptance
-    // lands the newly-registered, now-signed-in visitor on their own
-    // dashboard rather than a course page.
+    // lands the newly-registered, now-signed-in visitor on their own Home
+    // rather than a course page.
     await expect(page).toHaveURL(/\/me$/);
-    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
   });
 
   await test.step('browse the catalog', async () => {
-    await page.getByRole('link', { name: 'Catalog' }).click();
+    // SCOPED TO THE NAV, and it has to be. Home carries a "Browse catalog"
+    // link of its own since the design import merged the dashboard into it
+    // (docs/design/2026-09-02-artboard-spec.md §2), and Playwright's
+    // accessible-name matching is a substring match — so the unscoped
+    // locator resolved to three links and this step is about the
+    // DESTINATION, not about whichever route to the catalog is nearest.
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Catalog' }).click();
 
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole('heading', { name: 'E2E Course' })).toBeVisible();
@@ -74,7 +80,7 @@ test('register via invite, browse, enrol, read a lesson, complete it, and see it
   });
 
   await test.step('see the event in the feed', async () => {
-    await page.getByRole('link', { name: 'Dashboard' }).click();
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Home' }).click();
 
     await expect(page).toHaveURL(/\/me$/);
     await expect(page.getByRole('heading', { name: 'Recent activity' })).toBeVisible();

@@ -137,7 +137,7 @@ const ROUTES: RouteCase[] = [
     session: 'student',
     expectUrl: new RegExp(`/courses/${fixtures.courseSlug}/lessons/${fixtures.lessonSlug}$`),
   },
-  { name: 'dashboard (activity feed)', path: '/me', session: 'student', expectUrl: /\/me$/ },
+  { name: 'home (resume, activity, up next, your courses)', path: '/me', session: 'student', expectUrl: /\/me$/ },
   { name: 'profile settings', path: '/settings/profile', session: 'student', expectUrl: /\/settings\/profile$/ },
   // Plan: "Account deletion and data export". Read-only for this pass — the
   // form is loaded and scanned, never submitted, so this never touches
@@ -237,6 +237,43 @@ for (const route of ROUTES) {
   });
 }
 
+/*
+ * The narrow tier's nav is a DRAWER (artboard P11), and Part A never sees it:
+ * every route above is scanned at this project's default 1280px viewport,
+ * where the nav is the permanent rail and the drawer cannot be opened at all.
+ * So it gets its own scan, at 375, in the state that only exists after a
+ * click — the state where the drawer is over the page and the rest of the
+ * shell is `inert`.
+ */
+test.describe('axe: the narrow-tier nav drawer, open', () => {
+  test('no critical violations with the drawer over the page at 375', async ({ browser, baseURL }) => {
+    const context = await browser.newContext({
+      baseURL,
+      storageState: studentState,
+      viewport: { width: 375, height: 812 },
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto('/me');
+      await page.getByRole('button', { name: 'Open navigation' }).click();
+      await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible();
+
+      const results = await new AxeBuilder({ page }).analyze();
+      logViolations('nav drawer (375, open)', results);
+
+      const critical = results.violations.filter((v) => v.impact === 'critical');
+      expect(
+        critical,
+        `Critical accessibility violations on the open nav drawer:\n${critical
+          .map((v) => `- ${v.id}: ${v.help} (${v.nodes.length} node(s)) ${v.helpUrl}`)
+          .join('\n')}`,
+      ).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Part B: keyboard-only traversal.
 // ---------------------------------------------------------------------------
@@ -292,11 +329,15 @@ test.describe('keyboard-only traversal (plan, Phase 15 task 4: "the grid is reac
     await withPage(browser, baseURL, studentState, async (page) => {
       await page.goto(`/courses/${fixtures.courseSlug}/lessons/${fixtures.lessonSlug}`);
 
-      // The seeded lesson's one code line carries one author annotation
+      // The seeded lesson's first code line carries one author annotation
       // (tools/src/e2e-seed.ts's LESSON_MARKDOWN `[!note]` marker) —
-      // describeLine (web/src/lib/annotations.ts) names both the line and
-      // the annotation count in the control's own accessible name.
-      const lineButton = page.getByRole('button', { name: 'Line 1 of 1, 1 annotation' });
+      // describeLine (web/src/lib/annotations.ts) names the line, the line
+      // COUNT and the annotation count in the control's own accessible
+      // name. The count is 12 because the design-import annotation-overlay
+      // task grew that fence from one line to twelve (see the seed's own
+      // comment on why); this test's subject — Tab reaches a line control,
+      // and two activations reach its card — is unchanged by that.
+      const lineButton = page.getByRole('button', { name: 'Line 1 of 12, 1 annotation' });
       const reached = await tabUntilFocused(page, lineButton, 60);
       expect(reached, 'Tab never reached the annotatable code block\'s line control within 60 presses').toBe(true);
 
@@ -309,7 +350,13 @@ test.describe('keyboard-only traversal (plan, Phase 15 task 4: "the grid is reac
       await page.keyboard.press('Enter');
       await page.keyboard.press('Enter');
 
-      const card = page.getByRole('article', { name: /annotation on line 1/i });
+      // ANCHORED. This was `/annotation on line 1/i`, which also matches
+      // "annotation on line 11" — harmless until the annotation-overlay task
+      // (2026-09-03) extended the seeded fence so lines 1, 4 and 11 all
+      // carry annotations, at which point the unanchored form resolved to
+      // two elements and failed strict mode. The assertion is about line 1
+      // specifically, so it says so.
+      const card = page.getByRole('article', { name: /annotation on line 1$/i });
       await expect(card).toBeFocused();
     });
   });

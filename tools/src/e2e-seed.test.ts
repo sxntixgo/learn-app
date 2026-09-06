@@ -332,6 +332,35 @@ describe.sequential('e2e-seed CLI', () => {
     expect(devActor.rows).toHaveLength(1);
   });
 
+  it('seeds the Home fixture enrolled, unfinished, and with one event to its name', async () => {
+    // home.spec.ts measures a POPULATED Home at four widths: a resume
+    // banner pointing at lesson one, a feed row, a streak of 1, two Up next
+    // rows and a course at 0/2. Every one of those depends on this exact
+    // state, and each of the three parts below is a separate way for the
+    // screen to go quietly empty instead of failing loudly.
+    await seed();
+
+    const { rows } = await pool.query(
+      `select u.id,
+              (select count(*) from enrollments e join courses c on c.id = e.course_id
+                where e.user_id = u.id and c.slug = 'e2e-course') as enrolments,
+              (select count(*) from activity_events a
+                where a.user_id = u.id and a.type = 'course_enrolled'
+                  and a.occurred_at > now() - interval '1 day') as recent_events,
+              (select count(*) from lesson_progress p where p.user_id = u.id) as progress_rows
+         from users u
+        where u.email = $1`,
+      ['e2e-home@example.test'],
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0]!.enrolments)).toBe(1);
+    // Dated within the streak and this-week windows, or both statistics read 0.
+    expect(Number(rows[0]!.recent_events)).toBe(1);
+    // Nothing finished: this is what gives Up next both of its rows.
+    expect(Number(rows[0]!.progress_rows)).toBe(0);
+  });
+
   it('refuses to run against a database whose name does not say "test"', async () => {
     const nonTestEnv = { ...process.env, DATABASE_URL: 'postgres://learn:x@localhost:5432/learn_prod_lookalike' };
     await expect(run(process.execPath, [seedCli], { env: nonTestEnv })).rejects.toThrow();

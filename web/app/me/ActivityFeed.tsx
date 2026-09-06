@@ -1,14 +1,21 @@
 /*
- * The student's recent activity feed (design §10), below the heatmap on
- * `/me`. Purely presentational — no interaction, so this stays a server
- * component (unlike Heatmap.tsx, which needs client state for the roving
- * tab stop). All formatting logic lives in src/lib/activity.ts so it can be
- * unit-tested without a browser.
+ * The student's recent activity feed (design §10) — the left column of M1's
+ * band and the third block of P2. Purely presentational — no interaction, so
+ * this stays a server component (unlike Heatmap.tsx, which needs client
+ * state for the roving tab stop). All formatting logic lives in
+ * src/lib/activity.ts so it can be unit-tested without a browser.
+ *
+ * THE DOT IS THE ONE THING THE IMPORT ADDED. Both artboards draw a small
+ * coloured disc at the head of each row, in three tones rather than one per
+ * event type; `src/lib/home.ts`'s `activityDot` is where an event type maps
+ * onto one. It is `aria-hidden` — the row's own sentence already says what
+ * happened, and a colour that repeats the text is decoration.
  */
 
 import Link from 'next/link';
 import type { ActivityEvent } from '../../src/lib/api';
 import { formatActivityLine, formatOccurredAt } from '../../src/lib/activity';
+import { activityDot } from '../../src/lib/home';
 import styles from './activity-feed.module.css';
 
 export interface ActivityFeedProps {
@@ -33,6 +40,7 @@ export default function ActivityFeed({ events, timezone }: ActivityFeedProps) {
         const { absolute, iso, relative } = formatOccurredAt(event.occurredAt, timezone);
         return (
           <li key={`${event.occurredAt}-${event.type}-${index}`} className={styles.item}>
+            <span className={styles.dot} data-tone={activityDot(event.type)} aria-hidden="true" />
             <p className={styles.line}>{href ? <Link href={href}>{text}</Link> : text}</p>
             <time className={styles.time} dateTime={iso}>
               {absolute}

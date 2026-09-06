@@ -1,36 +1,66 @@
 /*
- * Activity feed rows. `time` is styled mono globally (app/globals.css) per
- * docs/design/CHOSEN-PALETTE.md rule 3 — dates never render in the prose
- * font, so no font-family override is needed here.
+ * Activity feed rows, as M1 and P2 draw them: a small coloured dot, the
+ * sentence, and the timestamp. `time` is styled mono globally
+ * (app/globals.css) per docs/design/CHOSEN-PALETTE.md rule 3 — dates never
+ * render in the prose font, so no font-family override is needed here.
+ *
+ * The row is a grid rather than a flex line because the timestamp changes
+ * side between tiers: beside the sentence at wide (M1), under it at narrow
+ * (P2, where there is no room for a right-hand column beside 15px serif).
+ * Same three cells either way, so nothing is duplicated or hidden.
  */
 
 .list {
   list-style: none;
-  margin: 1rem 0 0;
+  margin: var(--space-2) 0 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
 }
 
 .item {
-  padding-top: 0.85rem;
-  border-top: 1px solid var(--color-border-hairline);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.2rem var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: var(--border-hairline) solid var(--color-border-hairline);
 }
 
-.item:first-child {
-  padding-top: 0;
-  border-top: none;
+.item:last-child {
+  border-bottom: none;
+}
+
+/*
+ * Three tones, not one per event type — src/lib/home.ts's `activityDot`
+ * decides which. Gold is the artboards' "worth noticing" tone (a pass, a
+ * badge, a degree), teal is ordinary progress, and a muted ink is
+ * bookkeeping. aria-hidden in the markup: the sentence beside it already
+ * says what happened.
+ */
+.dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-link);
+}
+
+.dot[data-tone='award'] {
+  background: var(--color-accent-gold);
+}
+
+.dot[data-tone='enrolment'] {
+  background: color-mix(in oklch, var(--color-text) 30%, transparent);
 }
 
 .line {
-  margin: 0 0 0.2rem;
-  line-height: 1.5;
+  margin: 0;
+  line-height: 1.45;
 }
 
 .time {
+  grid-column: 2;
   display: block;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: var(--color-text-secondary);
 }
 
@@ -39,8 +69,25 @@
 }
 
 .empty {
-  margin: 1rem 0 0;
-  max-width: var(--measure-prose, 46ch);
+  margin: var(--space-2) 0 0;
+  max-width: var(--measure-prose);
   color: var(--color-text-secondary);
   line-height: 1.5;
+}
+
+/*
+ * Wide tier (1024px, spec §3): the timestamp moves to its own right-hand
+ * column, which is M1's row. The dot and the sentence keep their cells.
+ */
+@media (min-width: 1024px) {
+  .item {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: var(--space-2);
+  }
+
+  .time {
+    grid-column: 3;
+    padding-top: 0.15rem;
+    text-align: right;
+  }
 }
