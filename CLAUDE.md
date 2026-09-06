@@ -78,6 +78,17 @@ for the design and `docs/plans/2026-08-15-learning-platform-plan.md` for the pha
   nothing. `docker/web.Dockerfile` takes `NEXT_PUBLIC_API_BASE_URL` as a build `ARG` and
   `playwright.config.ts` rebuilds the app for the same reason; both say so at length.
 
+- **A `color-mix()` written inside a CSS module is measured by NOTHING.**
+  `tools/check-css-tokens.mjs` is satisfied the moment every part of the value is a `var()`,
+  `web/src/lib/palette.test.ts` only reads `tokens.css`, and axe does not check these
+  pairings. Two live contrast defects reached Home this way (3.93:1 and 4.40:1 against a 4.5
+  floor), both invisible by eye and one wrong in dark theme only. A mix over a surface that
+  is itself a wash of the same ink lifts the ground and costs more contrast than the same
+  alpha on the bare surface, so the alpha you used elsewhere is not transferable. If you
+  write one, give it a measured floor — `web/src/lib/home-contrast.test.ts` is the pattern,
+  and it composites in **gamma-encoded sRGB**: mixing in linear light reports a brighter
+  colour than the screen shows, i.e. wrong in the same silent direction as the defect.
+
 ## Public repository
 
 This repo is public.

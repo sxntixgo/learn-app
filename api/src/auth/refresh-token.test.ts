@@ -310,6 +310,55 @@ describe('rotating refresh tokens with reuse detection (design §13)', () => {
       expect(await rotateRefreshToken(pool, iPad.token)).toEqual({ ok: false, reason: 'revoked' });
     });
 
+    /**
+     * A MISSING COOKIE IS NOT A TOKEN.
+     *
+     * Both entry points guard their input before hashing it. That guard is
+     * easy to read as defensive noise and delete: `hashRefreshToken('')` is a
+     * perfectly good digest, it just matches no row, so removing the check
+     * looks harmless.
+     *
+     * It is not. Without it, every request arriving with no refresh cookie —
+     * which is every anonymous request — turns into a database round trip on
+     * a hash that can never match. The guard is what keeps "signed out" from
+     * costing a query, and these pin it by counting the queries rather than
+     * by asserting the return value, which the unguarded version gets right
+     * too.
+     */
+    it('refuses an empty presented token without querying at all', async () => {
+      let queries = 0;
+      const counting = {
+        query: async (...args: Parameters<typeof pool.query>) => {
+          queries += 1;
+          return (pool.query as (...a: unknown[]) => Promise<unknown>)(...args);
+        },
+      } as unknown as typeof pool;
+
+      expect(await revokeSession(counting, '')).toBe(false);
+      expect(queries, 'an empty token reached the database').toBe(0);
+    });
+
+    it('refuses a non-string presented token without querying at all', async () => {
+      // Reachable from JavaScript callers and from a cookie parsed into
+      // something unexpected; TypeScript is not the last line of defence.
+      let queries = 0;
+      const counting = {
+        query: async (...args: Parameters<typeof pool.query>) => {
+          queries += 1;
+          return (pool.query as (...a: unknown[]) => Promise<unknown>)(...args);
+        },
+      } as unknown as typeof pool;
+
+      expect(await revokeSession(counting, undefined as unknown as string)).toBe(false);
+      expect(queries).toBe(0);
+    });
+
+    it('rotateRefreshToken treats an empty token as unknown, not as a rotation', async () => {
+      // The same guard on the hot path. "unknown" and not a thrown error:
+      // an anonymous request presenting nothing is ordinary, not exceptional.
+      expect(await rotateRefreshToken(pool, '')).toEqual({ ok: false, reason: 'unknown' });
+    });
+
     it('revokeSession reports false for a token it does not know', async () => {
       expect(await revokeSession(pool, 'nonsense')).toBe(false);
     });

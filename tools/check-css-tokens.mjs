@@ -30,6 +30,7 @@ const messageMap = {
   rgb: 'Hard-coded rgb() color found. Use a --color-* token instead.',
   hsl: 'Hard-coded hsl() color found. Use a --color-* token instead.',
   oklch: 'Hard-coded oklch() color found. Use a --color-* token instead.',
+  borderRadius: 'Hard-coded border-radius found. Use a --radius-* token instead.',
 };
 
 function isExempt(filePath) {
@@ -66,6 +67,35 @@ function checkCSSFile(filePath) {
         });
       }
     });
+
+    /*
+     * Raw border-radius. A bespoke check rather than a regex in `patterns`
+     * for the same reason font-family below is: the value may legally
+     * contain a length inside a var() FALLBACK -- `var(--radius-pill, 999px)`
+     * appears 8 times in this codebase -- so the var() calls have to come out
+     * before anything looks for a number.
+     *
+     * The naive shape (`border-radius:\s*\d+px\s*;`) missed both forms
+     * Phases 2-5 actually write: the multi-value corner list used by a
+     * top-rounded card (`8px 8px 0 0`) and rem units. `50%`, `0` and
+     * `inherit` carry no length unit and stay legal -- a circle and a reset
+     * are not points on the radius scale.
+     */
+    if (line.includes('border-radius:')) {
+      const match = /border-radius\s*:\s*([^;]+)/i.exec(line);
+      if (match) {
+        const withoutVars = match[1].replace(/var\([^)]*\)/g, '');
+        if (/\d*\.?\d+(px|rem|em)\b/.test(withoutVars)) {
+          errors.push({
+            file: filePath,
+            line: lineNum,
+            column: line.indexOf('border-radius') + 1,
+            message: messageMap.borderRadius,
+            value: `border-radius: ${match[1].trim()}`,
+          });
+        }
+      }
+    }
 
     // Check for raw font-family
     if (line.includes('font-family:')) {

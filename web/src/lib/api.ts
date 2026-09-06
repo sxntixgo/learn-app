@@ -13,10 +13,13 @@ export type CourseManage = components['schemas']['CourseManage'];
 export type CourseVisibility = components['schemas']['CourseVisibility'];
 export type Enrolment = components['schemas']['Enrolment'];
 export type Lesson = components['schemas']['Lesson'];
+export type LessonSummary = components['schemas']['LessonSummary'];
 export type Heatmap = components['schemas']['Heatmap'];
 export type HeatmapDay = components['schemas']['HeatmapDay'];
 export type ActivityEvent = components['schemas']['ActivityEvent'];
+export type ActivityEventType = components['schemas']['ActivityEventType'];
 export type CourseProgressSummary = components['schemas']['CourseProgressSummary'];
+export type EnrolledCourse = components['schemas']['EnrolledCourse'];
 export type LessonProgressDetail = components['schemas']['LessonProgressDetail'];
 export type ProgressState = components['schemas']['ProgressState'];
 export type QuizSubmitRequest = components['schemas']['QuizSubmitRequest'];
@@ -329,6 +332,30 @@ export async function fetchMyDegrees(): Promise<DegreeProgress[]> {
     throw new Error(`Failed to fetch degrees: ${res.status}`);
   }
   return (await res.json()) as DegreeProgress[];
+}
+
+/**
+ * The actor's own enrolled courses, with progress — what the shell's rail
+ * lists under `ENROLLED` (docs/design/2026-09-02-artboard-spec.md §6).
+ *
+ * REFUSAL IS "NOTHING TO LIST", NOT AN ERROR, same shape as
+ * `fetchCanSearch`. `course:progress:read` is student-only and self-only
+ * (api/src/policy/can.ts), so a teacher or an operator account gets a 403 —
+ * and design §5.1 gives an operator no enrollments in the first place. The
+ * shell renders on every page for every visitor, so a refusal here has to
+ * turn into an empty rail section, never into a 500 on an admin screen.
+ */
+export async function fetchMyCourses(): Promise<EnrolledCourse[]> {
+  try {
+    const res = await apiFetch('/api/v1/me/courses');
+    if (!res.ok) {
+      throw new Error(`Failed to fetch enrolled courses: ${res.status}`);
+    }
+    return (await res.json()) as EnrolledCourse[];
+  } catch (err) {
+    if (err instanceof AuthRequiredError) return [];
+    throw err;
+  }
 }
 
 /** The actor's progress summary for a course: totals, percent, and every lesson's state. */

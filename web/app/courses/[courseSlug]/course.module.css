@@ -1,7 +1,17 @@
 /*
- * Course overview + table of contents. Single-column at every width, same
- * approach as the lesson reader's layout module — no breakpoints needed
- * because nothing here reflows into columns.
+ * Course & syllabus (PL3 wide, P4 narrow — docs/design/2026-09-02-
+ * artboard-spec.md §4). Course overview + table of contents. Single-column
+ * at every width — nothing here reflows into a grid or a side panel, unlike
+ * Catalog's card grid or the lesson reader's contents panel — but the wide
+ * tier still gets more of the page to itself below (the 1024px block),
+ * same posture as Catalog: a wider column and the actions row laid out
+ * side by side rather than stacked, since there is room for it once the
+ * teal rail (224px) is no longer competing with a narrow single column.
+ *
+ * THE TIER BOUNDARY IS 1024px — one documented literal, repeated here
+ * because CSS custom properties do not work in `@media` conditions. Its one
+ * documented home is app/_shell/nav.module.css's header; see that file for
+ * why 1024 and not the old 768.
  */
 
 .page {
@@ -42,7 +52,13 @@
 }
 
 .visibilityBadge[data-visibility='hidden'] {
-  border-color: var(--color-accent-yellow);
+  /*
+   * `--color-accent-gold`, not the deprecated `--color-accent-yellow` alias
+   * (CLAUDE.md, "Conventions learned in Phase 1" — the alias is transitional
+   * and retires as each consumer migrates off it; same value, transcribed
+   * once, and page.module.css's identical badge already made this swap).
+   */
+  border-color: var(--color-accent-gold);
   color: var(--color-text);
   font-weight: 700;
 }
@@ -59,8 +75,9 @@
 }
 
 /*
- * Enrol button + (owner/admin only) publish control (Task E). Stack at
- * every width — no breakpoints, same posture as the rest of this page.
+ * Enrol button + (owner/admin only) publish control (Task E). Stack at the
+ * narrow tier; the wide-tier block below lays them side by side instead,
+ * once there is width to spare.
  */
 .actions {
   display: flex;
@@ -82,8 +99,8 @@
   min-height: 44px;
   min-width: 44px;
   padding: 0.6rem 1.25rem;
-  border-radius: 8px;
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   font-size: 0.95rem;
   cursor: pointer;
@@ -126,7 +143,8 @@
   margin: 0;
   font-size: 0.85rem;
   color: var(--color-text);
-  border-left: 2px solid var(--color-accent-yellow);
+  /* --color-accent-gold, not the deprecated --color-accent-yellow alias — see the badge above. */
+  border-left: 2px solid var(--color-accent-gold);
   padding-left: 0.6rem;
 }
 
@@ -137,7 +155,7 @@
   gap: 0.4rem;
   padding: 0.9rem 1rem;
   border: 1px solid var(--color-border-hairline);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--color-surface-raised);
   width: 100%;
   max-width: 40ch;
@@ -165,10 +183,10 @@
   min-width: 0;
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--color-border-hairline);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-size: 0.9rem;
 }
 
@@ -177,10 +195,10 @@
   min-width: 44px;
   padding: 0.5rem 1rem;
   border: 1px solid var(--color-border-hairline);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   font-size: 0.9rem;
   cursor: pointer;
@@ -231,7 +249,7 @@
 }
 
 .progressValue {
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 700;
   font-size: 0.95rem;
   color: var(--color-text);
@@ -239,7 +257,7 @@
 
 .progressBar {
   height: 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-border-hairline);
   overflow: hidden;
 }
@@ -269,7 +287,7 @@
   background: var(--color-tag-bg);
   color: var(--color-tag-text);
   border: 1px solid var(--track-accent, var(--color-border-hairline));
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.2rem 0.75rem;
   font-size: 0.85rem;
 }
@@ -300,7 +318,7 @@
 .lessonRow {
   display: block;
   border: 1px solid var(--color-border-hairline);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 0.6rem 0.9rem;
   color: inherit;
   text-decoration: none;
@@ -354,4 +372,33 @@
 
 .empty {
   color: var(--color-text-secondary);
+}
+
+/* ==========================================================================
+   Wide tier — 1024px (spec §3; the constant's one documented home is
+   app/_shell/nav.module.css's header). More page to use once the 224px
+   teal rail is in flow rather than a drawer: a wider column, same posture
+   as Catalog's own wide-tier block in page.module.css, and the actions row
+   laid out side by side instead of stacked now that there is room for both
+   controls without either one being squeezed.
+   *
+   * 640px, not a ch value: artboard-spec §5.4 lists 640px among the panel/
+   * card widths the artboards actually draw at the wide tier, and this
+   * page is closer in kind to those than to the lesson reader's protected
+   * `--measure-prose` reading column — it is metadata and a table of
+   * contents, not long-form prose that needs a font-relative measure to
+   * survive a family swap.
+   ========================================================================== */
+
+@media (min-width: 1024px) {
+  .page {
+    max-width: 640px;
+    padding: 2.5rem 2rem 4rem;
+  }
+
+  .actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
 }

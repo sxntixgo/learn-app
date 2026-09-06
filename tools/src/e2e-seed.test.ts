@@ -51,14 +51,45 @@ describe.sequential('e2e-seed CLI', () => {
   });
 
   afterAll(async () => {
-    // courses cascades modules/lessons; user emails cascade their own
-    // roles/enrollments/progress (0004/0005/0009's `on delete cascade`).
-    // invites.issued_by is `on delete set null`, so any invite rows this
-    // suite created are cleaned up explicitly rather than left orphaned.
+    // ORDER MATTERS: accounts before the course. The seed gives homeUser a
+    // `course_enrolled` row in `activity_events`, which carries a
+    // `course_id` FK with no cascade (0004_progress_and_activity.sql), so
+    // deleting the course first fails with
+    // `activity_events_course_id_fkey`. That is not hypothetical — it is
+    // what turned CI red while every local run stayed green, because
+    // locally the rows had usually already gone with an earlier file's
+    // cleanup and on a fresh database they have not.
+    //
+    // The accounts cannot be deleted with a plain DELETE either:
+    // `activity_events` is append-only and its `before delete` trigger
+    // rejects even the delete Postgres issues on its own behalf to satisfy
+    // the user cascade. `set local app.erasing_user` is migration 0017's
+    // supported erasure carve-out, scoped to one transaction AND one
+    // account — the same route resetInvitedAccount takes in e2e-seed.ts,
+    // and the reason that function exists at all.
+    //
+    // courses then cascades modules/lessons; users cascade their own
+    // roles/enrollments/progress (0004/0005/0009). invites.issued_by is
+    // `on delete set null`, so invite rows are cleaned up explicitly.
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      const { rows } = await client.query<{ id: string }>(
+        `select id from users where email in ('e2e-issuer@example.test', 'e2e-student@example.test', 'e2e-viewport@example.test', 'e2e-home@example.test')`,
+      );
+      for (const row of rows) {
+        await client.query(`set local app.erasing_user = '${row.id}'`);
+        await client.query(`delete from users where id = $1`, [row.id]);
+      }
+      await client.query('commit');
+    } catch (err) {
+      await client.query('rollback');
+      throw err;
+    } finally {
+      client.release();
+    }
+
     await pool.query(`delete from courses where slug = 'e2e-course'`);
-    await pool.query(
-      `delete from users where email in ('e2e-issuer@example.test', 'e2e-student@example.test', 'e2e-viewport@example.test')`,
-    );
     await pool.query(`delete from invites where email = 'e2e-student@example.test'`);
     await pool.end();
   });
@@ -330,6 +361,35 @@ describe.sequential('e2e-seed CLI', () => {
     // The seeded DEV_ACTOR must survive — migration 0004's rows point at it.
     const devActor = await pool.query(`select 1 from users where id = '00000000-0000-0000-0000-000000000001'`);
     expect(devActor.rows).toHaveLength(1);
+  });
+
+  it('seeds the Home fixture enrolled, unfinished, and with one event to its name', async () => {
+    // home.spec.ts measures a POPULATED Home at four widths: a resume
+    // banner pointing at lesson one, a feed row, a streak of 1, two Up next
+    // rows and a course at 0/2. Every one of those depends on this exact
+    // state, and each of the three parts below is a separate way for the
+    // screen to go quietly empty instead of failing loudly.
+    await seed();
+
+    const { rows } = await pool.query(
+      `select u.id,
+              (select count(*) from enrollments e join courses c on c.id = e.course_id
+                where e.user_id = u.id and c.slug = 'e2e-course') as enrolments,
+              (select count(*) from activity_events a
+                where a.user_id = u.id and a.type = 'course_enrolled'
+                  and a.occurred_at > now() - interval '1 day') as recent_events,
+              (select count(*) from lesson_progress p where p.user_id = u.id) as progress_rows
+         from users u
+        where u.email = $1`,
+      ['e2e-home@example.test'],
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0]!.enrolments)).toBe(1);
+    // Dated within the streak and this-week windows, or both statistics read 0.
+    expect(Number(rows[0]!.recent_events)).toBe(1);
+    // Nothing finished: this is what gives Up next both of its rows.
+    expect(Number(rows[0]!.progress_rows)).toBe(0);
   });
 
   it('refuses to run against a database whose name does not say "test"', async () => {

@@ -4,6 +4,8 @@ import * as path from 'node:path';
 import {
   HEATMAP_MAX_WEEKS,
   HEATMAP_WINDOW_STEPS,
+  NAV_SIDEBAR_FROM_PX,
+  NAV_SIDEBAR_PX,
   PAGE_MAX_WIDTH_PX,
   PAGE_GUTTER_STEPS,
   availableHeatmapWidthPx,
@@ -87,16 +89,49 @@ describe('heatmapWindowForWidth', () => {
 });
 
 describe('the window actually fits the viewport it is for', () => {
-  // The three widths a browser actually measured for the scroll viewport at
-  // 375/834/1440 (Phase 16 follow-up, measured with the Playwright harness).
-  // Pinned here so a change to the shell's sidebar or the activity card's
-  // padding fails HERE, in a fast test, rather than silently shrinking the
-  // window until the e2e viewport spec notices.
-  it('agrees with what the browser measures for the available width', () => {
+  // The four artboard widths a browser actually measured for the scroll
+  // viewport (measured with the Playwright harness). Pinned here so a change
+  // to the shell's sidebar or the activity card's padding fails HERE, in a
+  // fast test, rather than silently shrinking the window until the e2e
+  // viewport spec notices.
+  //
+  // 834 was 564 until the tier boundary moved to 1024. iPad portrait is the
+  // narrow tier now — a drawer, out of flow — so the rail it used to
+  // subtract is not rendered there and the column is 180px wider.
+  it('is the arithmetic every window step is checked against', () => {
     expect(availableHeatmapWidthPx(375)).toBe(301);
-    expect(availableHeatmapWidthPx(834)).toBe(564);
+    expect(availableHeatmapWidthPx(834)).toBe(744);
+    expect(availableHeatmapWidthPx(1194)).toBe(880);
     expect(availableHeatmapWidthPx(1440)).toBe(1054);
   });
+
+  /*
+   * AND IT NEVER PROMISES MORE ROOM THAN THE PAGE HAS.
+   *
+   * These four are the heatmap's containing block on the profile, measured in
+   * Chromium at the four artboard widths (`.figure` inside `.section` inside
+   * `main.page`) — not derived, since deriving it is what was wrong every
+   * previous time. The model currently comes in UNDER each of them, by 42px
+   * at three widths and 58px at 1440, for the two reasons written out in
+   * heatmap.ts: `.activity`'s card chrome is not on this page, and the
+   * profile's 1200px gutter step does not take effect there.
+   *
+   * Under is safe — a window that fits the model fits the page. Over is the
+   * bug this file exists for: the declared window overflows and the grid
+   * quietly loses a column. So the direction is asserted, not the equality.
+   */
+  const MEASURED_CONTAINER_PX: ReadonlyArray<readonly [number, number]> = [
+    [375, 343],
+    [834, 786],
+    [1194, 922],
+    [1440, 1112],
+  ];
+
+  for (const [viewport, measured] of MEASURED_CONTAINER_PX) {
+    it(`never claims more room at ${viewport} than the browser gives it (${measured}px)`, () => {
+      expect(availableHeatmapWidthPx(viewport)).toBeLessThanOrEqual(measured);
+    });
+  }
 
   // The whole point of the trailing window (design §10) is that 53x7 is
   // unusable at 375px. If the arithmetic below stops holding, the phone
@@ -134,6 +169,55 @@ describe('the window actually fits the viewport it is for', () => {
     // originally specified 22, and Gate 4 still has an open question asking
     // whether the cell size works in the hand at all.
     expect(HEATMAP_WINDOW_STEPS[0]!.cellPx).toBeGreaterThanOrEqual(18);
+  });
+});
+
+/*
+ * THE TWO CONSTANTS THAT DESCRIBED A PAGE THAT NO LONGER EXISTED.
+ *
+ * `NAV_SIDEBAR_PX` and `NAV_SIDEBAR_FROM_PX` are the heatmap's model of the
+ * shell: how wide the in-flow nav is, and from which viewport width it is
+ * in flow at all. Both went stale in the artboard import — 180 while the
+ * rail became 224, and 768 while the tier boundary became 1024 — and
+ * nothing anywhere went red, because every other test in this file is
+ * arithmetic that is consistent with itself whatever these say.
+ *
+ * So they are tied to the shipped CSS here, the same way the window steps
+ * are tied to heatmap.module.css above: the numbers are READ OUT of the
+ * stylesheets that implement them. Neither pair can drift again without
+ * this failing.
+ */
+describe('the nav sidebar the heatmap subtracts is the one the shell renders', () => {
+  const SHELL_CSS = path.join(WEB_DIR, 'app', '_shell', 'shell.module.css');
+  const NAV_CSS = path.join(WEB_DIR, 'app', '_shell', 'nav.module.css');
+
+  it('NAV_SIDEBAR_PX is --rail-width, read out of shell.module.css', () => {
+    const vars = readCssVarsByBreakpoint(SHELL_CSS, ['--rail-width']);
+    expect(vars.get(0)).toEqual({ '--rail-width': NAV_SIDEBAR_PX });
+  });
+
+  it('NAV_SIDEBAR_FROM_PX is the width nav.module.css actually flips at', () => {
+    const css = readFileSync(NAV_CSS, 'utf-8');
+    const breakpoints = [
+      ...new Set([...css.matchAll(/@media\s*\(min-width:\s*(\d+)px\)/g)].map((match) => Number(match[1]))),
+    ];
+    // Exactly one, so this cannot pass by finding some other query: the nav
+    // has one tier boundary and that boundary is this constant.
+    expect(breakpoints).toEqual([NAV_SIDEBAR_FROM_PX]);
+  });
+
+  it('the rail is what that query renders, and below it the nav is out of flow', () => {
+    const css = readFileSync(NAV_CSS, 'utf-8');
+    const boundary = css.indexOf(`@media (min-width: ${NAV_SIDEBAR_FROM_PX}px)`);
+    expect(boundary).toBeGreaterThan(0);
+
+    // At/above: an in-flow column exactly --rail-width wide — the thing
+    // availableHeatmapWidthPx subtracts.
+    expect(css.slice(boundary)).toContain('width: var(--rail-width)');
+
+    // Below: the drawer, `position: fixed`, taking no horizontal space —
+    // which is why the subtraction is conditional rather than constant.
+    expect(css.slice(0, boundary)).toContain('position: fixed');
   });
 });
 

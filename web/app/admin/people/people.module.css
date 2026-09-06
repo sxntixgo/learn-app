@@ -57,7 +57,7 @@
 
 .item {
   border: 1px solid var(--color-border-hairline);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--color-surface-raised);
   padding: 1rem 1.1rem;
 }
@@ -139,7 +139,7 @@
   width: 6rem;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--color-border-hairline);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
   font-family: var(--font-sans), 'Libre Franklin', sans-serif;
@@ -160,7 +160,7 @@
   min-width: 44px;
   padding: 0.5rem 1.25rem;
   border: 1px solid var(--color-border-hairline);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
   font-family: var(--font-sans), 'Libre Franklin', sans-serif;

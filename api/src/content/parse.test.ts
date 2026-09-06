@@ -123,6 +123,28 @@ describe('parseLesson', () => {
       expect(sqlBlock.annotations).toEqual([{ line: 1, body: 'sql note' }]);
     });
 
+    it('leaves a marker with an EMPTY body in the source and records no annotation', () => {
+      // `// [!note]` with nothing after it is a half-typed marker, not an
+      // annotation. Recording it would put an empty bubble on the rendered
+      // line; stripping it silently would delete a line of the author's code
+      // to store nothing. Neither: the line comes back byte-identical, so the
+      // author sees their own text and can finish the sentence.
+      const markdown = [
+        '# Title',
+        '',
+        '```js',
+        'const a = 1; // [!note]',
+        'const b = 2; // [!note cr]   ',
+        '```',
+        '',
+      ].join('\n');
+
+      const { blocks } = parseLesson(markdown);
+      const code = blocks[0] as { type: 'code'; source: string; annotations?: unknown };
+      expect(code.source).toBe('const a = 1; // [!note]\nconst b = 2; // [!note cr]   ');
+      expect('annotations' in (code as object)).toBe(false);
+    });
+
     it('produces output that validates against the blocks schema', () => {
       const markdown = [
         '# Title',
@@ -194,6 +216,33 @@ describe('parseLesson', () => {
       expect(() =>
         parseLesson('---\ntitle: Bad\nestimate: forever\n---\n\nBody.\n'),
       ).toThrow(/estimate/i);
+    });
+
+    it('refuses an empty or non-string `track` rather than importing the lesson with no track', () => {
+      // A lesson quietly losing its lens is damage nobody notices until the
+      // course is live (the importer says the same thing about an unknown
+      // track). `track:` with nothing after it parses as YAML null, and
+      // `track: ""` as the empty string — both would sail through a bare
+      // truthiness check and land as "no track at all".
+      for (const frontmatter of ['track:', 'track: ""', 'track: "   "', 'track: 3', 'track: [cx]']) {
+        expect(() => parseLesson(`---\ntitle: Bad\n${frontmatter}\n---\n\nBody.\n`)).toThrow(/track/i);
+      }
+    });
+
+    it('accepts frontmatter that is not a mapping, falling back to the H1 for the title', () => {
+      // `---\n- a\n- b\n---` is valid YAML (a list) and valid frontmatter, so
+      // parsing must not assume a mapping and read `.title` off an array. The
+      // observable rule: a non-mapping carries no metadata at all, and the
+      // lesson is titled from its heading exactly as if the block were absent.
+      const lesson = parseLesson('---\n- a\n- b\n---\n\n# Heading Title\n\nBody.\n');
+      expect(lesson.title).toBe('Heading Title');
+      expect(lesson.kind).toBe('lesson');
+      expect(lesson.track).toBeUndefined();
+      expect(lesson.estimateMinutes).toBeUndefined();
+    });
+
+    it('still requires a title when the frontmatter is not a mapping and there is no heading', () => {
+      expect(() => parseLesson('---\n- a\n---\n\nJust body text.\n')).toThrow(/Could not determine lesson title/);
     });
   });
 

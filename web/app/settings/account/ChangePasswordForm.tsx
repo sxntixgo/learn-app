@@ -45,6 +45,13 @@ export default function ChangePasswordForm() {
     });
   }
 
+  const message =
+    error ??
+    (done ? 'Your password has been changed. Every other session has been signed out; this one is still active.' : '');
+  // No decoration when there is nothing to say — see .statusEmpty for why the
+  // element stays in the DOM regardless.
+  const statusClass = message === '' ? styles.statusEmpty : error ? styles.error : styles.saved;
+
   return (
     <form ref={form} className={styles.passwordForm} onSubmit={submit}>
       <div className={styles.field}>
@@ -101,11 +108,8 @@ export default function ChangePasswordForm() {
         {isPending ? 'Changing…' : 'Change password'}
       </button>
 
-      <p aria-live="polite" className={error ? styles.error : styles.saved}>
-        {error ??
-          (done
-            ? 'Your password has been changed. Every other session has been signed out; this one is still active.'
-            : '')}
+      <p aria-live="polite" className={statusClass}>
+        {message}
       </p>
     </form>
   );

@@ -146,6 +146,67 @@ describe('setup token', () => {
       expect(secondHash).toBe(hashSetupToken(second.token!));
     });
 
+    /**
+     * THE TWO PATHS A HAPPY BOOT NEVER TAKES.
+     *
+     * Both are guards, so neither runs in normal operation — and both matter
+     * precisely when something has gone wrong, which is the worst time to
+     * discover they were never exercised.
+     *
+     * Driven through a wrapping pool rather than by mutating the real
+     * `instance_state` singleton: every other test in this file shares that
+     * one row, and a test that deletes it would break its neighbours if it
+     * ever failed before restoring it.
+     */
+    it('refuses to answer at all when instance_state has no row, naming migrations', async () => {
+      // A database created but never migrated. Without this guard the caller
+      // gets `rows[0]` of nothing and the failure surfaces somewhere far away
+      // from the cause; the message has to say "run migrations" because that
+      // is the entire fix.
+      const emptyPool = {
+        query: async () => ({ rows: [], rowCount: 0 }),
+      } as unknown as typeof pool;
+
+      await expect(ensureSetupToken(emptyPool, { log: () => {} })).rejects.toThrow(/migrations/i);
+    });
+
+    it('does NOT re-arm a setup token on an instance somebody claimed mid-boot', async () => {
+      // The security-relevant one. `ensureSetupToken` reads "is this claimed?"
+      // and then writes a fresh token; between those two statements the
+      // instance can be claimed by a bootstrap request in flight. The UPDATE
+      // carries `where bootstrapped_at is null` for exactly this reason — it
+      // is the only thing standing between that race and a live setup token
+      // being issued for an instance that already has an owner, which would
+      // hand the next person to read the logs a second first-run wizard.
+      //
+      // The claim is injected between the read and the write, which is the
+      // window the guard exists to close.
+      let claimed = false;
+      const racingPool = {
+        query: async (text: string, values?: unknown[]) => {
+          if (!claimed && text.includes('select bootstrapped_at')) {
+            const result = await pool.query(text, values);
+            // Somebody else finishes their bootstrap right here.
+            await pool.query(
+              'update instance_state set bootstrapped_at = now(), setup_token_hash = null where id = 1',
+            );
+            claimed = true;
+            return result;
+          }
+          return pool.query(text, values);
+        },
+      } as unknown as typeof pool;
+
+      const logged: string[] = [];
+      const result = await ensureSetupToken(racingPool, { log: (line) => logged.push(line) });
+
+      expect(result).toEqual({ bootstrapped: true, token: null });
+      // The two things that would actually hurt: a token printed for an
+      // instance that is already owned, and one left live in the database.
+      expect(logged.join('\n')).not.toMatch(/SETUP TOKEN/);
+      expect((await readInstanceState()).setup_token_hash).toBeNull();
+    });
+
     it('issues nothing, and logs no token, once the instance is bootstrapped', async () => {
       await pool.query('update instance_state set bootstrapped_at = now(), setup_token_hash = null where id = 1');
 

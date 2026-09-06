@@ -4,7 +4,7 @@
  * matching rule is testable without a browser.
  *
  * Five destinations: Catalog, Search (Phase 16 — design §16's full-text
- * search), Dashboard, Grading (Phase 9 — design §9.4's grading queue), and
+ * search), Home, Grading (Phase 9 — design §9.4's grading queue), and
  * Admin (plan phase 5's import screen — design §14 item 6). Admin's label
  * doubles as its own "clearly marked as admin" marker (design brief); do
  * not add more admin destinations here ahead of the phase that builds
@@ -91,11 +91,57 @@ export interface NavAudience {
   canSearch: boolean;
 }
 
+/**
+ * THE SIDEBAR: the three places anyone goes every day, in the order they are
+ * reached for — where a session starts, then somewhere to browse, then
+ * somewhere to look inside what you browsed.
+ *
+ * Every label here is also the `<h1>` of the page it opens, enforced by
+ * nav-labels.test.ts. That is not cosmetic: a sidebar reading "Dashboard"
+ * that opens a page headed "Your desk" makes a reader wonder whether they
+ * landed where they meant to. Rename one and the test makes you rename the
+ * other.
+ *
+ * HOME LIVES AT `/me` — a documented assumption, not a settled fact.
+ * The imported design (docs/design/2026-09-02-artboard-spec.md §2) makes the
+ * nav Home · Catalog · Search, and §7 Q1 left open which route Home is.
+ * Pending human review this takes option (a): `/me` is relabelled Home and
+ * `/` stays Catalog. The reason is that this list was ALREADY in the design's
+ * order, so the whole IA change is one label; option (b) — Home at `/`,
+ * Catalog moved to a new `/catalog` — reads better as a URL but costs a
+ * route, a redirect, and churn through the specs and the PWA manifest for
+ * nothing a reader can see. Reversible: it is this line plus the `<h1>` the
+ * test binds to it.
+ *
+ * The label moved in Phase 2; the CONTENT followed in Phase 3. The design
+ * also folds the dashboard's resume/streak/activity/up-next/degree panels
+ * onto Home (`/me`/page.tsx) and strips Catalog (`/`/page.tsx) back to
+ * browsing — both landed, so "Home" now opens the merged screen and
+ * "Catalog" opens filters plus the course list, neither carrying the
+ * other's content.
+ */
 export const NAV_DESTINATIONS: readonly NavDestination[] = [
+  { href: '/me', label: 'Home' },
   { href: '/', label: 'Catalog', activePrefixes: ['/courses'] },
   { href: '/search', label: 'Search', restrictedToSearch: true },
-  { href: '/me', label: 'Dashboard' },
-  { href: '/grading', label: 'Grading', restrictedToTeacher: true },
+];
+
+/**
+ * THE ACCOUNT MENU'S "MANAGE" SECTION: the role-gated tools.
+ *
+ * These used to sit in the sidebar, permanently, beside three everyday
+ * destinations — while being reachable by, and relevant to, almost nobody.
+ * They are not everyday navigation; they are things you hold a role in order
+ * to do, which is what the account menu is already about.
+ *
+ * They MUST live somewhere, and before this they had no other entry point:
+ * `/no-access` links to them but is an error page, and `AdminNav` only
+ * appears once you are already inside `/admin`. Removing them from the
+ * sidebar without a home would have left three working pages reachable only
+ * by typing their URL.
+ */
+export const MANAGE_DESTINATIONS: readonly NavDestination[] = [
+  { href: '/grading', label: 'Grading queue', restrictedToTeacher: true },
   { href: '/invites', label: 'Invitations', restrictedToInviter: true },
   // Phase 13 adds two more admin screens (people, audit) beside the import
   // one, so Admin claims the whole `/admin` prefix rather than only the
@@ -108,8 +154,15 @@ export const NAV_DESTINATIONS: readonly NavDestination[] = [
  * "should this person ever see this link", rather than three conditions
  * inside JSX.
  */
-export function visibleNavDestinations(audience: NavAudience): readonly NavDestination[] {
-  return NAV_DESTINATIONS.filter(
+export function visibleNavDestinations(
+  audience: NavAudience,
+  // The list is a parameter so the sidebar and the account menu's Manage
+  // section share ONE gate. Two copies of this predicate could disagree, and
+  // a destination visible in one place but hidden in the other is a
+  // permissions bug that looks like a rendering bug.
+  destinations: readonly NavDestination[] = NAV_DESTINATIONS,
+): readonly NavDestination[] {
+  return destinations.filter(
     (destination) =>
       (!destination.restrictedToTeacher || audience.isTeacher) &&
       (!destination.restrictedToInviter || audience.canInvite) &&

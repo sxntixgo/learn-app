@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { generateKeyPairSync } from 'node:crypto';
-import { loadSigningKeys, PRIVATE_KEY_ENV, PUBLIC_KEY_ENV } from './keys.ts';
+import { getSigningKeys, loadSigningKeys, resetSigningKeys, PRIVATE_KEY_ENV, PUBLIC_KEY_ENV } from './keys.ts';
 
 function pemPair(): { privatePem: string; publicPem: string } {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519');
@@ -76,5 +76,76 @@ describe('Ed25519 signing keys (design §4.1, §13)', () => {
 
   it('treats an empty or whitespace env var as absent rather than as a key', () => {
     expect(loadSigningKeys({ [PRIVATE_KEY_ENV]: '   ' }, vi.fn()).ephemeral).toBe(true);
+  });
+
+  it('refuses a public key that is a valid PEM but not Ed25519, naming the public env var', () => {
+    // The private half being Ed25519 is not enough. A rotation that published
+    // an RSA public key would leave the API minting EdDSA tokens that the
+    // future Go verifier (design §4.1) could not check at all — and the error
+    // has to name AUTH_JWT_PUBLIC_KEY, because the operator's first guess
+    // will be that the private key is the broken one.
+    const { privatePem } = pemPair();
+    const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const rsaPublicPem = rsa.publicKey.export({ type: 'spki', format: 'pem' }).toString();
+
+    expect(() => loadSigningKeys({ [PRIVATE_KEY_ENV]: privatePem, [PUBLIC_KEY_ENV]: rsaPublicPem }, vi.fn())).toThrow(
+      new RegExp(`${PUBLIC_KEY_ENV}.*ed25519`, 'is'),
+    );
+  });
+});
+
+describe('getSigningKeys (the process-wide cache)', () => {
+  const savedPrivate = process.env[PRIVATE_KEY_ENV];
+  const savedPublic = process.env[PUBLIC_KEY_ENV];
+
+  afterEach(() => {
+    if (savedPrivate === undefined) delete process.env[PRIVATE_KEY_ENV];
+    else process.env[PRIVATE_KEY_ENV] = savedPrivate;
+    if (savedPublic === undefined) delete process.env[PUBLIC_KEY_ENV];
+    else process.env[PUBLIC_KEY_ENV] = savedPublic;
+    resetSigningKeys();
+    vi.restoreAllMocks();
+  });
+
+  it('resolves the keypair ONCE per process, not once per token', () => {
+    // This is the difference between "every restart invalidates every token"
+    // — the documented, deliberate cost of an ephemeral key — and "every
+    // request invalidates every token", which would make an unconfigured
+    // instance not merely inconvenient but unusable: the token minted by the
+    // login response would already be unverifiable by the next request.
+    // loadSigningKeys() is proven to generate a fresh pair on every call
+    // above, so the caching is the only thing standing between the two.
+    delete process.env[PRIVATE_KEY_ENV];
+    delete process.env[PUBLIC_KEY_ENV];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    resetSigningKeys();
+
+    const first = getSigningKeys();
+    expect(first.ephemeral).toBe(true);
+    expect(getSigningKeys()).toBe(first);
+    expect(getSigningKeys().publicKeyPem).toBe(first.publicKeyPem);
+    // And the "this is not fine in production" banner is printed once at
+    // resolution, not on every request.
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('resetSigningKeys replaces the cache, and clears it when given nothing', () => {
+    // The seam exists so a test can install a known keypair; the empty call
+    // is what makes the next resolution re-read the environment, which is
+    // what any test that changes AUTH_JWT_PRIVATE_KEY depends on.
+    const { privatePem } = pemPair();
+    const installed = loadSigningKeys({ [PRIVATE_KEY_ENV]: privatePem }, vi.fn());
+    resetSigningKeys(installed);
+    expect(getSigningKeys()).toBe(installed);
+
+    const other = pemPair();
+    process.env[PRIVATE_KEY_ENV] = other.privatePem;
+    delete process.env[PUBLIC_KEY_ENV];
+    expect(getSigningKeys()).toBe(installed);
+
+    resetSigningKeys();
+    const reread = getSigningKeys();
+    expect(reread).not.toBe(installed);
+    expect(reread.publicKeyPem).toBe(other.publicPem);
   });
 });

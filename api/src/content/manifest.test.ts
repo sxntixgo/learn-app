@@ -86,6 +86,17 @@ describe('manifest', () => {
         expect(message).toContain('/schema');
       }
     });
+
+    it('reports unparseable YAML as a YAML problem, not as a pile of schema violations', async () => {
+      // A tab where YAML wants spaces is the classic hand-edited-manifest
+      // mistake. Letting the parse error fall through to the schema validator
+      // would tell the author their manifest is missing `slug`, `title` and
+      // `modules` — three misleading errors instead of the one true one, and
+      // none of them pointing at the line they have to fix.
+      const badYaml = ['schema: 1', 'slug: broken', 'modules:', '\t- id: intro'].join('\n');
+      await writeFile(path.join(dir, 'course.yaml'), badYaml);
+      await expect(loadCourseManifest(dir)).rejects.toThrow(/^course\.yaml: could not parse YAML — /);
+    });
   });
 
   describe('resolveLessonPath', () => {
@@ -93,6 +104,28 @@ describe('manifest', () => {
       const resolved = resolveLessonPath('/repos/course-a', 'modules/intro/one.md');
       expect(resolved).toBe(path.resolve('/repos/course-a', 'modules/intro/one.md'));
       expect(path.isAbsolute(resolved)).toBe(true);
+    });
+
+    it('refuses a path that resolves to the course directory ITSELF', () => {
+      // "." and "./" have no ".." to catch lexically and no absolute prefix,
+      // so the only thing that stops them is the containment check being
+      // written as STRICTLY inside (path.relative === "" is a refusal, not a
+      // pass). A manifest entry of "." would otherwise hand the caller the
+      // course root and be read as a lesson file.
+      for (const srcPath of ['.', './', './.']) {
+        expect(() => resolveLessonPath('/repos/course-a', srcPath)).toThrow(/refused/i);
+      }
+    });
+
+    it('refuses rather than resolves when an intermediate segment is a regular file', async () => {
+      // course.yaml says "modules/intro/one.md" but "modules/intro" is a FILE.
+      // lstat on the leaf then fails with ENOTDIR, which is NOT the "this
+      // component does not exist yet" case the walk is allowed to stop on —
+      // swallowing it would end the symlink walk early and hand back a path
+      // whose remaining segments were never checked at all.
+      await mkdir(path.join(dir, 'modules'), { recursive: true });
+      await writeFile(path.join(dir, 'modules', 'intro'), 'not a directory');
+      expect(() => resolveLessonPath(dir, 'modules/intro/one.md')).toThrow(/ENOTDIR/);
     });
   });
 
@@ -319,6 +352,18 @@ describe('manifest', () => {
       } finally {
         await rm(outside, { recursive: true, force: true });
       }
+    });
+
+    it('throws naming the sidecar path when the file exists but cannot be read', async () => {
+      // A sidecar entry pointing at a DIRECTORY passes containment and
+      // existsSync and only fails on readFile (EISDIR). Reported with the
+      // sidecar's own name so the author knows which `data:` line is wrong —
+      // an uncaught EISDIR here would abort the whole course load with a
+      // message naming no file at all.
+      await mkdir(path.join(dir, 'modules', 'intro', 'dir.csv'));
+      await expect(
+        resolveChartSidecars(dir, 'modules/intro/lesson.md', [chartBlock('./dir.csv')]),
+      ).rejects.toThrow(/\.\/dir\.csv: chart data sidecar could not be read — /);
     });
 
     it('throws naming the sidecar path when the CSV is malformed', async () => {

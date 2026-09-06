@@ -43,6 +43,7 @@ const fixtures: E2eFixtures = JSON.parse(readFileSync(fixturesPath, 'utf8'));
 
 const PHONE = { width: 375, height: 812 };
 const TABLET = { width: 834, height: 1194 };
+const IPAD_LANDSCAPE = { width: 1194, height: 834 };
 const DESKTOP = { width: 1440, height: 900 };
 
 // Forces this whole file onto one worker, running serially. Two reasons,
@@ -98,15 +99,23 @@ async function withAuthedPage<T>(
 }
 
 test.describe('the app shell switches shape at the shell breakpoint', () => {
-  // nav.module.css and shell.module.css both key off exactly one
-  // `@media (min-width: 768px)`. 375 < 768 (phone side: fixed bottom tab
-  // bar). 834 and 1440 are both >= 768 (sidebar side) — 834 (iPad, the
-  // plan's explicit "iPad middle case") is 66px past the breakpoint, not
-  // straddling it, so which side it lands on is unambiguous from the CSS
-  // alone; the assertions below confirm the rendered page agrees.
+  // nav.module.css keys off exactly one `@media (min-width: 1024px)` — the
+  // artboards' tier boundary (artboard-spec §3), above iPad portrait and
+  // below iPad landscape. 375 and 834 are the narrow tier (iPhone and iPad
+  // portrait: the identical eleven screens, hamburger and drawer, no rail);
+  // 1194 and 1440 are the wide one ("the same permanent 224px teal rail — no
+  // hamburger"). All four artboard widths, not three, and none of them
+  // straddling the boundary — so which side each lands on is unambiguous
+  // from the CSS alone and the assertions below confirm the rendered page
+  // agrees.
+  //
+  // Was 768 here, and 834 was on the sidebar side of it. That was the wrong
+  // tier for iPad portrait, and this file's failure at 834 is what the
+  // boundary move left behind for the drawer task to answer.
   const CASES = [
-    { ...PHONE, shape: 'fixed bottom tab bar' as const },
-    { ...TABLET, shape: 'in-flow sidebar' as const },
+    { ...PHONE, shape: 'hamburger drawer' as const },
+    { ...TABLET, shape: 'hamburger drawer' as const },
+    { ...IPAD_LANDSCAPE, shape: 'in-flow sidebar' as const },
     { ...DESKTOP, shape: 'in-flow sidebar' as const },
   ];
 
@@ -116,37 +125,188 @@ test.describe('the app shell switches shape at the shell breakpoint', () => {
         await page.goto(HEATMAP_PAGE);
 
         const nav = page.getByRole('navigation', { name: 'Primary' });
-        await expect(nav).toBeVisible();
-
-        const box = await nav.boundingBox();
-        if (!box) throw new Error('Primary nav landmark has no bounding box');
-        const position = await nav.evaluate((el) => getComputedStyle(el).position);
-
         // The sidebar's collapse control (nav.module.css: `.collapseToggle
-        // { display: none }`, overridden only inside the >=768px query)
+        // { display: none }`, overridden only inside the >=1024px query)
         // exists in the DOM at every width — Nav.tsx always renders it —
-        // so this is a real CSS-visibility check, not a markup check.
+        // so this is a real CSS-visibility check, not a markup check. The
+        // hamburger is the same kind of check in the other direction.
         const collapseToggle = page.getByRole('button', { name: 'Collapse navigation' });
+        const hamburger = page.getByRole('button', { name: 'Open navigation' });
 
-        if (shape === 'fixed bottom tab bar') {
-          expect(position).toBe('fixed');
-          // Spans the full viewport width and sits flush against its
-          // bottom edge (env(safe-area-inset-bottom) is 0 here, no notch)
-          // — the defining shape of a bottom tab bar.
-          expect(box.width).toBeGreaterThan(width - 2);
-          expect(box.width).toBeLessThanOrEqual(width);
-          expect(box.y + box.height).toBeGreaterThan(height - 2);
+        if (shape === 'hamburger drawer') {
+          // Closed, the nav is not on the page at all: no bar, no rail, no
+          // reserved strip. The hamburger is the only nav chrome there is.
+          await expect(nav).toBeHidden();
           await expect(collapseToggle).not.toBeVisible();
+          await expect(hamburger).toBeVisible();
+          await expect(hamburger).toHaveAttribute('aria-expanded', 'false');
+
+          await hamburger.click();
+          await expect(nav).toBeVisible();
+          await expect(hamburger).toHaveAttribute('aria-expanded', 'true');
+
+          const box = (await nav.boundingBox())!;
+          const position = await nav.evaluate((el) => getComputedStyle(el).position);
+          // A panel over the page from the left edge, full height — not a
+          // full-bleed bar and not a column the content sits beside.
+          expect(position).toBe('fixed');
+          expect(box.x).toBe(0);
+          expect(box.width).toBeLessThan(width * 0.8);
+          expect(box.height).toBeGreaterThan(height - 2);
         } else {
+          const box = (await nav.boundingBox())!;
+          const position = await nav.evaluate((el) => getComputedStyle(el).position);
+          await expect(nav).toBeVisible();
           expect(position).toBe('sticky');
           // An in-flow column at the left edge, not a full-bleed bar —
-          // comfortably narrower than half the viewport at both tablet and
-          // desktop widths, and nowhere near the phone bar's full span.
+          // comfortably narrower than half the viewport at both wide
+          // widths.
           expect(box.x).toBe(0);
           expect(box.width).toBeGreaterThan(50);
           expect(box.width).toBeLessThan(width / 2);
           await expect(collapseToggle).toBeVisible();
+          // No hamburger above the boundary (Desktop brief: "no hamburger").
+          // Rendered but `display: none`, so it is also out of the tab order.
+          await expect(hamburger).not.toBeVisible();
         }
+      });
+    });
+  }
+});
+
+/*
+ * THE DRAWER ITSELF (artboard P11), at both narrow artboard widths.
+ *
+ * It replaces a fixed bottom tab bar that owed a keyboard nothing: the bar
+ * was always on the page, so there was no focus to move, trap, or give back.
+ * A drawer covers the page, and every one of those becomes something a
+ * person can be stranded by. None of it comes free from an element the way
+ * AccountMenu's <details> gives it — so all of it is asserted here.
+ */
+test.describe('the narrow-tier nav drawer', () => {
+  const NARROW = [PHONE, TABLET];
+
+  for (const viewport of NARROW) {
+    test(`${viewport.width}: opens over the content without taking width from it`, async ({ browser, baseURL }) => {
+      await withAuthedPage(browser, baseURL, viewport, async (page) => {
+        await page.goto(HEATMAP_PAGE);
+
+        // `.content` is the full viewport width minus its own padding at
+        // this tier: the nav is out of flow, so it cannot take a column out
+        // of the prose measure the way the rail legitimately does.
+        const closed = await page.evaluate(() => {
+          const main = document.querySelector('main')!;
+          const styles = getComputedStyle(main);
+          return {
+            width: main.getBoundingClientRect().width,
+            x: main.getBoundingClientRect().x,
+            padding: Number.parseFloat(styles.paddingLeft) + Number.parseFloat(styles.paddingRight),
+            layoutViewport: document.documentElement.clientWidth,
+          };
+        });
+        expect(closed.x).toBe(0);
+        expect(closed.width + closed.padding).toBe(closed.layoutViewport);
+
+        await page.getByRole('button', { name: 'Open navigation' }).click();
+        const nav = page.getByRole('navigation', { name: 'Primary' });
+        await expect(nav).toBeVisible();
+
+        const open = await page.evaluate(() => {
+          const main = document.querySelector('main')!;
+          const navEl = document.querySelector('nav')!;
+          const box = navEl.getBoundingClientRect();
+          // What is actually on top in the middle of the drawer's column —
+          // the question a bounding box cannot answer on its own.
+          const hit = document.elementFromPoint(Math.round(box.width / 2), Math.round(box.height / 2));
+          return {
+            mainWidth: main.getBoundingClientRect().width,
+            drawerIsOnTop: hit === navEl || navEl.contains(hit),
+          };
+        });
+        // Over the content, not beside it: same content width, drawer in front.
+        expect(open.mainWidth).toBe(closed.width);
+        expect(open.drawerIsOnTop, 'the drawer is not painting over the page').toBe(true);
+      });
+    });
+
+    test(`${viewport.width}: traps focus, and the page behind it is inert`, async ({ browser, baseURL }) => {
+      await withAuthedPage(browser, baseURL, viewport, async (page) => {
+        await page.goto(HEATMAP_PAGE);
+        await page.getByRole('button', { name: 'Open navigation' }).click();
+        await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible();
+
+        // Focus moves INTO the drawer when it opens. Without this, Escape
+        // has nothing to give back and a keyboard user has to tab from the
+        // top of a document the drawer is already covering.
+        expect(await page.evaluate(() => document.querySelector('nav')!.contains(document.activeElement))).toBe(true);
+
+        // Tab all the way round — twice as many presses as the drawer has
+        // stops — and focus never leaves it.
+        const escapes: string[] = [];
+        for (let i = 0; i < 25; i += 1) {
+          await page.keyboard.press('Tab');
+          const where = await page.evaluate(() => {
+            const nav = document.querySelector('nav')!;
+            const active = document.activeElement as HTMLElement | null;
+            return nav.contains(active) ? null : `${active?.tagName ?? 'none'}:${active?.textContent?.trim().slice(0, 24) ?? ''}`;
+          });
+          if (where) escapes.push(`${i}:${where}`);
+        }
+        expect(escapes, 'focus left the drawer').toEqual([]);
+
+        // Shift+Tab wraps the other way for the same reason.
+        for (let i = 0; i < 5; i += 1) {
+          await page.keyboard.press('Shift+Tab');
+        }
+        expect(await page.evaluate(() => document.querySelector('nav')!.contains(document.activeElement))).toBe(true);
+
+        // And the rest of the shell is inert while it is open — out of the
+        // tab order AND out of the accessibility tree, which is the pair a
+        // hand-rolled trap usually gets only half of.
+        const inert = await page.evaluate(() => ({
+          banner: document.querySelector('header')!.inert,
+          main: document.querySelector('main')!.inert,
+          footer: document.querySelector('footer')!.inert,
+        }));
+        expect(inert).toEqual({ banner: true, main: true, footer: true });
+      });
+    });
+
+    test(`${viewport.width}: closes on Escape and hands focus back to the hamburger`, async ({ browser, baseURL }) => {
+      await withAuthedPage(browser, baseURL, viewport, async (page) => {
+        await page.goto(HEATMAP_PAGE);
+        const hamburger = page.getByRole('button', { name: 'Open navigation' });
+        await hamburger.click();
+        const nav = page.getByRole('navigation', { name: 'Primary' });
+        await expect(nav).toBeVisible();
+
+        await page.keyboard.press('Escape');
+        await expect(nav).toBeHidden();
+        await expect(hamburger).toHaveAttribute('aria-expanded', 'false');
+
+        // A keyboard user must not be dumped at the top of the document.
+        expect(await hamburger.evaluate((el) => el === document.activeElement)).toBe(true);
+        // And the page behind is reachable again.
+        const inert = await page.evaluate(() => ({
+          banner: document.querySelector('header')!.inert,
+          main: document.querySelector('main')!.inert,
+          footer: document.querySelector('footer')!.inert,
+        }));
+        expect(inert).toEqual({ banner: false, main: false, footer: false });
+      });
+    });
+
+    test(`${viewport.width}: a destination closes it rather than leaving it over the page`, async ({
+      browser,
+      baseURL,
+    }) => {
+      await withAuthedPage(browser, baseURL, viewport, async (page) => {
+        await page.goto(HEATMAP_PAGE);
+        await page.getByRole('button', { name: 'Open navigation' }).click();
+        const nav = page.getByRole('navigation', { name: 'Primary' });
+        await nav.getByRole('link', { name: 'Search' }).click();
+        await page.waitForURL(/\/search$/);
+        await expect(nav).toBeHidden();
       });
     });
   }
@@ -245,8 +405,8 @@ test.describe('the contribution heatmap window (design §10)', () => {
   });
 });
 
-test.describe('the lesson prose column holds its measure (design §14.1: "46ch")', () => {
-  test('never exceeds its resolved 46ch max-width, which itself stays constant across breakpoints', async ({
+test.describe('the lesson prose column holds its measure (design §14.1/§14.2: "60ch")', () => {
+  test('never exceeds its resolved 60ch max-width, which itself stays constant across all four widths', async ({
     browser,
     baseURL,
   }) => {
@@ -254,23 +414,29 @@ test.describe('the lesson prose column holds its measure (design §14.1: "46ch")
       await page.goto(`/courses/${fixtures.courseSlug}/lessons/${fixtures.lessonSlug}`);
 
       const resolvedMeasures: number[] = [];
-      for (const viewport of [PHONE, TABLET, DESKTOP]) {
+      // All four widths this design is checked at (artboard-spec §14.3):
+      // 375 (iPhone), 834 (iPad portrait), 1194 (iPad landscape), 1440
+      // (Desktop) — not just three, since the wide tier's contents panel
+      // (Contents.tsx) changes how much room is available beside the
+      // reading column, and the acceptance criterion is that prose does
+      // not move even though the layout around it does.
+      for (const viewport of [PHONE, TABLET, IPAD_LANDSCAPE, DESKTOP]) {
         await page.setViewportSize(viewport);
 
         // The seeded lesson's closing prose block (tools/src/e2e-seed.ts)
         // — rendered inside `<div className={styles.prose}>` (lesson
-        // page.tsx), the element `--measure-prose: 46ch` actually
+        // page.tsx), the element `--measure-prose: 60ch` actually
         // constrains.
         const closingParagraph = page.getByText(/closing paragraph/);
         await expect(closingParagraph).toBeVisible();
 
         const metrics = await closingParagraph.evaluate((p) => {
           const prose = p.parentElement as HTMLElement;
-          // getComputedStyle resolves `max-width: 46ch` against the real,
-          // rendered font (Source Serif 4 per tokens.css) into an actual
-          // px value — exactly the "measure it in the browser, not by
-          // hand" the task calls for, since `ch` has no fixed px
-          // conversion.
+          // getComputedStyle resolves `max-width: 60ch` against the real,
+          // rendered font (Source Serif 4 at the reader's 19px reading
+          // size, per tokens.css) into an actual px value — exactly the
+          // "measure it in the browser, not by hand" the task calls for,
+          // since `ch` has no fixed px conversion.
           const resolvedMaxWidthPx = Number.parseFloat(getComputedStyle(prose).maxWidth);
           const renderedWidthPx = prose.getBoundingClientRect().width;
           return { resolvedMaxWidthPx, renderedWidthPx };
@@ -281,16 +447,40 @@ test.describe('the lesson prose column holds its measure (design §14.1: "46ch")
       }
 
       // Design §14.2: "Prose measure stays constant across breakpoints" —
-      // the resolved 46ch value itself must not move as the viewport
-      // widens.
+      // the resolved 60ch value itself must not move as the viewport
+      // widens, whether or not the wide-tier contents panel happens to be
+      // open next to it.
       for (const measure of resolvedMeasures) {
         expect(measure).toBeCloseTo(resolvedMeasures[0]!, 0);
       }
 
-      // Sanity against design §14.1's own ballpark ("roughly 380–420px")
-      // for the real font, not some unrelated cascade value.
-      expect(resolvedMeasures[0]!).toBeGreaterThan(300);
-      expect(resolvedMeasures[0]!).toBeLessThan(500);
+      // Sanity against the reader artboards' own drawn value: 60ch at
+      // `font: 400 19px 'Source Serif 4'` resolves to exactly 600px
+      // (tokens.css's own comment on --measure-prose records how that was
+      // measured) — not some unrelated cascade value.
+      expect(resolvedMeasures[0]!).toBeGreaterThan(550);
+      expect(resolvedMeasures[0]!).toBeLessThan(650);
+    });
+  });
+
+  test('a code block escapes to --measure-breakout and is wider at 1440 than at 375', async ({ browser, baseURL }) => {
+    await withAuthedPage(browser, baseURL, PHONE, async (page) => {
+      await page.goto(`/courses/${fixtures.courseSlug}/lessons/${fixtures.lessonSlug}`);
+
+      // The seeded lesson's one code block (tools/src/e2e-seed.ts),
+      // rendered inside `<div className={styles.code}>` (lesson
+      // page.tsx) — the breakout container `--measure-breakout` widens at
+      // 834/1440 (tokens.css) while `.prose` above does not.
+      const codeBlock = page.locator('.shiki').first();
+
+      await page.setViewportSize(PHONE);
+      await expect(codeBlock).toBeVisible();
+      const widthAtPhone = await codeBlock.evaluate((el) => el.getBoundingClientRect().width);
+
+      await page.setViewportSize(DESKTOP);
+      const widthAtDesktop = await codeBlock.evaluate((el) => el.getBoundingClientRect().width);
+
+      expect(widthAtDesktop).toBeGreaterThan(widthAtPhone);
     });
   });
 });

@@ -54,6 +54,14 @@ interface ActivityEventRow {
   lesson_title: string | null;
 }
 
+/** One row of GET /api/v1/me/courses' query. */
+interface EnrolledCourseRow {
+  slug: string;
+  title: string;
+  total_lessons: number;
+  completed_lessons: number;
+}
+
 const DEFAULT_ACTIVITY_LIMIT = 20;
 const MIN_ACTIVITY_LIMIT = 1;
 const MAX_ACTIVITY_LIMIT = 100;
@@ -313,6 +321,66 @@ export function registerMeRoutes(fastify: FastifyInstance, deps: MeRouteDeps = {
     } finally {
       client.release();
     }
+  });
+
+  /*
+   * The actor's own enrolled courses, with progress — what the app shell's
+   * 224px rail lists under `ENROLLED`
+   * (docs/design/2026-09-02-artboard-spec.md §6).
+   *
+   * NOT `course:list` + N progress calls, and not the profile payload. The
+   * shell renders on every page, so this has to be ONE request; the profile
+   * route is rate-limited per IP (design §11) precisely because it is
+   * public, and putting it on every page load would spend that budget on
+   * chrome. It also publishes only the completed and in-progress courses,
+   * while a rail has to show a course you enrolled in this morning and have
+   * not opened yet.
+   *
+   * `course:progress:read` on the actor themselves, the same action
+   * /api/v1/courses/:courseSlug/progress uses — student-only and self-only,
+   * so no new row in the closed action vocabulary (CLAUDE.md rule 2). An
+   * operator account is refused rather than served `[]`: design §5.1 gives
+   * them no enrollments at all, and "you may not ask" is a different answer
+   * from "you have none".
+   *
+   * The query is profile/load.ts's `loadCourses` without its
+   * completed/in-progress partition: same joins, same archived-lesson
+   * exclusions, so a count means the same thing in the rail as on a profile.
+   */
+  fastify.get('/api/v1/me/courses', async (request, reply) => {
+    const actor = actorFor(request, deps);
+
+    if (!can(actor, 'course:progress:read', { userId: actor.id })) {
+      return reply.code(403).send({ message: 'Forbidden' });
+    }
+
+    const { rows } = await getPool().query<EnrolledCourseRow>(
+      `select c.slug,
+              c.title,
+              count(l.id)::int                                   as total_lessons,
+              count(*) filter (where lp.state = 'complete')::int  as completed_lessons
+         from enrollments e
+         join courses c on c.id = e.course_id
+         left join modules m on m.course_id = c.id and m.archived_at is null
+         left join lessons l on l.module_id = m.id and l.archived_at is null
+         left join lesson_progress lp on lp.lesson_id = l.id and lp.user_id = $1
+        where e.user_id = $1 and e.status = 'active'
+        group by c.slug, c.title
+        order by c.title`,
+      [actor.id],
+    );
+
+    return reply.code(200).send(
+      rows.map((row) => ({
+        slug: row.slug,
+        title: row.title,
+        totalLessons: row.total_lessons,
+        completedLessons: row.completed_lessons,
+        // Same rounding as /api/v1/courses/:courseSlug/progress, and the same
+        // 0-of-0 guard: a course with no live lessons is 0%, never NaN.
+        percent: row.total_lessons === 0 ? 0 : Math.round((row.completed_lessons / row.total_lessons) * 100),
+      })),
+    );
   });
 
   // Data portability. Scoped to the actor by construction: there is no

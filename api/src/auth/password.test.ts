@@ -70,6 +70,34 @@ describe('password hashing (design §13: Argon2id)', () => {
     });
   });
 
+  it('refuses to hash a non-string, rather than letting argon2 coerce it', async () => {
+    // `password` arrives from a JSON body, so it can be a number, a boolean,
+    // an object or absent. The callers validate first (auth/account-fields.ts),
+    // but this is the last line before the native binding: coercing `123456`
+    // to "123456" would mint a credential the user never chose, and handing
+    // the binding a non-string is how you get a segfault instead of a 400.
+    for (const bad of [123456789012, true, null, undefined, {}, ['x']]) {
+      await expect(hashPassword(bad as unknown as string)).rejects.toBeInstanceOf(TypeError);
+    }
+  });
+
+  it('treats a corrupt Argon2id digest in the column as a failed login, not a 500', async () => {
+    // `usable` only checks the `$argon2id$` prefix, so a column value that is
+    // truncated, half-written by a bad restore, or hand-edited gets as far as
+    // the native verifier — which throws on an unparseable PHC string. If that
+    // escaped, one damaged row would turn that account's every login attempt
+    // into a 500 and hand the operator a stack trace instead of "wrong
+    // password". It has to fail closed and quietly.
+    for (const corrupt of [
+      '$argon2id$',
+      '$argon2id$v=19$',
+      '$argon2id$v=19$m=19456,t=2,p=1$',
+      '$argon2id$v=19$m=19456,t=2,p=1$not-base64!!$also-not-base64!!',
+    ]) {
+      await expect(verifyPassword(corrupt, 'correct-horse-battery-staple')).resolves.toBe(false);
+    }
+  });
+
   it('rejects an over-long candidate against a real hash without hashing it', async () => {
     const hash = await hashPassword('correct-horse-battery-staple');
     expect(await verifyPassword(hash, 'correct-horse-battery-staple'.padEnd(MAX_PASSWORD_LENGTH + 1, 'x'))).toBe(false);

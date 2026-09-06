@@ -2,22 +2,155 @@
  * Layout only — colour and font come from the global tokens and base
  * styles. Three measure tokens from tokens.css (design §14.1, §14.2):
  * `.page` is the lesson shell's own outer bound (--measure-full), `.prose`
- * is the fixed 46ch reading column (--measure-prose, constant across
- * breakpoints), and `.code` is the breakout container
- * (--measure-breakout) that escapes the prose measure because a 46ch
- * column cannot host an 80-column code line. Breakout width may vary by
- * breakpoint (tokens.css handles that); prose may not.
+ * is the reading column (--measure-prose, constant across breakpoints —
+ * see tokens.css's own comment for how 60ch was derived from the reader
+ * artboards), and `.code` is the breakout container (--measure-breakout)
+ * that escapes the prose measure because a prose-width column cannot host
+ * an 80-column code line. Breakout width may vary by breakpoint
+ * (tokens.css handles that); prose may not.
+ *
+ * `.layout` is new (artboard-spec §4, PL4/PL5/P5/P6): the reader's course
+ * contents sits beside the reading column at the wide tier and is absent
+ * from normal flow at the narrow tier (Contents.tsx/contents.module.css
+ * decide the shape; this file only makes room for it). `.page` is `flex: 1`
+ * inside it so the contents panel can claim a column without `.page` losing
+ * its own self-centering.
  */
 
+.layout {
+  display: block;
+}
+
+@media (min-width: 1024px) {
+  .layout {
+    display: flex;
+    align-items: flex-start;
+  }
+}
+
 .page {
+  flex: 1;
+  min-width: 0;
   max-width: var(--measure-full, 76ch);
   margin: 0 auto;
   padding: 2rem 1.25rem 4rem;
 }
 
+/*
+ * The narrow-tier header strip (P5/P6): back to the module, the CONTENTS
+ * pill (Contents.tsx's `narrow` toggle), and a lesson-position counter,
+ * with a thin course-progress rule underneath. Absent at the wide tier,
+ * where the rail and the contents panel already carry this information.
+ */
+.mobileHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: -0.5rem 0 1.75rem;
+}
+
+.mobileHeaderRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.mobileBack {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-link);
+  text-decoration: none;
+}
+
+.mobileSpacer {
+  flex: 1;
+}
+
+.mobileCount {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.66rem;
+  color: var(--color-text-secondary);
+}
+
+.mobileProgress {
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-hairline);
+  overflow: hidden;
+}
+
+.mobileProgressFill {
+  height: 100%;
+  background: var(--color-accent-gold);
+}
+
+@media (min-width: 1024px) {
+  .mobileHeader {
+    display: none;
+  }
+}
+
+/*
+ * Eyebrow + title + rule (PL4/PL5/P5: "LESSON SIX · 7 MIN", then the
+ * lesson title, then a short 2px rule). The title is a deliberate exception
+ * to globals.css's default h1 (Plus Jakarta Sans, §5.1) — every reader
+ * artboard draws it in Source Serif 4 400 at a tight negative tracking, the
+ * one place in the design a heading uses the reading face rather than the
+ * UI one.
+ */
+.eyebrow {
+  margin: 0 0 0.75rem;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent-gold-text);
+}
+
+/*
+ * The checkpoint's own back link (PL6/P7: "← THE BASE CASE", to the
+ * PREVIOUS LESSON, not the module) — takes the place of the "‹ HIDE
+ * CONTENTS" toggle a non-quiz lesson shows here, since a quiz-kind lesson
+ * has no contents panel to toggle (artboard-spec §7 Q2).
+ */
+.checkpointBack {
+  display: inline-block;
+  margin: 0 0 1rem;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-link);
+  text-decoration: none;
+}
+
+.checkpointBack:hover {
+  text-decoration: underline;
+}
+
+.checkpointBack:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
 .title {
-  font-size: clamp(1.5rem, 4vw + 0.5rem, 2.5rem);
-  margin: 0 0 2rem;
+  font-family: var(--font-serif), 'Source Serif 4', serif;
+  font-weight: 400;
+  font-size: clamp(2.1rem, 3.4vw + 1.4rem, 2.75rem);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.titleRule {
+  width: 44px;
+  height: 2px;
+  margin: 1.3rem 0 1.6rem;
+  background: var(--color-text);
 }
 
 .body {
@@ -27,10 +160,12 @@
 }
 
 .prose {
-  max-width: var(--measure-prose, 46ch);
+  max-width: var(--measure-prose, 60ch);
   margin-inline: auto;
-  font-size: 1.0625rem; /* ~17px */
-  line-height: 1.65;
+  font-family: var(--font-serif), 'Source Serif 4', serif;
+  font-size: 19px;
+  line-height: 1.72;
+  color: var(--color-text-reading);
 }
 
 .prose :global(p),
@@ -58,7 +193,7 @@
  * rule; this is a real control, not the heatmap's documented exception.
  */
 .progress {
-  max-width: var(--measure-prose, 46ch);
+  max-width: var(--measure-prose, 60ch);
   margin: 2rem auto 0;
 }
 
@@ -69,17 +204,27 @@
   gap: 0.5rem;
 }
 
+/*
+ * Pill-shaped per PL4/PL5's own "MARK COMPLETE →" control — the artboards'
+ * one filled pill button. Text stays exactly what MarkCompleteButton.tsx
+ * renders ("Mark complete", no case transform): core-journeys.spec.ts and
+ * stale-dashboard.spec.ts locate it by that accessible name, and CSS
+ * `text-transform` is reflected in the accessibility tree in Chromium, so
+ * uppercasing here would silently break `getByRole('button', { name: 'Mark
+ * complete' })`.
+ */
 .completeButton {
   min-height: 44px;
   min-width: 44px;
-  padding: 0.6rem 1.25rem;
+  padding: 0.6rem 1.5rem;
   border: 1px solid var(--color-border-hairline);
-  border-radius: 8px;
+  border-radius: var(--radius-pill);
   background: var(--color-surface-raised);
   color: var(--color-text);
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
   font-weight: 500;
-  font-size: 0.95rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
   cursor: pointer;
   transition: background-color 120ms ease-out;
 }
@@ -111,7 +256,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   font-size: 0.95rem;
   color: var(--color-text-secondary);
@@ -152,7 +297,7 @@
  * just the save/submit state of the blocks above it.
  */
 .exercise {
-  max-width: var(--measure-prose, 46ch);
+  max-width: var(--measure-prose, 60ch);
   margin: 1.75rem auto 0;
   display: flex;
   flex-direction: column;
@@ -174,23 +319,27 @@
 }
 
 /*
- * The quiz block (Task C, design §9.1/§6.3). A bordered card matching the
- * completion control's own surface tokens — no new colour. Choice rows are
- * native radio + label pairs sized to the 44px minimum tap target as a
- * WHOLE row (not just the small circle), so there is no hover-only
- * affordance: tapping anywhere in the row selects it, and keyboard/focus
- * come from the native input for free.
+ * The quiz block (Task C, design §9.1/§6.3; restyled to PL6/P7 — artboard-
+ * spec §7 Q2: "Checkpoint is a quiz-kind lesson", so this IS the checkpoint
+ * screen, not a separate component). No outer card: PL6 sits the prompts
+ * and choice rows directly in the reading column, at the same
+ * --measure-prose width as everything else — only each CHOICE is its own
+ * bordered row. Choice rows are native radio + label pairs sized to the
+ * 44px minimum tap target as a WHOLE row (not just the small circle), so
+ * there is no hover-only affordance: tapping anywhere in the row selects
+ * it, and keyboard/focus come from the native input for free. The
+ * artboards draw a custom circle per choice (filled solid for the correct
+ * answer even when the student didn't pick it) — a real native radio can't
+ * show "filled" without being checked, so that one cue is deliberately not
+ * reproduced pixel-for-pixel; the tinted background, coloured border and
+ * the "✓" mark carry the same information instead.
  */
 .quiz {
-  max-width: var(--measure-prose, 46ch);
+  max-width: var(--measure-prose, 60ch);
   margin: 1.75rem auto;
-  padding: 1.25rem;
-  border: 1px solid var(--color-border-hairline);
-  border-radius: 8px;
-  background: var(--color-surface-raised);
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.75rem;
 }
 
 .quizQuestion {
@@ -199,41 +348,53 @@
   border: none;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.85rem;
 }
 
+/*
+ * Serif at the reading size (PL6: 19px/1.5 Source Serif 4), matching
+ * `.prose` and `.title` — the one other place a heading-weight sans font
+ * would have been the default. A question IS the reading content here.
+ */
 .quizPrompt {
   padding: 0;
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
-  font-weight: 600;
-  font-size: 1rem;
+  font-family: var(--font-serif), 'Source Serif 4', serif;
+  font-weight: 400;
+  font-size: 19px;
+  line-height: 1.5;
   color: var(--color-text);
 }
 
 .quizChoices {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.55rem;
 }
 
 .quizChoice {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.8rem;
   min-height: 44px;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--color-border-hairline);
-  border-radius: 6px;
-  font-size: 0.95rem;
-  color: var(--color-text);
+  padding: 0.85rem 1rem;
+  border: 1.5px solid var(--color-border-hairline);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  font-family: var(--font-serif), 'Source Serif 4', serif;
+  font-size: 0.97rem;
+  line-height: 1.4;
+  color: var(--color-text-reading);
   cursor: pointer;
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out;
 }
 
 .quizChoice input {
   flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  accent-color: var(--color-link);
+  width: 20px;
+  height: 20px;
+  accent-color: var(--color-text-secondary);
 }
 
 .quizChoice:focus-within {
@@ -241,50 +402,201 @@
   outline-offset: 2px;
 }
 
+/* Chosen, not yet graded (PL6): a neutral "pressed" tint — selection isn't
+   correctness yet, so it borrows no accent colour. */
+.quizChoiceSelected {
+  background: color-mix(in oklch, var(--color-text) 6%, var(--color-surface-raised));
+  border-color: color-mix(in oklch, var(--color-text) 40%, transparent);
+}
+
+.quizChoiceSelected input {
+  accent-color: var(--color-text);
+}
+
+/* Graded (P7): the correct choice, whether or not the student picked it. */
 .quizChoiceCorrect {
+  background: color-mix(in oklch, var(--color-link) 10%, var(--color-surface-raised));
   border-color: var(--color-link);
 }
 
+.quizChoiceCorrect input {
+  accent-color: var(--color-link);
+}
+
+/* Graded (P7): the student's own wrong pick. */
 .quizChoiceWrong {
-  border-left: 2px solid var(--color-accent-yellow);
+  background: color-mix(in oklch, var(--color-error) 8%, var(--color-surface-raised));
+  border-color: var(--color-error);
 }
 
-.quizFeedbackCorrect {
-  margin: 0;
-  font-size: 0.85rem;
-  color: var(--color-text-secondary);
+.quizChoiceWrong input {
+  accent-color: var(--color-error);
 }
 
-.quizFeedbackWrong {
-  margin: 0;
-  padding-left: 0.6rem;
-  border-left: 2px solid var(--color-accent-yellow);
-  font-size: 0.85rem;
-  color: var(--color-text-secondary);
+/* The "✓" beside a graded-correct row (P7). Text state for the same fact
+   lives in .srOnly beside it — this mark is decorative, not the only cue. */
+.quizChoiceMark {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--color-link);
 }
 
 .quizControl {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.5rem;
+  gap: 0.85rem;
 }
 
-.quizResultPass {
+/*
+ * The graded result banner (P7: "1 of 2 correct — not passed", a gold-
+ * bordered card — the same indicator weight `.mobileProgressFill` and the
+ * rail's current-item marker use, never a fill). One shape for pass and
+ * fail; only the heading colour switches, since a pass never actually
+ * reaches this branch in practice (see Quiz.tsx: a passing result also
+ * flips `passed`, which renders the terminal .quizPassed state instead on
+ * the same tick) — kept correct anyway rather than assuming that can never
+ * change.
+ */
+.quizResultBanner {
   margin: 0;
-  padding: 0.6rem 0.75rem;
-  border-radius: 6px;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  border-left: 2px solid var(--color-accent-gold);
+}
+
+.quizResultHeading {
+  margin: 0 0 0.3rem;
+  font-family: var(--font-serif), 'Source Serif 4', serif;
+  font-size: 1.15rem;
+  color: var(--color-accent-gold-text);
+}
+
+.quizResultHeadingPass {
+  color: var(--color-link);
+}
+
+.quizResultBody {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+/*
+ * The footer button(s) (PL6/P7). One filled pill ("CHECK ANSWERS") before a
+ * result exists; a two-up filled/outline row ("RETRY" / "LESSON") once a
+ * graded-not-passed result does. `--color-text-on-accent` is the "text on a
+ * teal-tinted surface" token (tokens.css §"teal family") — declared in
+ * Phase 1 for exactly this and unused until now.
+ */
+.quizCheckButton {
+  min-height: 44px;
+  align-self: flex-start;
+  padding: 0.75rem 1.6rem;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-link);
+  color: var(--color-text-on-accent);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-weight: 500;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 120ms ease-out;
+}
+
+.quizCheckButton:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.quizCheckButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.quizCheckButton:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+.quizRetryRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  width: 100%;
+}
+
+.quizRetryButton {
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 0.75rem 1.4rem;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-link);
+  color: var(--color-text-on-accent);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-weight: 500;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: center;
+  cursor: pointer;
+}
+
+.quizRetryButton:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.quizRetryButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.quizRetryButton:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+.quizLessonLink {
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 0.75rem 1.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--color-border-hairline);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-weight: 500;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: center;
+  text-decoration: none;
+}
+
+.quizLessonLink:hover {
   background: var(--color-page);
-  font-weight: 500;
-  color: var(--color-text);
 }
 
-.quizResultFail {
-  margin: 0;
-  padding-left: 0.6rem;
-  border-left: 2px solid var(--color-accent-yellow);
-  font-weight: 500;
-  color: var(--color-text);
+.quizLessonLink:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quizChoice,
+  .quizCheckButton,
+  .quizRetryButton {
+    transition: none;
+  }
 }
 
 /* A state, not a form: mirrors .progressDone (same dot, same meaning). */
@@ -294,7 +606,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   font-size: 0.95rem;
   color: var(--color-text-secondary);
@@ -312,13 +624,13 @@
 .quizRetakeButton {
   min-height: 44px;
   min-width: 44px;
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 1.1rem;
   border: 1px solid var(--color-border-hairline);
-  border-radius: 8px;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--color-text-secondary);
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
-  font-size: 0.85rem;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.75rem;
   cursor: pointer;
 }
 
@@ -342,11 +654,11 @@
  * `.quiz` — no new colour, no new container shape for a fourth block type.
  */
 .rubric {
-  max-width: var(--measure-prose, 46ch);
+  max-width: var(--measure-prose, 60ch);
   margin: 1.75rem auto;
   padding: 1.25rem;
   border: 1px solid var(--color-border-hairline);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-surface-raised);
 }
 
@@ -419,7 +731,7 @@
  * always visible and tappable.
  */
 .nav {
-  max-width: var(--measure-prose, 46ch);
+  max-width: var(--measure-prose, 60ch);
   margin: 2.5rem auto 0;
   padding-top: 1.5rem;
   border-top: 1px solid var(--color-border-hairline);
@@ -456,7 +768,7 @@
 /*
  * The `chart` block (design §6.3/§14.1, Phase 10 Task A). A breakout
  * container like `.code` — the same reasoning applies: a bar chart's row
- * labels and a line chart's tick labels need more room than the 46ch prose
+ * labels and a line chart's tick labels need more room than the prose
  * measure gives them. `max-width` is additionally capped well under the
  * breakout ceiling (see Chart.tsx's form-decision comment): the SVG's own
  * viewBox is sized as a mobile-first reference, so stretching it across a
@@ -554,7 +866,7 @@
 .chartTable summary {
   cursor: pointer;
   color: var(--color-link);
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-size: 0.85rem;
   padding: 0.35rem 0;
 }
@@ -581,7 +893,7 @@
 
 .chartCaption {
   margin-top: 0.6rem;
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-size: 0.85rem;
   color: var(--color-text-secondary);
   text-align: center;
@@ -590,7 +902,7 @@
 /*
  * The `figure` block (design §6.3, Phase 10 Task B): static SVG only, the
  * one sanctioned escape hatch for bespoke visuals. Same breakout width as
- * `.code`/`.chart` — an author's own SVG may need more than 46ch.
+ * `.code`/`.chart` — an author's own SVG may need more than the prose measure.
  */
 .figure {
   max-width: var(--measure-breakout, 70ch);
@@ -611,7 +923,7 @@
 
 .figureCaption {
   margin-top: 0.6rem;
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-size: 0.85rem;
   color: var(--color-text-secondary);
   text-align: center;
@@ -620,7 +932,7 @@
 /*
  * The `diagram` block: a ```mermaid fence, drawn by the browser. Same
  * breakout width as `.figure` for the same reason — a flowchart needs more
- * than 46ch.
+ * than the prose measure.
  *
  * Two states share this frame, and the layout must not jump between them:
  * the source (server-rendered, and the fallback if mermaid never loads) and

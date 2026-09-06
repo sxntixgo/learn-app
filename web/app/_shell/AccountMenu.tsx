@@ -24,16 +24,24 @@
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import Link from 'next/link';
 import type { Me } from '../../src/lib/api';
+import type { NavDestination } from '../../src/lib/nav';
 import { logoutAction } from './auth-actions';
 import styles from './account-menu.module.css';
 
 export interface AccountMenuProps {
   user: Me;
+  /**
+   * The role-gated destinations this account may reach, already filtered by
+   * TopBar. Empty for most people, and the whole section disappears when it
+   * is — an empty "Manage" heading tells a student that tools exist which
+   * they may not have, which is a disclosure and a distraction at once.
+   */
+  manage: readonly NavDestination[];
   /** ThemeToggle, rendered on the server by the parent. */
   themeControl: ReactNode;
 }
 
-export default function AccountMenu({ user, themeControl }: AccountMenuProps) {
+export default function AccountMenu({ user, manage, themeControl }: AccountMenuProps) {
   const menu = useRef<HTMLDetailsElement>(null);
 
   /**
@@ -51,6 +59,23 @@ export default function AccountMenu({ user, themeControl }: AccountMenuProps) {
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || !element.open) return;
+      /*
+       * STOP HERE, NOT JUST `preventDefault`. When this menu is open inside
+       * the narrow-tier drawer, Nav.tsx has its OWN `document` Escape
+       * listener with a guard meant to leave this press to the menu:
+       * "innermost first... the next [press] finds no open details and
+       * closes the drawer." That guard reads `element.querySelector
+       * ('details[open]')` at the time IT runs — but both listeners are on
+       * the same `document`, and `close()` below has, by then, already set
+       * `open = false`. Two listeners on one node fire in registration
+       * order, which is an accident of mount timing (this one mounts with
+       * the menu, Nav's only when the drawer opens) — not something to
+       * depend on. `stopImmediatePropagation` makes the ordering
+       * irrelevant: no other `document` keydown listener for this event
+       * runs at all, so the drawer's guard never gets a chance to see a
+       * closed menu and close itself in the same press.
+       */
+      event.stopImmediatePropagation();
       close();
       // Focus returns to the control that opened it, which is where a
       // keyboard user expects to be after dismissing a menu.
@@ -103,6 +128,21 @@ export default function AccountMenu({ user, themeControl }: AccountMenuProps) {
         <Link className={styles.item} href="/settings/account" onClick={close}>
           Account &amp; password
         </Link>
+
+        {manage.length > 0 ? (
+          <div className={styles.section}>
+            <span className={styles.sectionLabel} id="account-menu-manage">
+              Manage
+            </span>
+            <div aria-labelledby="account-menu-manage">
+              {manage.map((destination) => (
+                <Link key={destination.href} className={styles.item} href={destination.href} onClick={close}>
+                  {destination.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className={styles.section}>
           <span className={styles.sectionLabel} id="account-menu-theme">

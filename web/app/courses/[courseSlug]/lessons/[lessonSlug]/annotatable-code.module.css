@@ -20,18 +20,66 @@
  *    one per line: per-line scrollers desynchronise and long lines stop
  *    lining up. The gutter and the annotation cards are `position: sticky;
  *    left: 0` inside it so neither slides out of view while the code scrolls
- *    sideways — which is why `.lineItem` and `.lineRow` are `max-content`
- *    wide: a sticky element can only travel within its containing block, so
- *    that block has to span the full scroll width.
+ *    sideways — which is why `.lines` is `max-content` wide: a sticky
+ *    element can only travel within its containing block, so that block has
+ *    to span the full scroll width.
  *
- * 3. **Card width comes from a container query** (`100cqi` = this block's own
- *    visible width), because inside a horizontal scroller a percentage would
- *    resolve against the scrolled width and produce a card as wide as the
- *    longest line. `max-width` above it is the fallback for a browser
- *    without container queries.
+ * 3. **THE GUTTER AND THE CODE ARE TWO GRID COLUMNS, and every row is a
+ *    `subgrid` of them.** This is the whole positioning story, and it is
+ *    here because the obvious flex version was WRONG IN A WAY NOTHING SAW.
+ *
+ *    Each row used to be its own flex line, so each gutter was its own
+ *    width — `min-width: 44px`, but wider when the line carries a count
+ *    badge or a longer number. Measured on 2026-09-03 at 375/834/1194/1440
+ *    in both themes, one twelve-line seeded block drew its code at THREE
+ *    different left edges: 65px on a bare line, 68.59px on an annotated
+ *    one, 75.59px on annotated line 11 (two digits + badge). A monospace
+ *    block whose lines start at three different x positions is exactly the
+ *    "succeeds with a wrong picture" failure: nothing errors, nothing looks
+ *    broken in a screenshot, and the columns do not line up.
+ *
+ *    The annotation cards were measured off the SAME assumption from the
+ *    other side — `padding-left: 44px`, i.e. "the gutter is at its minimum"
+ *    — so every card's left edge missed the code column it annotates by
+ *    3.59px, and by 10.59px under a two-digit line number. The error grows
+ *    with the line count, so it is worst in the longest files.
+ *
+ *    A `max-content` grid column fixes both by construction and for good:
+ *    the column is as wide as the widest gutter the block actually renders,
+ *    so every row's code starts at the same x, and a card placed in column
+ *    2 starts exactly there too — measured, not assumed. Nothing here
+ *    encodes a character width, a font, or a px offset, so the next font or
+ *    `--measure-*` change cannot silently move it. `annotation-geometry.spec.ts`
+ *    asserts all of it in a real browser at all four widths, both themes.
+ *
+ * 4. **Card width still comes from a container query** (`100cqi` = this
+ *    block's own visible width), because inside a horizontal scroller a
+ *    percentage would resolve against the scrolled width and produce a card
+ *    as wide as the longest line. `max-width` above it is the fallback for a
+ *    browser without container queries. `--anno-card-reserve` is the one
+ *    number left that CSS cannot derive — see its comment on `.block`.
  */
 
 section.block {
+  /*
+   * A CONSERVATIVE UPPER BOUND on the gutter column's rendered width, and
+   * the only assumed length left in this file. It is NOT what positions
+   * anything — the grid in note 3 does that from real metrics — it is only
+   * how much of `100cqi` a card must not claim if it is to stay inside the
+   * block's visible right edge, which is not derivable in CSS: a container
+   * query cannot subtract the width of an auto-sized grid track.
+   *
+   * Because it is an upper bound, being wrong makes a card NARROWER than it
+   * could be, never wider than fits. The budget at the gutter's own type
+   * (IBM Plex Mono 0.75rem, badge 1.1rem, `--space-1` either side, 3px of
+   * border) covers a three-digit line number carrying a single-digit count
+   * badge — every code block a lesson realistically holds. Past that the
+   * grid still lines the card up with the code; only the width goes a few
+   * px optimistic, and annotation-geometry.spec.ts's "the card ends inside
+   * the block" assertion is what would catch it.
+   */
+  --anno-card-reserve: 4rem;
+
   container-type: inline-size;
   margin: 0;
   padding: 0;
@@ -97,15 +145,35 @@ section.block {
   margin: 0;
   padding: 0;
   list-style: none;
+
+  /*
+   * The two columns of note 3: the gutter, sized to the widest gutter this
+   * block actually draws, and the code. Every row and every card slot below
+   * is a `subgrid` of these two, which is what makes "the card starts where
+   * the code starts" true by construction instead of by arithmetic.
+   *
+   * `max-content` (not `min-content`, not a length) is the load-bearing
+   * word: it is the browser's own measurement of the widest rendered
+   * gutter, so a longer line number, a wider count badge, a different mono
+   * face or a different `--space-*` all move the code column and the cards
+   * together, automatically.
+   *
+   * As wide as the widest line, so the sticky gutter and cards inside it
+   * have room to travel while the code scrolls (note 2).
+   */
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  width: max-content;
+  min-width: 100%;
 }
 
 .block .lineItem {
-  /*
-   * As wide as the widest line, so the sticky gutter and cards inside it
-   * have room to travel while the code scrolls. See note 2 above.
-   */
-  width: max-content;
-  min-width: 100%;
+  /* A line and everything hanging off it — its row, its cards, its
+     composer — is one grid item spanning both columns, and re-exposes them
+     to its own children so a card can sit in the code column. */
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
 }
 
 div.lineRow {
@@ -118,10 +186,10 @@ div.lineRow {
   border-radius: 0;
   overflow: visible;
 
-  display: flex;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
   align-items: stretch;
-  width: max-content;
-  min-width: 100%;
 }
 
 /*
@@ -142,7 +210,9 @@ section.block[data-mode='grade'] div.lineRow {
   position: sticky;
   left: 0;
   z-index: 1;
-  flex: 0 0 auto;
+  /* 44px is the touch minimum (design §14.2), not a layout constant: the
+     grid column above is what any other rule lines up with, so this may
+     grow with the content without moving anything out of alignment. */
   min-width: 44px;
   display: flex;
   align-items: center;
@@ -209,7 +279,10 @@ button.gutter {
 }
 
 .block .lineCode {
-  flex: 1 1 auto;
+  /* Column 2 of the row's subgrid. `minmax(0, 1fr)` on the track already
+     allows it to be narrower than its content; `white-space: pre` then
+     makes the block scroll rather than wrap. */
+  min-width: 0;
   padding: 0 var(--space-3) 0 var(--space-2);
   white-space: pre;
   font-family: inherit;
@@ -218,7 +291,20 @@ button.gutter {
 /* ---------- annotation cards ---------- */
 
 .block .cardSlot {
-  padding: var(--space-1) var(--space-1) var(--space-1) 44px;
+  /*
+   * COLUMN 2 — the code column of .lineItem's subgrid, so a card begins
+   * exactly where the code it annotates begins.
+   *
+   * This used to be `padding-left: 44px`, the other half of the bug note 3
+   * describes: 44px is the gutter's MINIMUM, not its width, so every card
+   * missed its code column by 3.59px on a block with annotations, and by
+   * 10.59px once a line number reached two digits. Measured, not inferred.
+   *
+   * `grid-column: 2` cannot drift, because it names the same track the code
+   * sits in rather than restating a number that has to agree with it.
+   */
+  grid-column: 2;
+  padding: var(--space-1);
 }
 
 .block .card,
@@ -227,7 +313,11 @@ button.gutter {
   left: var(--space-1);
   display: block;
   max-width: var(--measure-prose);
-  width: min(var(--measure-prose), 100cqi - var(--space-6));
+  /* `--anno-card-reserve` (see .block) is the gutter budget a card must not
+     claim, since a container query cannot subtract an auto-sized grid track.
+     It bounds the WIDTH only — `grid-column: 2` on .cardSlot is what decides
+     where the card starts. */
+  width: min(var(--measure-prose), 100cqi - var(--anno-card-reserve));
   padding: var(--space-2);
   border: var(--border-hairline) solid var(--color-border-hairline);
   /* Structural left rule — the pattern the palette reserves for track hues

@@ -9,7 +9,7 @@ import styles from './footer.module.css';
 export default function Footer() {
   const year = new Date().getFullYear();
   return (
-    <footer className={styles.footer}>
+    <footer className={styles.footer} data-drawer-inert>
       <p className={styles.text}>© {year} Learn App</p>
     </footer>
   );

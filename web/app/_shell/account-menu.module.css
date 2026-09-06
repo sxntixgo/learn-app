@@ -1,3 +1,12 @@
+/*
+ * WHERE THIS OPENS FROM MOVED WITH THE CONTROL. The account menu used to sit
+ * at the right of the banner and drop DOWN; the artboards pin it to the
+ * bottom of the 224px rail instead ("Santiago ▾", artboard M1), and at
+ * narrow tier to the bottom of the nav drawer, where P11 puts "Sign out".
+ * Both of those are at the bottom of the screen, so the panel opens UPWARD
+ * at every width — a downward panel from the bottom of the viewport is a
+ * panel nobody can see.
+ */
 .menu {
   position: relative;
 }
@@ -14,7 +23,17 @@
   padding: var(--space-0) var(--space-1);
   border: var(--border-hairline) solid transparent;
   border-radius: var(--radius-sm);
-  color: var(--color-banner-text);
+  /*
+   * RAIL TOKENS AT BOTH TIERS NOW. This control used to live in the teal
+   * banner and borrowed its colours, then moved into the nav (Shell hands it
+   * to Nav) — which was the raised surface of the bottom tab bar at narrow
+   * and the teal rail at wide, so the base was the page's text colour and
+   * the wide block swapped in the rail's. The tab bar is gone: at narrow the
+   * nav is the drawer, whose ground is `--color-rail-bg`, the same teal as
+   * the rail. One ground, one pairing (6.40:1 light, 6.27:1 dark), and no
+   * tier override to keep in step.
+   */
+  color: var(--color-rail-text);
   cursor: pointer;
   list-style: none;
   user-select: none;
@@ -24,14 +43,16 @@
   display: none;
 }
 
+/* On teal at both tiers, so the affordance is the underline rather than a
+   hairline in a page-surface colour that the rail's ground swallows. */
 .summary:hover,
 .menu[open] > .summary {
-  border-color: var(--color-banner-divider);
+  text-decoration: underline;
 }
 
 /* Never remove the focus ring — this is the only keyboard affordance here. */
 .summary:focus-visible {
-  outline: var(--border-regular) solid var(--color-link);
+  outline: var(--border-regular) solid var(--color-rail-text);
   outline-offset: 2px;
 }
 
@@ -51,7 +72,7 @@
 .panel {
   position: absolute;
   right: 0;
-  top: calc(100% + var(--space-0));
+  bottom: calc(100% + var(--space-0));
   z-index: 50;
   min-width: 15rem;
   display: flex;
@@ -120,4 +141,25 @@
 
 .signOut:hover {
   background: var(--color-page);
+}
+
+/* Tier breakpoint — 1024px; nav.module.css's header is its documented home. */
+@media (min-width: 1024px) {
+  /*
+   * Anchored to the rail's LEFT edge, not its right: the panel's 15rem
+   * minimum is wider than the 224px rail, so `right: 0` would push it off
+   * the left of the screen. `.summary` also fills the rail's width here, so
+   * the name and chevron sit where M1 draws them rather than hugging the
+   * chevron.
+   */
+  .panel {
+    left: 0;
+    right: auto;
+  }
+
+  .summary {
+    width: 100%;
+    padding-left: 0;
+    padding-right: 0;
+  }
 }

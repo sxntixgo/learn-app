@@ -68,6 +68,30 @@ export default defineConfig({
       env: {
         DATABASE_URL: TEST_DATABASE_URL,
         API_PORT: String(API_PORT),
+        // RELAXED FOR THE HARNESS, WHICH IS NOT THE SAME AS RELAXED IN
+        // PRODUCTION. GET /api/v1/profiles/:handle is limited to 60 reads a
+        // minute per address (api/src/routes/profiles.ts), and this suite is
+        // one address: every worker, plus the Next server rendering
+        // /u/:handle on their behalf, arrives from 127.0.0.1. viewport.spec
+        // alone opens a profile page seven times, and avatar.spec and
+        // a11y.spec add more — so the suite spends a minute doing what a
+        // person would take an hour over, drains the bucket, and then eats a
+        // 60-second lockout that cascades into unrelated specs. It is
+        // load-dependent, so it got worse with every phase that added tests
+        // and it is not fixed by `--workers=1`.
+        //
+        // The 429 is the app telling the truth, so the fix is neither a
+        // Playwright retry (which would hide a real, reachable production
+        // limit) nor thinner specs (which would weaken the suite to suit an
+        // unrelated limit). It is to tell THIS server that its one client is
+        // a test harness. Nothing here changes the shipped default: with
+        // API_PROFILE_RATE_LIMIT unset the API is byte-identical to before
+        // the variable existed, and this line is scoped to the throwaway
+        // server Playwright starts against TEST_DATABASE_URL. Deliberately
+        // still a finite number, and high enough to be warned about in this
+        // server's log — see api/src/auth/profile-rate-limit.ts on why "off"
+        // is not a value this setting can take.
+        API_PROFILE_RATE_LIMIT: '5000',
       },
       // FALSE EVERYWHERE, not just in CI. Reuse looks like a local
       // convenience, but this server's command is

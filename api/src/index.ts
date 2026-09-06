@@ -29,6 +29,7 @@ import { registerInviteRoutes } from './routes/invites.ts';
 import type { AdminPeopleRouteDeps } from './routes/admin-people.ts';
 import { registerAdminPeopleRoutes } from './routes/admin-people.ts';
 import { registerActorHook } from './auth/actor.ts';
+import { LoginRateLimiter } from './auth/rate-limit.ts';
 import { getSigningKeys } from './auth/keys.ts';
 import { hashPassword } from './auth/password.ts';
 import { getPool } from './db.ts';
@@ -40,6 +41,11 @@ import {
   parseTrustProxy,
   type TrustProxySetting,
 } from './auth/trust-proxy.ts';
+import {
+  PROFILE_RATE_LIMIT_ENV,
+  describeProfileRateLimit,
+  parseProfileRateLimit,
+} from './auth/profile-rate-limit.ts';
 
 // CourseRouteDeps, ProgressRouteDeps, MeRouteDeps, and AdminRouteDeps are
 // structurally identical ({can?, actor?}) but declared separately in each
@@ -85,6 +91,13 @@ export async function buildServer(options: BuildServerOptions = {}) {
   const parsedTrustProxy = parseTrustProxy(process.env[TRUST_PROXY_ENV]);
   const trustProxy = options.trustProxy ?? parsedTrustProxy.value;
 
+  // Parsed BEFORE Fastify exists, so a refused value stops the process at
+  // boot rather than becoming a surprise at request time. See
+  // auth/profile-rate-limit.ts: this limiter guards the only public,
+  // unauthenticated, database-backed route, so a typo must not be coerced
+  // into something plausible-looking.
+  const parsedProfileRateLimit = parseProfileRateLimit(process.env[PROFILE_RATE_LIMIT_ENV]);
+
   const fastify = Fastify({
     logger: LOGGER_OPTIONS,
     trustProxy,
@@ -97,6 +110,15 @@ export async function buildServer(options: BuildServerOptions = {}) {
     fastify.log.warn(parsedTrustProxy.warning);
   }
   fastify.log.info(`Trusting X-Forwarded-For from: ${describeTrustProxy(trustProxy)}`);
+
+  // The §11 public-profile limiter. Silent when the variable is unset — an
+  // unconfigured deployment behaves, and logs, exactly as it did before this
+  // knob existed — and loud in both directions once it is set.
+  const profileRateLimiter = options.profileRateLimiter ?? new LoginRateLimiter(parsedProfileRateLimit.value);
+  if (options.profileRateLimiter === undefined && process.env[PROFILE_RATE_LIMIT_ENV]?.trim()) {
+    if (parsedProfileRateLimit.warning !== null) fastify.log.warn(parsedProfileRateLimit.warning);
+    fastify.log.info(`Public profile reads limited to: ${describeProfileRateLimit(parsedProfileRateLimit.value)}`);
+  }
 
   // Security response headers. Registered first so they apply to every
   // response, including ones short-circuited by a later hook or an error.
@@ -129,7 +151,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   registerSetupRoutes(fastify, { ...options, hashPassword: options.hashPassword ?? hashPassword });
   registerAuthRoutes(fastify, options);
   registerSubmissionRoutes(fastify, options);
-  registerProfileRoutes(fastify, options);
+  registerProfileRoutes(fastify, { ...options, profileRateLimiter });
   // Phase 13 (design §12). Invitations create accounts, so the accept route
   // gets the same real Argon2id hasher the bootstrap does — a seam left open
   // here would mean invited accounts with `password_hash = NULL`, i.e. no
