@@ -1,33 +1,34 @@
 import type { Metadata, Viewport } from 'next';
 import { ReactNode } from 'react';
 import { cookies } from 'next/headers';
-import { IBM_Plex_Mono, Libre_Franklin, Source_Serif_4 } from 'next/font/google';
+import { IBM_Plex_Mono, Plus_Jakarta_Sans, Source_Serif_4 } from 'next/font/google';
 import { resolveThemePreference, THEME_COOKIE_NAME, themeDataAttribute, type ThemePreference } from '../src/lib/theme';
-import { fetchCanInvite, fetchCanSearch, fetchIsAdmin, fetchIsTeacher, fetchMeOrNull } from '../src/lib/api';
+import { fetchCanInvite, fetchCanSearch, fetchIsAdmin, fetchIsTeacher, fetchMeOrNull, fetchMyCourses } from '../src/lib/api';
 import type { NavAudience } from '../src/lib/nav';
+import type { EnrolledCourse } from '../src/lib/api';
 import Shell from './_shell/Shell';
 import './globals.css';
 
 // next/font self-hosts these at build time (downloaded once during `next
 // build`/`next dev`, then served from our own origin) — no runtime request
 // to fonts.googleapis.com or any other third-party host.
-const libreFranklin = Libre_Franklin({
+const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ['latin'],
-  weight: ['500', '700'],
+  weight: ['500', '700', '800'],
   variable: '--font-sans',
   display: 'swap',
 });
 
 const sourceSerif4 = Source_Serif_4({
   subsets: ['latin'],
-  weight: ['400'],
+  weight: ['400', '600'],
   variable: '--font-serif',
   display: 'swap',
 });
 
 const ibmPlexMono = IBM_Plex_Mono({
   subsets: ['latin'],
-  weight: ['400'],
+  weight: ['400', '500'],
   variable: '--font-mono',
   display: 'swap',
 });
@@ -88,6 +89,27 @@ function themeColorFor(theme: ThemePreference): Viewport['themeColor'] {
   ];
 }
 
+/**
+ * The rail's `ENROLLED` list (docs/design/2026-09-02-artboard-spec.md §6).
+ *
+ * ONE request, not one per course. `/api/v1/courses` does not say which
+ * courses are yours, and `/api/v1/courses/{slug}/progress` is per course, so
+ * the shell would have needed N+1 round trips per page view; the profile
+ * payload carries the same list but is the public, per-IP rate-limited route
+ * (design §11), which is not a budget to spend on chrome that renders on
+ * every page. Hence `GET /api/v1/me/courses`, declared in the contract
+ * before it was built (CLAUDE.md rule 3).
+ *
+ * Skipped when signed out — Nav renders nothing for that visitor (see
+ * Shell), so the request would be pure waste — and `fetchMyCourses` already
+ * turns the API's refusal into an empty list for the accounts that have no
+ * enrollments to list at all (design §5.1).
+ */
+async function myCourses(signedIn: boolean): Promise<EnrolledCourse[]> {
+  if (!signedIn) return [];
+  return fetchMyCourses();
+}
+
 /** The four role probes behind Nav's restricted destinations (see above). */
 async function navAudience(signedIn: boolean): Promise<NavAudience> {
   if (!signedIn) return { isTeacher: false, canInvite: false, isAdmin: false, canSearch: false };
@@ -138,16 +160,20 @@ export default async function RootLayout({
   // only), independent of the other three. All four go out at once rather
   // than in sequence; they are four independent probes and the shell
   // renders on every page.
-  const audience = await navAudience(user !== null);
+  //
+  // The rail's enrolled-course list goes out alongside them (see myCourses
+  // above) rather than after: it is one more independent read of the same
+  // session, and serialising it would add a round trip to every page view.
+  const [audience, enrolledCourses] = await Promise.all([navAudience(user !== null), myCourses(user !== null)]);
 
   return (
     <html
       lang="en"
       data-theme={themeDataAttribute(theme)}
-      className={`${libreFranklin.variable} ${sourceSerif4.variable} ${ibmPlexMono.variable}`}
+      className={`${plusJakartaSans.variable} ${sourceSerif4.variable} ${ibmPlexMono.variable}`}
     >
       <body>
-        <Shell theme={theme} user={user} audience={audience}>
+        <Shell theme={theme} user={user} audience={audience} enrolledCourses={enrolledCourses}>
           {children}
         </Shell>
       </body>

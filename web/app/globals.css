@@ -1,8 +1,11 @@
 @import './tokens.css';
 
 /*
- * Base typography per docs/design/CHOSEN-PALETTE.md:
- *   - Headings + UI/nav: Libre Franklin 700, tracking -0.03em (--font-sans)
+ * Base typography per docs/design/2026-09-02-artboard-spec.md §5.1. Families
+ * per the artboard swap:
+ *   - Headings + UI/nav: Plus Jakarta Sans (--font-sans), tracking -0.03em.
+ *     Loaded weights are 500/700/800 (app/layout.tsx); which weight each
+ *     element uses is component work (Phases 2-5), unchanged here.
  *   - Body + prose: Source Serif 4 400, 16-17px, line-height 1.6-1.65 (--font-serif)
  *   - Dates, tags, labels, code: IBM Plex Mono 400, mono only (--font-mono)
  * The --font-* custom properties are supplied by next/font in app/layout.tsx.
@@ -48,7 +51,7 @@ h3,
 h4,
 h5,
 h6 {
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 700;
   letter-spacing: -0.03em;
   color: var(--color-text);
@@ -106,7 +109,7 @@ html[data-theme='dark'] .shiki span {
 .shiki {
   margin: 0;
   padding: 1rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--color-border-hairline);
   overflow-x: auto;
   font-family: var(--font-mono), 'IBM Plex Mono', monospace;

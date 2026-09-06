@@ -76,7 +76,7 @@
   margin: 1.75rem auto;
   padding: 1.25rem;
   border: 1px solid var(--color-border-hairline);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-surface-raised);
 }
 
@@ -147,7 +147,7 @@
   max-width: 10rem;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--color-border-hairline);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
   font-family: var(--font-sans), 'Libre Franklin', sans-serif;
@@ -206,7 +206,7 @@
   min-width: 44px;
   padding: 0.7rem 1.5rem;
   border: 1px solid var(--color-link);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-surface-raised);
   color: var(--color-text);
   font-family: var(--font-sans), 'Libre Franklin', sans-serif;

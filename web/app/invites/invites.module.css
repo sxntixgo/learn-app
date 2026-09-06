@@ -51,7 +51,7 @@
 
 .formSection {
   border: 1px solid var(--color-border-hairline);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--color-surface-raised);
   padding: 1.25rem;
 }
@@ -124,7 +124,7 @@
   min-height: 44px;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--color-border-hairline);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
   font-family: var(--font-sans), 'Libre Franklin', sans-serif;
@@ -155,7 +155,7 @@
   min-width: 44px;
   padding: 0.6rem 1.5rem;
   border: 1px solid var(--color-border-hairline);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
   font-family: var(--font-sans), 'Libre Franklin', sans-serif;
@@ -199,7 +199,7 @@
   margin-top: 1.25rem;
   padding: 1rem 1.1rem;
   border: 1px solid var(--color-accent-yellow);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--color-page);
   display: flex;
   flex-direction: column;
@@ -220,7 +220,7 @@
   display: block;
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--color-border-hairline);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-surface-raised);
   font-family: var(--font-mono), 'IBM Plex Mono', monospace;
   font-size: 0.8rem;
@@ -248,7 +248,7 @@
 
 .item {
   border: 1px solid var(--color-border-hairline);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--color-surface-raised);
   padding: 1rem 1.1rem;
 }

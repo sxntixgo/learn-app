@@ -1,12 +1,15 @@
 /*
  * Kitchen sink page styles. Renders every design token as a visual reference,
- * constrained to the prose measure for readability and responsive at 375px.
+ * constrained to prose measure, responsive at 375px, and readable at all four
+ * design widths (375, 834, 1194, 1440).
  */
 
 .kitchen-sink {
   max-width: var(--measure-prose);
   margin: 0 auto;
   padding: var(--space-4) var(--space-3) var(--space-7);
+  background-color: var(--color-page);
+  color: var(--color-text);
 }
 
 .header {
@@ -15,13 +18,25 @@
 
 .header__title {
   margin: 0 0 var(--space-2);
+  font-family: var(--font-sans);
   font-size: clamp(1.5rem, 4vw + 0.5rem, 2.25rem);
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .header__desc {
   margin: 0;
   color: var(--color-text-secondary);
   line-height: 1.6;
+  font-size: 0.95rem;
+}
+
+.header__desc code {
+  background: var(--color-surface-raised);
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
 }
 
 /* Section grouping */
@@ -30,58 +45,72 @@
 }
 
 .section__title {
-  margin: 0 0 var(--space-3);
-  font-size: 1.15rem;
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-sans);
+  font-size: 1.125rem;
+  font-weight: 700;
   color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.section__role {
+  margin: 0 0 var(--space-3);
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  font-style: italic;
 }
 
 .tokens {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: var(--space-3);
 }
 
 /* Color swatches */
 .token {
   display: flex;
+  flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-2);
   background: var(--color-surface-raised);
   border: var(--border-hairline) solid var(--color-border-hairline);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
 }
 
 .token__swatch {
-  flex-shrink: 0;
-  width: 60px;
-  height: 60px;
+  width: 100%;
+  height: 80px;
   border-radius: var(--radius-sm);
   border: var(--border-hairline) solid var(--color-border-hairline);
+  box-shadow: inset 0 0 0 1px var(--color-border-hairline);
 }
 
 .token__info {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  flex: 1;
 }
 
 .token__name,
 .token__var {
   display: block;
-  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
   line-height: 1.3;
-  word-break: break-word;
+  word-break: break-all;
+  overflow-wrap: break-word;
 }
 
 .token__name {
   color: var(--color-text);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .token__var {
   color: var(--color-text-secondary);
-  font-size: 0.7rem;
+  font-size: 0.65rem;
+  opacity: 0.8;
 }
 
 /* Spacing samples */
@@ -92,19 +121,17 @@
   padding: var(--space-2);
   background: var(--color-surface-raised);
   border: var(--border-hairline) solid var(--color-border-hairline);
-  border-radius: var(--radius-sm);
-  align-items: center;
+  border-radius: var(--radius-md);
 }
 
 .spacing__swatch {
-  width: 100%;
-  padding: var(--space-3);
-  background: var(--color-border-hairline);
-  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 80px;
+  min-height: 100px;
+  padding: var(--space-3);
+  background: var(--color-border-hairline);
+  border-radius: var(--radius-sm);
 }
 
 .spacing__box {
@@ -114,25 +141,26 @@
 
 .spacing__info {
   text-align: center;
-  width: 100%;
 }
 
 .spacing__name,
 .spacing__var {
   display: block;
-  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
   line-height: 1.3;
 }
 
 .spacing__name {
   color: var(--color-text);
-  font-weight: 600;
+  font-weight: 500;
   margin-bottom: var(--space-1);
 }
 
 .spacing__var {
   color: var(--color-text-secondary);
-  font-size: 0.7rem;
+  font-size: 0.65rem;
+  opacity: 0.8;
 }
 
 /* Radius samples */
@@ -143,39 +171,39 @@
   padding: var(--space-2);
   background: var(--color-surface-raised);
   border: var(--border-hairline) solid var(--color-border-hairline);
-  border-radius: var(--radius-sm);
-  align-items: center;
+  border-radius: var(--radius-md);
 }
 
 .radius__swatch {
   width: 100%;
   aspect-ratio: 1;
+  min-height: 100px;
   background: var(--color-link);
   border: var(--border-regular) solid var(--color-link);
-  min-height: 80px;
 }
 
 .radius__info {
   text-align: center;
-  width: 100%;
 }
 
 .radius__name,
 .radius__var {
   display: block;
-  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
   line-height: 1.3;
 }
 
 .radius__name {
   color: var(--color-text);
-  font-weight: 600;
+  font-weight: 500;
   margin-bottom: var(--space-1);
 }
 
 .radius__var {
   color: var(--color-text-secondary);
-  font-size: 0.7rem;
+  font-size: 0.65rem;
+  opacity: 0.8;
 }
 
 /* Border samples */
@@ -186,56 +214,57 @@
   padding: var(--space-2);
   background: var(--color-surface-raised);
   border: var(--border-hairline) solid var(--color-border-hairline);
-  border-radius: var(--radius-sm);
-  align-items: center;
+  border-radius: var(--radius-md);
 }
 
 .border-sample__swatch {
   width: 100%;
   aspect-ratio: 1;
+  min-height: 100px;
   background: transparent;
   border-style: solid;
   border-color: var(--color-link);
   border-radius: var(--radius-sm);
-  min-height: 80px;
 }
 
 .border-sample__info {
   text-align: center;
-  width: 100%;
 }
 
 .border-sample__name,
 .border-sample__var {
   display: block;
-  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
   line-height: 1.3;
 }
 
 .border-sample__name {
   color: var(--color-text);
-  font-weight: 600;
+  font-weight: 500;
   margin-bottom: var(--space-1);
 }
 
 .border-sample__var {
   color: var(--color-text-secondary);
-  font-size: 0.7rem;
+  font-size: 0.65rem;
+  opacity: 0.8;
 }
 
-/* Measure samples */
+/* Measure samples — show relative widths */
 .measure {
-  margin-bottom: var(--space-4);
   padding: var(--space-3);
   background: var(--color-surface-raised);
   border: var(--border-hairline) solid var(--color-border-hairline);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
 }
 
 .measure__label {
   margin-bottom: var(--space-2);
+  font-family: var(--font-mono);
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--color-text);
 }
 
@@ -247,6 +276,7 @@
 }
 
 .measure__content {
+  font-family: var(--font-serif);
   font-size: 0.875rem;
   line-height: 1.6;
   color: var(--color-text-secondary);
@@ -258,21 +288,30 @@
   padding: var(--space-3);
   background: var(--color-surface-raised);
   border: var(--border-hairline) solid var(--color-border-hairline);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
 }
 
 .typography-group__title {
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-sans);
   font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.typography-group__note {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
   color: var(--color-text-secondary);
-  font-weight: 400;
 }
 
 .typography {
   margin-bottom: var(--space-3);
   display: flex;
-  gap: var(--space-2);
-  align-items: flex-start;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
 .typography:last-child {
@@ -280,59 +319,22 @@
 }
 
 .typography__sample {
-  flex: 1;
   padding: var(--space-2);
   background: var(--color-page);
   border-radius: var(--radius-sm);
+  border: var(--border-hairline) solid var(--color-border-hairline);
   line-height: 1.6;
   word-break: break-word;
 }
 
-.typography__sans-lg {
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
-  font-size: 1.75rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-}
-
-.typography__sans-md {
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-}
-
-.typography__sans-sm {
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-}
-
-.typography__serif {
-  font-family: var(--font-serif), 'Source Serif 4', serif;
-  font-size: 1rem;
-  font-weight: 400;
-}
-
-.typography__mono {
-  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
-  font-size: 0.875rem;
-  font-weight: 400;
-}
-
 .typography__name {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  font-family: var(--font-mono);
   font-size: 0.7rem;
   color: var(--color-text-secondary);
-  min-width: 60px;
-  text-align: left;
+  margin-left: var(--space-1);
 }
 
-/* Mobile responsiveness */
+/* Mobile responsiveness — adapt to 375px viewport */
 @media (max-width: 600px) {
   .kitchen-sink {
     padding: var(--space-3) var(--space-2) var(--space-6);
@@ -344,5 +346,9 @@
 
   .header__title {
     font-size: 1.5rem;
+  }
+
+  .section__title {
+    font-size: 1rem;
   }
 }

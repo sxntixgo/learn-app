@@ -1,14 +1,34 @@
 /*
- * Design tokens transcribed from docs/design/CHOSEN-PALETTE.md (options 9a
- * light / 9b dark). Every value here is a direct OKLCH transcription from
- * that file — do not tweak a number without updating the doc first.
+ * Design tokens transcribed from docs/design/2026-09-02-palette.md, which
+ * itself transcribes docs/design/2026-09-02-artboard-spec.md §5.2 (hex →
+ * OKLCH, one row per artboard role). Every value here is a direct OKLCH
+ * transcription from that doc — do not tweak a number without updating the
+ * doc first. SIX named exceptions are documented in place below, each
+ * with the reasoning for deviating from a literal transcription:
+ *
+ *   - light `--color-accent-gold`     too light for a 3:1 indicator
+ *   - light `--color-text-secondary`  4.00:1 on a card, under the 4.5 floor
+ *   - light `--color-heat-0`          0.0242 ΔEok from step 1, under 0.04
+ *   - dark  `--color-link`            4.07:1 on a raised surface
+ *   - dark  `--color-accent-gold-text` the doc merged two golds into one
+ *   - dark  `--color-heat-0`          the artboard's own array value
+ *
+ * The five contrast/separation corrections were all found by
+ * `web/src/lib/palette.test.ts`, which is the floor under this file: it
+ * holds a role-appropriate threshold for every token here, and a token
+ * with no declared role fails it. Weakening one of its floors to get green
+ * is how `--color-accent-yellow` shipped at 2.46:1 for five phases.
+ *
+ * `docs/design/2026-09-02-palette.md` supersedes `CHOSEN-PALETTE.md` (the
+ * previous source of record, "options 9a light / 9b dark") — the artboard
+ * import replaced the whole palette, not just a few values.
  *
  * Names are semantic (role in the UI), never literal colour names, so a
  * future palette swap only touches this file.
  *
- * Light (9a) lives on :root. Dark (9b) lives inside
- * `prefers-color-scheme: dark`, guarded so it steps aside when the visitor
- * has explicitly chosen light (`:root[data-theme='light']`) — see below.
+ * Light lives on :root. Dark lives inside `prefers-color-scheme: dark`,
+ * guarded so it steps aside when the visitor has explicitly chosen light
+ * (`:root[data-theme='light']`) — see below.
  *
  * The explicit `light`/`dark`/`system` preference (design §14, plan phase
  * 4) is a `data-theme` attribute on <html>, set server-side in
@@ -17,88 +37,271 @@
  * scheme` media query below keeps deciding, same as before this feature
  * existed. `dark` is forced via the unconditional `:root[data-theme='dark']`
  * block at the end of this file, so it applies regardless of OS preference.
+ *
+ * DEPRECATED ALIASES. The artboard import renames some roles (yellow →
+ * gold, top banner → nav rail) and drops the heat ramp from six steps to
+ * five. Component migration is Phases 2-5 of docs/plans/2026-09-02-design-
+ * import-plan.md, not this task, so every token name a CSS module
+ * references today must keep resolving until its consumer is migrated.
+ * Tokens marked DEPRECATED below exist only for that reason — new code
+ * must not reach for them.
  */
 
 :root {
-  /* Surfaces */
-  --color-page: oklch(0.995 0.002 95);
-  --color-surface-raised: oklch(0.972 0.004 95);
-  --color-border-hairline: oklch(0.92 0.003 95);
+  /* Surfaces (palette doc §2) */
+  --color-canvas: oklch(0.949 0.007 89);
+  --color-page: oklch(0.99 0.007 97);
+  --color-surface-raised: oklch(0.959 0.008 107);
+  /*
+   * Same value as --color-surface-raised in light — the artboards never
+   * draw a second, more-recessed card tone here (palette doc §5.2). Kept as
+   * a separate token anyway because dark mode *does* need the distinction,
+   * and both themes must declare the same token names.
+   */
+  --color-surface-card: oklch(0.959 0.008 107);
+  --color-border-hairline: oklch(0.915 0.012 96);
 
-  /* Text */
-  --color-text: oklch(0.24 0.005 250);
-  --color-text-secondary: oklch(0.42 0.005 250);
-
-  /* Top banner */
-  --color-banner-bg: oklch(0.905 0.045 208);
-  --color-banner-text: oklch(0.28 0.03 215);
-  --color-banner-divider: oklch(0.855 0.05 208);
-
-  /* Bottom banner / footer (graphite) */
-  --color-footer-bg: oklch(0.3 0.008 250);
-  --color-footer-text: oklch(0.93 0.004 90);
-
-  /* Teal: links, dates, tags */
-  --color-link: oklch(0.45 0.075 210);
-  --color-tag-bg: oklch(0.94 0.035 205);
-  --color-tag-text: oklch(0.42 0.06 210);
+  /* Text (palette doc §2) */
+  --color-text: oklch(0.234 0.013 188);
+  /*
+   * --color-text-secondary IS CORRECTED, NOT TRANSCRIBED, in light mode.
+   *
+   *   The palette doc bakes this from #17201F at the .6 alpha stop over
+   *   the page: #737875 = oklch(0.567 0.008 160). Against the two grounds
+   *   it actually sits on that measures 4.38:1 on the page and 4.00:1 on a
+   *   card — both under the 4.5:1 WCAG AA floor. Captions and meta lines
+   *   are 10-14px body text, so the 4.5 floor applies, not the large-text
+   *   3:1 one.
+   *
+   *   The fix stays inside the artboards' own vocabulary rather than
+   *   inventing a colour: same ink, same ground, the next alpha stop the
+   *   artboards actually draw. The light set uses 13 distinct stops from
+   *   .35 to .7 for this role; .65 is one of them (3 occurrences) and is
+   *   the first of them that clears the floor on a card.
+   *
+   *     #17201F at .65 over #FDFCF7 = #686d6b = oklch(0.530 0.007 170)
+   *     page 5.11:1 · card 4.67:1   (was 4.38:1 / 4.00:1)
+   *
+   *   Gate 1 (docs/plans/2026-09-02-design-import-plan.md) is where a
+   *   human can override this and ship the .6 stop instead.
+   */
+  --color-text-secondary: oklch(0.530 0.007 170);
+  /*
+   * New token: lesson prose (19px Source Serif) and inline code inside the
+   * reading column — visibly softer than --color-text, a real (if small)
+   * hue/lightness step, not device noise (palette doc §5.4).
+   */
+  --color-text-reading: oklch(0.274 0.016 183);
 
   /*
-   * The one yellow accent — never a fill, never body text (rule 1).
-   *
-   * 0.63/0.125, not the 0.72/0.15 this started as, and the change is a
-   * correction rather than a redesign. The old value was WRONG TWICE, both
-   * measurable and neither visible by eye:
-   *
-   *   1. It was outside the sRGB gamut (its blue channel came out negative),
-   *      so no browser ever displayed the colour that was written here — they
-   *      all clipped it to #cc9d00. The specified value was not the shipped
-   *      one.
-   *   2. That clipped colour is 2.46:1 against the page. Every use of this
-   *      token in the app is a BORDER or an active-state indicator — the nav's
-   *      current-item underline, the admin tab marker, the rule beside an
-   *      error — which makes it a non-text UI component under WCAG 1.4.11 and
-   *      puts the floor at 3:1. axe does not check border colours, which is
-   *      why 69 passing accessibility assertions never mentioned it.
-   *
-   * This value is the BRIGHTEST in-gamut yellow at the same hue (88) that
-   * clears 3:1 against both light surfaces: 3.47 against the page, 3.25
-   * against a raised card. Hue is unchanged, so its relationship to track
-   * ochre (H 65, deliberately 23 degrees away) is unchanged too.
-   *
-   * Dark mode was already fine — 9.97:1, in gamut — and is untouched.
-   *
-   * web/src/lib/palette.test.ts holds the floor now.
+   * Teal family (palette doc §2). One base hue serves six roles: general
+   * links/progress/active-state (`link`), the 224px nav rail's own
+   * background (`rail-bg` — coincidentally equal to `link` in light; NOT
+   * equal in dark, so kept as a separate token), text on a teal-tinted
+   * surface (`text-on-accent`), text/icons on the rail itself (`rail-text`),
+   * and the "ENROLLED" tag's background/text.
    */
-  --color-accent-yellow: oklch(0.63 0.125 88);
-
-  /* Logo tile is pure white in both modes (rule 2) */
-  --color-logo-tile: #fff;
+  --color-link: oklch(0.407 0.064 199);
+  --color-rail-bg: oklch(0.407 0.064 199);
+  --color-text-on-accent: oklch(0.336 0.052 199);
+  --color-rail-text: oklch(0.894 0.039 206);
+  --color-tag-bg: oklch(0.924 0.01 165);
+  --color-tag-text: oklch(0.407 0.064 199);
 
   /*
-   * Activity heatmap intensity ramp — ONE hue in five steps (design §10,
-   * §14.1). The hue is the link teal's (210 in light, 205 in dark); only L
-   * and C vary along it, so the ramp reads as a family of the palette rather
-   * than a new colour. Deliberately NOT the yellow: rule 1 says the yellow is
-   * structural and never a fill, and a heatmap cell is nothing but fill.
+   * The gold accent — never a fill, never body text, same structural rule
+   * the old yellow held (rule 1 in the token file's history). Two tiers:
+   * `--color-accent-gold` is the indicator weight (border-left, tinted
+   * background — a non-text UI component, WCAG 1.4.11 floor 3:1);
+   * `--color-accent-gold-text` is the text weight (link :hover, numbered
+   * list markers — ordinary text, floor 4.5:1).
    *
-   * --color-heat-0 is the empty day. It is a neutral, not the palest teal:
-   * design §10 requires the empty state be *clearly* distinct from level one,
-   * or a quiet week reads as a dead grid. It separates from step 1 on both
-   * lightness and chroma, so it survives a greyscale print and colour-vision
-   * deficiency alike.
+   * --color-accent-gold IS CORRECTED, NOT TRANSCRIBED, in light mode. This
+   * is the same failure class the old --color-accent-yellow comment
+   * documented at length, on the same token doing the same job:
+   *
+   *   The artboard's own indicator gold is #C08A17 = oklch(0.669 0.133 79).
+   *   It IS in gamut (unlike the old yellow, so this is not a clipping
+   *   bug) — the browser shows exactly this colour — but it is measurably
+   *   too light for the job it is given. Its only uses are `border-left`
+   *   (×9) and `background` (×3): a non-text UI component under WCAG
+   *   1.4.11, floor 3:1. Measured 2.97:1 on the page and 2.71:1 on a card.
+   *
+   *   The fix holds the hue (79) and takes the brightest in-gamut value at
+   *   that hue clearing 3:1 — the exact method the 2026-08-21 yellow
+   *   correction used:
+   *
+   *     oklch(0.596 0.124 79) = #a67500  page 3.97:1 · card 3.63:1
+   *
+   *   docs/design/2026-09-02-artboard-spec.md §5.2.2 and
+   *   docs/design/2026-09-02-palette.md §5.5 both flag this rather than
+   *   silently adjusting it, and both say a human should decide whether to
+   *   ship the artboard's exact value or this correction. This file ships
+   *   the correction — Gate 1 (docs/plans/2026-09-02-design-import-plan.md)
+   *   is where a human can override it.
+   *
+   *   THE RAIL IS NOT IN THAT LIST, and the reason is arithmetic rather
+   *   than a judgement. Seven of gold's nine `border-left` uses mark the
+   *   current nav item ON the rail, whose ground is --color-rail-bg
+   *   (#0E5457) — not --color-rail-text, which is what the "2.25:1 on the
+   *   rail" figure in artboard-spec §5.2 was measured against. Against the
+   *   real ground #C08A17 is 2.84:1 and this corrected value is 2.13:1:
+   *   darkening for the page necessarily costs contrast on the rail. No
+   *   single value fixes both. --color-page and --color-rail-bg are
+   *   8.43:1 apart, so the best any one colour can do against BOTH is
+   *   sqrt(8.43) = 2.90:1, under the floor by construction. The page and
+   *   card cases win because gold is the only signal there (a callout's
+   *   left rule, an activity dot, a badge disc); on the rail the current
+   *   item is also bold, in a different family, in a brighter text colour,
+   *   on a tinted background — four redundant cues. palette.test.ts
+   *   records the impossibility as an assertion so a future palette that
+   *   closes the gap re-opens the question here.
+   *
+   *   Dark mode's indicator gold clears its floor as transcribed (4.68:1
+   *   page, 3.95:1 panel, 3.93:1 rail) and is untouched.
+   *
+   * --color-accent-gold-text is transcribed as-is in light (#8A6410):
+   * 5.22:1 on the page, 4.77:1 on a card. It measures 1.62:1 on the rail,
+   * but PHASE 1 TASK 7 SETTLED THAT QUESTION AND THE ANSWER IS NO — gold
+   * text never lands on the rail. All 22 `color:#8A6410` occurrences in
+   * `iPad Landscape Light` are on the page or on a card (numbered list
+   * markers, "BROWSE CATALOG →", lesson eyebrows, the streak number, the
+   * link :hover rule); the rail's own text is #fff and alphas of
+   * #BFE4E9, never gold. palette.test.ts asserts the pairing stays
+   * illegal rather than leaving it unmentioned.
+   *
+   * web/src/lib/palette.test.ts holds every floor named above.
    */
-  --color-heat-0: oklch(0.945 0.004 95);
-  --color-heat-1: oklch(0.88 0.05 210);
-  --color-heat-2: oklch(0.78 0.08 210);
-  --color-heat-3: oklch(0.66 0.1 210);
-  --color-heat-4: oklch(0.55 0.11 210);
-  --color-heat-5: oklch(0.4 0.115 210);
-  /* Hairline around every cell, so an empty day still reads as a day. */
+  --color-accent-gold: oklch(0.596 0.124 79);
+  --color-accent-gold-text: oklch(0.529 0.104 81);
+  /*
+   * DEPRECATED — the token's own replacement, see the block comment above.
+   * Aliased to --color-accent-gold (the indicator weight, since every use
+   * of --color-accent-yellow today is a border or a tinted background —
+   * the same structural role). 15 CSS modules still reference this name;
+   * retires as each one migrates off it in Phases 2-5 of
+   * docs/plans/2026-09-02-design-import-plan.md.
+   */
+  --color-accent-yellow: oklch(0.596 0.124 79);
+
+  --color-error: oklch(0.456 0.117 36);
+
+  /*
+   * Activity heatmap intensity ramp — FIVE steps (0..4), not six. The
+   * artboards define the ramp literally as an array of five hexes built
+   * entirely out of the teal family already declared above (palette doc
+   * §4.3): heat-1 reuses --color-rail-text and heat-4 reuses
+   * --color-link. Step 0 reused --color-border-hairline too, until the
+   * correction below moved it; heat-2 and heat-3 have no other role.
+   *
+   * --color-heat-0 IS CORRECTED, NOT TRANSCRIBED, and it is the second
+   * place the artboard ramp had to give way to a measurement:
+   *
+   *   Transcribed literally, step 0 is #E5E3DA (= --color-border-hairline)
+   *   and step 1 is #BFE4E9 (= --color-rail-text). Those two sit 0.021
+   *   apart in OKLCH lightness and differ mostly in chroma, so a protanope
+   *   sees ΔEok 0.0242 between them — under the ramp's 0.04 floor — and
+   *   their contrast ratio is 1.055, under the separate 1.15 floor that
+   *   makes the step survive a greyscale print. A heatmap cell is a filled
+   *   square with no label: colour is the only signal, which is why this
+   *   is a real defect and not pedantry, and design §10 asks specifically
+   *   that the empty day read as *clearly* distinct from level one or a
+   *   quiet week reads as a dead grid.
+   *
+   *   The pre-import palette had solved this deliberately — heat-0 was
+   *   oklch(0.945 0.004 95), a near-white neutral well clear of step 1 —
+   *   and the artboard ramp regressed it. The fix holds hue and chroma and
+   *   moves lightness only, and only upward: step 0 must stay the lightest
+   *   step, so the page is the only direction available.
+   *
+   *     oklch(0.952 0.012 96) = #f1efe6
+   *     to step 1: ΔEok 0.0479 (protanopia) · contrast 1.179
+   *     to the page: ΔEok 0.0379 — an empty week is still a visible grid
+   *
+   *   The window is narrow and this value sits in the middle of it: below
+   *   L 0.945 step 0 collides with step 1, above L 0.959 it dissolves into
+   *   the page. palette.test.ts holds BOTH ends, so neither can be relieved
+   *   by pushing on the other. Gate 1 is the human override point.
+   *
+   * --color-heat-5 below is a DEPRECATED alias — see the note after
+   * heat-4.
+   */
+  --color-heat-0: oklch(0.952 0.012 96);
+  --color-heat-1: oklch(0.894 0.039 206);
+  --color-heat-2: oklch(0.775 0.07 205);
+  --color-heat-3: oklch(0.601 0.078 204);
+  --color-heat-4: oklch(0.407 0.064 199);
+  /*
+   * DEPRECATED — the ramp is five steps (0..4) as of this file; the
+   * artboards have no sixth step. Aliased to heat-4 (the new deepest step)
+   * so web/app/me/heatmap.module.css's `data-level='5'` cell keeps
+   * resolving to something rather than nothing. Retires when the heatmap
+   * component migrates to the five-step ramp — Phase 4 of
+   * docs/plans/2026-09-02-design-import-plan.md, which moves the heatmap
+   * from /me onto the profile screen.
+   */
+  --color-heat-5: oklch(0.407 0.064 199);
+  /*
+   * No artboard source for this one (the artboard's heatmap cells rely on
+   * grid gap for separation, not a stroke — palette doc §5.1). Carried
+   * forward unchanged, same call as the track hues below: no evidence, no
+   * invented value.
+   */
   --color-heat-cell-edge: oklch(0.88 0.004 95);
 
   /*
-   * Spacing scale — eight values from 4px to 64px. Consistent 1.5× step ratio
+   * DEPRECATED — top banner, replaced structurally by the 224px nav rail
+   * (palette doc §5.1: "the old --color-banner-bg/text/divider trio ...
+   * has no artboard counterpart ... the rail is the new home for that
+   * chrome"). Aliased to the rail tokens above, which keeps the pairing's
+   * contrast intact (rail-bg/rail-text is 6.40:1 in light, 6.27:1 in dark)
+   * even though the visual result — a dark banner instead of a light one —
+   * is not what today's TopBar was designed to look like. That is expected
+   * and temporary: the shell that actually consumes these
+   * (web/app/_shell/top-bar.module.css, theme-toggle, auth-control,
+   * account-menu — 4 modules) is rebuilt from scratch in Phase 2 of
+   * docs/plans/2026-09-02-design-import-plan.md, which retires this alias
+   * entirely.
+   *
+   * --color-banner-divider has no rail counterpart at all — the one
+   * divider line found in the rail markup is an alpha of rail-text
+   * (rgba(191,228,233,.25)), not an independent hex (palette doc §5.1).
+   * Aliased to --color-rail-text as the nearest available token; Phase 2
+   * is where this gets a real component-level treatment.
+   */
+  --color-banner-bg: oklch(0.407 0.064 199);
+  --color-banner-text: oklch(0.894 0.039 206);
+  --color-banner-divider: oklch(0.894 0.039 206);
+
+  /*
+   * DEPRECATED, status unconfirmed rather than renamed. No artboard
+   * evidence of a footer surface was found in the five (of eight) cached
+   * artboard files docs/design/2026-09-02-palette.md was written against
+   * (§5.1, §6) — it may simply not exist in the new design. Carried
+   * forward at its CURRENT value, unchanged, the same call made for the
+   * track hues below: no evidence yet, so no value is invented. Whoever
+   * resolves docs/design/2026-09-02-palette.md §6 item 1 (confirm against
+   * the full eight-file set) should either give this a real palette-doc
+   * value or delete it and its one consumer,
+   * web/app/_shell/footer.module.css.
+   */
+  --color-footer-bg: oklch(0.3 0.008 250);
+  --color-footer-text: oklch(0.93 0.004 90);
+
+  /*
+   * DEPRECATED, status unconfirmed rather than renamed. The old rule was
+   * "pure white tile, mustard S never sits on a tinted field"; the rail
+   * logo mark now observed is a 2x2 checkerboard built directly from
+   * --color-rail-bg/--color-rail-text, with no white backing tile found in
+   * the artboards checked (palette doc §5.1). Left at its current value —
+   * a white tile might still exist elsewhere (e.g. a favicon-style mark)
+   * that wasn't in the cached files. Not renamed because no replacement
+   * role is confirmed yet.
+   */
+  --color-logo-tile: #fff;
+
+  /*
+   * Spacing scale — eight values from 4px to 64px. Consistent 1.5x step ratio
    * (or 1px difference for the smallest values). These replace hardcoded
    * padding, margin, and gap values in components.
    */
@@ -131,15 +334,37 @@
 
   /*
    * Type measure (design §14.1, §14.2). Three tiers, narrowest to widest:
-   *   - prose: the 46ch reading column. Stays CONSTANT across breakpoints —
+   *   - prose: the reading column. Stays CONSTANT across breakpoints —
    *     the chrome and breakout blocks around it adapt instead (§14.2).
    *   - breakout: the wider column `code`, `chart`, `figure` and the
-   *     heatmap escape to, because 46ch cannot host an 80-column code line.
+   *     heatmap escape to, because prose cannot host an 80-column code line.
    *     Widens at larger breakpoints below (this one MAY vary).
    *   - full: the lesson shell's own outer bound — the largest of the
    *     three, everything else nests inside it.
+   *
+   * `--measure-prose` WAS `46ch` (rendered 414px at the pre-import 17px
+   * body serif). Phase 0's artboard-spec §7 Q3 first proposed literally
+   * copying the Desktop brief's PROSE text ("reading column capped at
+   * 660px") — that premise was wrong: "660px" appears exactly once in the
+   * whole design project, in that one sentence of brief text, and NOWHERE
+   * in any artboard's own CSS. What every reader artboard actually draws
+   * (PL4/PL5/P5/P6) is `max-width: 600px` holding `font: 400 19px/1.72
+   * 'Source Serif 4'` prose.
+   *
+   * The reconciliation kept the `ch` unit — it is font-relative, which is
+   * the property §14.2 actually cares about ("the prose measure stays
+   * constant across breakpoints"), and it is what lets this token survive
+   * the Plus Jakarta Sans/Source Serif 4 swap without being re-picked by
+   * hand — and re-derived the count so the RENDERED column lands on the
+   * artboards' 600px at their own 19px reading size, measured in a real
+   * browser (`document.fonts.ready`, then a detached element — the same
+   * technique Phase 1 task 3 used to get 414px), not computed from glyph
+   * metrics: at `font: 400 19px 'Source Serif 4'`, 1ch measures exactly
+   * 10px, so 60ch resolves to exactly 600px. Both the column width AND the
+   * reading size rise together; `.prose` in lesson.module.css carries the
+   * matching 19px/1.72 change.
    */
-  --measure-prose: 46ch;
+  --measure-prose: 60ch;
   --measure-breakout: 70ch;
   --measure-full: 76ch;
 
@@ -148,10 +373,19 @@
    * blue/teal/ochre/maroon hold L and C fixed and vary only H, so they read
    * as one family rather than a rainbow dropped into an austere palette.
    * H values chosen to (a) be recognisably those names and (b) sit clear of
-   * the link teal's own hue (210 light / 205 dark) so "this is a track" and
-   * "this is a link" stay two different signals — track teal (H175) is 35°
-   * off the light link and 30° off the dark link. See
+   * the link teal's own hue (now 199 light / 207 dark) so "this is a track"
+   * and "this is a link" stay two different signals — track teal (H175) is
+   * 24 degrees off the light link and 32 degrees off the dark link. See
    * docs/design/track-hues.md for the full derivation and swatch values.
+   *
+   * NO ARTBOARD SOURCE for these five values (palette doc §5.1: nothing in
+   * the artboards references a track/course-colour concept). Carried
+   * forward UNCHANGED from the pre-import palette —
+   * db/migrations/0002_content_schema.sql still constrains `hue` to
+   * `blue | teal | ochre | maroon | slate`, so the tokens must keep
+   * existing with *some* value, and no artboard evidence justifies
+   * changing the numbers, only the comment's stale hue-offset arithmetic
+   * above (recomputed against the new link hues).
    *
    * `slate` is the deliberate exception to the fixed-C rule: AUTHORING.md
    * describes it as muted, for background tracks, so it holds the same L
@@ -199,40 +433,133 @@
    * unreachable whenever the OS is dark.
    */
   :root:not([data-theme='light']) {
-    --color-page: oklch(0.215 0.006 245);
-    --color-surface-raised: oklch(0.26 0.008 245);
-    --color-border-hairline: oklch(0.32 0.008 245);
+    --color-canvas: oklch(0.175 0.005 220);
+    --color-page: oklch(0.209 0.008 211);
+    --color-surface-raised: oklch(0.271 0.009 209);
+    /*
+     * Distinct from --color-surface-raised in dark — a real, deliberate
+     * step (6/255 per channel), unlike light where the two collapse to one
+     * value (palette doc §5.2).
+     */
+    --color-surface-card: oklch(0.246 0.009 209);
+    --color-border-hairline: oklch(0.323 0.01 207);
 
-    --color-text: oklch(0.93 0.004 90);
-    --color-text-secondary: oklch(0.775 0.005 245);
+    --color-text: oklch(0.95 0.003 174);
+    --color-text-secondary: oklch(0.764 0.003 197);
+    /* Dark collapses light's prose/code split into one value — "never pure white" per the brief. */
+    --color-text-reading: oklch(0.892 0.008 177);
 
-    --color-banner-bg: oklch(0.36 0.05 208);
-    --color-banner-text: oklch(0.96 0.01 205);
-    --color-banner-divider: oklch(0.43 0.055 208);
+    /*
+     * --color-link IS CORRECTED, NOT TRANSCRIBED, in dark mode. The
+     * artboard hex #46909A clears 4.5:1 on the page (4.83:1) but not on
+     * either raised tone — 4.07:1 on --color-surface-raised, 4.39:1 on
+     * --color-surface-card. The artboards do put an inline link on a
+     * raised surface: the "Change →" link inside the profile-visibility
+     * callout (`background:#222829`) in both `iPhone Dark` and `iPad
+     * Portrait Dark`. At 13.5px that is not large text, so 4.5:1 applies,
+     * and in this app a link inside a card is the common case, not the
+     * exotic one.
+     *
+     * The fix holds hue and chroma and lifts lightness to the first value
+     * clearing the floor on both raised tones:
+     *
+     *   oklch(0.645 0.075 207) = #519ba5
+     *   page 5.54:1 · raised 4.68:1 · card 5.04:1  (was 4.83 / 4.07 / 4.39)
+     *
+     * Two tokens the palette doc records as sharing this hex deliberately
+     * do NOT follow it: --color-heat-2 keeps the artboard's literal ramp
+     * value (#46909A) because a heatmap fill carries no contrast
+     * requirement, and --color-tag-bg keeps its transcribed composite.
+     * Both are noted in docs/design/2026-09-02-palette.md §3. Gate 1 is
+     * the human override point.
+     */
+    --color-link: oklch(0.645 0.075 207);
+    /*
+     * NOT equal to --color-link in dark (unlike light) — dark uses the
+     * darkest step of the teal family for the rail instead of the
+     * mid-bright link tone (palette doc §2).
+     */
+    --color-rail-bg: oklch(0.269 0.04 200);
+    --color-text-on-accent: oklch(0.226 0.032 209);
+    --color-rail-text: oklch(0.724 0.07 205);
+    --color-tag-bg: oklch(0.28 0.022 206);
+    /* Uses rail-text here, NOT link — a real departure from light's pattern (palette doc §2). */
+    --color-tag-text: oklch(0.724 0.07 205);
 
+    /*
+     * DARK HAS TWO GOLDS, NOT ONE. docs/design/2026-09-02-palette.md §3
+     * gives --color-accent-gold-text the same #A67C25 as the indicator,
+     * "dark collapses light's two tiers into one value". That is the same
+     * frequency-versus-usage error artboard-spec §5.2's own ⚠️ note
+     * records for the light table, and grepping which CSS *property* each
+     * hex sets settles it the same way: across the four cached dark
+     * artboards #A67C25 is `background` ×3 + `border-left` ×9 (the
+     * indicator) and #CFA23F is `color` ×21 (the text). Two roles, two
+     * floors — exactly the split the light block makes.
+     *
+     * It matters because the merged value fails as text: #A67C25 measures
+     * 3.95:1 on --color-surface-raised and 4.26:1 on --color-surface-card,
+     * under the 4.5:1 floor. The artboards' own text gold clears it
+     * everywhere, so this is a transcription FIX, not a correction — it
+     * restores the value the design actually draws:
+     *
+     *   #CFA23F = oklch(0.736 0.126 84)
+     *   page 7.51:1 · raised 6.34:1 · card 6.84:1 · rail 6.31:1
+     *
+     * The indicator gold is transcribed as-is and needs no correction: it
+     * clears 3:1 on every ground it sits on (4.68:1 page, 3.95:1 raised,
+     * 4.26:1 card, 3.93:1 rail). Dark's rail is only 1.19:1 from its page,
+     * so dark has none of the squeeze that makes light's rail unreachable
+     * — see the light block.
+     */
+    --color-accent-gold: oklch(0.613 0.113 81);
+    --color-accent-gold-text: oklch(0.736 0.126 84);
+    /* DEPRECATED — see the light block's --color-accent-yellow comment. */
+    --color-accent-yellow: oklch(0.613 0.113 81);
+
+    --color-error: oklch(0.722 0.113 37);
+
+    /*
+     * Same five-step ramp as light, reusing the teal family already
+     * declared above (heat-1 = its own value; heat-4 = rail-bg). heat-2
+     * was --color-link and is now the only place that hex survives, since
+     * the link itself was lifted for text contrast — see the --color-link
+     * comment above. heat-0 is the SECOND deliberate deviation from
+     * docs/design/2026-09-02-palette.md in this file: that doc maps dark
+     * heat-0 to --color-border-hairline (#2E3536) for symmetry with
+     * light's exact reuse, but flags its own least-confident call in doing
+     * so (§5.6) — the artboard's own `steps` array actually draws
+     * `#252B2C` at this position, ΔE 3.91 from #2E3536, which is bigger
+     * than any other fold in the conversion. Since #252B2C is what the
+     * design actually draws, this file uses the artboard's array value
+     * directly: oklch(0.284 0.009 209), converted the same way as every
+     * other value here (ΔE 0.051, in gamut).
+     */
+    --color-heat-0: oklch(0.284 0.009 209);
+    --color-heat-1: oklch(0.735 0.053 207);
+    --color-heat-2: oklch(0.61 0.075 207);
+    --color-heat-3: oklch(0.4 0.054 204);
+    --color-heat-4: oklch(0.269 0.04 200);
+    /* DEPRECATED — see the light block's --color-heat-5 comment. */
+    --color-heat-5: oklch(0.269 0.04 200);
+    --color-heat-cell-edge: oklch(0.35 0.008 245);
+
+    /* DEPRECATED — see the light block's banner comments. */
+    --color-banner-bg: oklch(0.269 0.04 200);
+    --color-banner-text: oklch(0.724 0.07 205);
+    --color-banner-divider: oklch(0.724 0.07 205);
+
+    /* DEPRECATED, status unconfirmed — see the light block's footer comment. */
     --color-footer-bg: oklch(0.16 0.006 250);
     --color-footer-text: oklch(0.82 0.004 90);
 
-    --color-link: oklch(0.8 0.075 205);
-    --color-tag-bg: oklch(0.3 0.03 205);
-    --color-tag-text: oklch(0.83 0.06 205);
-
-    --color-accent-yellow: oklch(0.82 0.15 88);
-
+    /* DEPRECATED, status unconfirmed — see the light block's logo-tile comment. */
     --color-logo-tile: #fff;
-
-    /* Same ramp, inverted: dark page, so intensity climbs in lightness. */
-    --color-heat-0: oklch(0.28 0.006 245);
-    --color-heat-1: oklch(0.36 0.04 205);
-    --color-heat-2: oklch(0.47 0.055 205);
-    --color-heat-3: oklch(0.58 0.07 205);
-    --color-heat-4: oklch(0.7 0.08 205);
-    --color-heat-5: oklch(0.84 0.085 205);
-    --color-heat-cell-edge: oklch(0.35 0.008 245);
 
     /*
      * Same five hues, same C, lightness inverted for a dark page — same
      * pattern as --color-link above. slate keeps its markedly lower C.
+     * Untouched — see the light block's track-hue comment.
      */
     --color-track-blue: oklch(0.78 0.095 255);
     --color-track-teal: oklch(0.78 0.095 175);
@@ -248,38 +575,49 @@
  * on OS preference — this is what makes choosing "dark" on a light-OS
  * device work. Values are a deliberate duplicate of the block above (a
  * plain CSS custom-property file has no mixin to share them from); keep
- * the two in sync if the dark palette ever changes.
+ * the two in sync if the dark palette ever changes. web/src/lib/
+ * tokens-dark-blocks.test.ts asserts they match.
  */
 :root[data-theme='dark'] {
-  --color-page: oklch(0.215 0.006 245);
-  --color-surface-raised: oklch(0.26 0.008 245);
-  --color-border-hairline: oklch(0.32 0.008 245);
+  --color-canvas: oklch(0.175 0.005 220);
+  --color-page: oklch(0.209 0.008 211);
+  --color-surface-raised: oklch(0.271 0.009 209);
+  --color-surface-card: oklch(0.246 0.009 209);
+  --color-border-hairline: oklch(0.323 0.01 207);
 
-  --color-text: oklch(0.93 0.004 90);
-  --color-text-secondary: oklch(0.775 0.005 245);
+  --color-text: oklch(0.95 0.003 174);
+  --color-text-secondary: oklch(0.764 0.003 197);
+  --color-text-reading: oklch(0.892 0.008 177);
 
-  --color-banner-bg: oklch(0.36 0.05 208);
-  --color-banner-text: oklch(0.96 0.01 205);
-  --color-banner-divider: oklch(0.43 0.055 208);
+  --color-link: oklch(0.645 0.075 207);
+  --color-rail-bg: oklch(0.269 0.04 200);
+  --color-text-on-accent: oklch(0.226 0.032 209);
+  --color-rail-text: oklch(0.724 0.07 205);
+  --color-tag-bg: oklch(0.28 0.022 206);
+  --color-tag-text: oklch(0.724 0.07 205);
+
+  --color-accent-gold: oklch(0.613 0.113 81);
+  --color-accent-gold-text: oklch(0.736 0.126 84);
+  --color-accent-yellow: oklch(0.613 0.113 81);
+
+  --color-error: oklch(0.722 0.113 37);
+
+  --color-heat-0: oklch(0.284 0.009 209);
+  --color-heat-1: oklch(0.735 0.053 207);
+  --color-heat-2: oklch(0.61 0.075 207);
+  --color-heat-3: oklch(0.4 0.054 204);
+  --color-heat-4: oklch(0.269 0.04 200);
+  --color-heat-5: oklch(0.269 0.04 200);
+  --color-heat-cell-edge: oklch(0.35 0.008 245);
+
+  --color-banner-bg: oklch(0.269 0.04 200);
+  --color-banner-text: oklch(0.724 0.07 205);
+  --color-banner-divider: oklch(0.724 0.07 205);
 
   --color-footer-bg: oklch(0.16 0.006 250);
   --color-footer-text: oklch(0.82 0.004 90);
 
-  --color-link: oklch(0.8 0.075 205);
-  --color-tag-bg: oklch(0.3 0.03 205);
-  --color-tag-text: oklch(0.83 0.06 205);
-
-  --color-accent-yellow: oklch(0.82 0.15 88);
-
   --color-logo-tile: #fff;
-
-  --color-heat-0: oklch(0.28 0.006 245);
-  --color-heat-1: oklch(0.36 0.04 205);
-  --color-heat-2: oklch(0.47 0.055 205);
-  --color-heat-3: oklch(0.58 0.07 205);
-  --color-heat-4: oklch(0.7 0.08 205);
-  --color-heat-5: oklch(0.84 0.085 205);
-  --color-heat-cell-edge: oklch(0.35 0.008 245);
 
   --color-track-blue: oklch(0.78 0.095 255);
   --color-track-teal: oklch(0.78 0.095 175);
