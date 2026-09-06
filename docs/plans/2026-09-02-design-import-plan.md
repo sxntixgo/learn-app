@@ -596,7 +596,7 @@ _The pages the product exists for. Sequential after Phase 2; parallel with each 
       **Acceptance:** `catalog.spec.ts` green; a spec asserts no progress banner renders on
       Catalog (it moved to Home, and having it in both places is what the redesign fixed).
       **Model:** `sonnet`
-- [ ] **Course `/courses/[courseSlug]`** (`course.module.css`, 357 lines)
+- [x] **Course `/courses/[courseSlug]`** (`course.module.css`, 357 lines)
       **Acceptance:** renders to artboard at four widths; no raw colour survives lint.
       **Model:** `sonnet`
 - [x] **Lesson reader (PL4/PL5, P5/P6)** — `lesson.module.css` (681) + `awards.module.css`,
