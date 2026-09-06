@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { test, expect, type Browser, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import type { E2eFixtures } from '../../tools/src/e2e-seed.ts';
+import { E2E_DEGREE_TITLE } from '../../tools/src/e2e-seed.ts';
 import { NAV_SIDEBAR_FROM_PX } from '../../web/src/lib/heatmap.ts';
 
 /*
@@ -32,15 +33,22 @@ import { NAV_SIDEBAR_FROM_PX } from '../../web/src/lib/heatmap.ts';
  * `768` — would make this file the next thing to drift when the boundary
  * moves.
  *
- * ⚠️ DEGREE PROGRESS IS THE ONE M1 BLOCK NOT ASSERTED HERE. Degrees are
- * GLOBAL definitions: `listDegreeProgress` (api/src/progression/views.ts)
- * joins every row of `degrees` against the viewer, so seeding one degree
- * would put a Degrees section on EVERY seeded account's profile and break
- * profile-empty.spec.ts, whose subject is that an account with nothing in it
- * shows no sections. That is Phase 4's file and Phase 4's fixture decision.
- * Until then the card's derivations are covered without a browser in
- * web/src/lib/home.test.ts (`degreeTally`, `pickDegree`), and its absence is
- * recorded in the Phase 3 outcome rather than left to be re-discovered.
+ * DEGREE PROGRESS IS NOW ASSERTED HERE (Phase 4). Degrees are GLOBAL
+ * definitions: `listDegreeProgress` (api/src/progression/views.ts) joins
+ * every row of `degrees` against the viewer, so seeding one puts a nonempty
+ * `/me/degrees` response on every account, not just `homeUser`'s.
+ * `tools/src/e2e-seed.ts`'s `E2E_DEGREE_SLUG` names `E2E_COURSE_SLUG` as its
+ * sole requirement, which gives `homeUser` — enrolled, nothing finished — a
+ * real "0 of 1 courses complete" card, the artboard's not-started state.
+ * The collision this would otherwise cause on `profile-empty.spec.ts`'s
+ * `avatarUser` and viewport.spec.ts / a11y.spec.ts's `viewportUser` (both
+ * view their own profile as owner, which calls the same endpoint) is closed
+ * in `web/app/u/[handle]/DegreesSection.tsx`'s `hasRealProgress`: a degree
+ * only counts as owner content once there is something real toward it
+ * (earned, or `percent > 0`), so an account that has never touched
+ * `E2E_COURSE_SLUG` still sees nothing. The card's pure derivations stay
+ * covered without a browser in web/src/lib/home.test.ts (`degreeTally`,
+ * `pickDegree`); this file is what proves the real fixture renders it.
  */
 
 const fixturesPath = new URL('../.fixtures.json', import.meta.url);
@@ -156,6 +164,14 @@ for (const { name, width, height } of WIDTHS) {
       await expectRendered(upNext.getByText('01', { exact: true }), 'Up next row number 01');
       await expectRendered(upNext.getByText('02', { exact: true }), 'Up next row number 02');
 
+      // ---- Degree progress: the not-started card. `homeUser` is enrolled
+      // in E2E_COURSE_SLUG, the fixture degree's sole requirement, and has
+      // finished nothing — so this is a real "0 of 1", not a stub.
+      const degreeCard = page.getByRole('region', { name: E2E_DEGREE_TITLE });
+      await expectRendered(degreeCard, 'Degree progress card');
+      await expectRendered(degreeCard.getByText('Degree progress', { exact: true }), 'Degree progress eyebrow');
+      await expect(degreeCard).toContainText('0 of 1 course complete');
+
       // ---- Your courses: the section rule's action, one numbered row, its
       // progress bar and its count.
       const courses = page.getByRole('region', { name: 'Your courses' });
@@ -196,6 +212,10 @@ for (const { name, width, height } of WIDTHS) {
       for (const heading of ['Recent activity', 'Up next', 'Your courses']) {
         await expect(page.getByRole('heading', { name: heading, exact: true }), heading).toHaveCount(1);
       }
+      await expect(
+        page.getByRole('heading', { name: E2E_DEGREE_TITLE, exact: true }),
+        'Degree progress heading',
+      ).toHaveCount(1);
 
       // ---- And the page fits its viewport. 375 is where this fails first.
       const overflow = await page.evaluate(
@@ -212,6 +232,7 @@ for (const { name, width, height } of WIDTHS) {
       const stats = await expectRendered(banner.getByRole('list'), 'the banner statistics');
       const feed = await expectRendered(page.getByRole('region', { name: 'Recent activity' }), 'Recent activity');
       const upNext = await expectRendered(page.getByRole('region', { name: 'Up next' }), 'Up next');
+      const degree = await expectRendered(page.getByRole('region', { name: E2E_DEGREE_TITLE }), 'Degree progress');
 
       if (tier === 'narrow') {
         /*
@@ -219,19 +240,28 @@ for (const { name, width, height } of WIDTHS) {
          * row BELOW the percent, and Up next sits above the feed — that
          * order is P2's, and it is why me.module.css names grid areas
          * rather than using `order` (which cannot express the wide tier's
-         * row span).
+         * row span). The degree card is last of the three: upnext, feed,
+         * degree (me.module.css's `.band` grid-template-areas).
          */
         expect(stats.y, 'the statistics are not below the percent').toBeGreaterThan(percent.y + percent.height - 1);
         expect(upNext.y + upNext.height, 'Up next does not sit above the feed').toBeLessThanOrEqual(feed.y + 1);
         expect(Math.abs(feed.x - upNext.x), 'the band is not one column').toBeLessThanOrEqual(1);
+        expect(degree.y + 1, 'the degree card does not sit below the feed').toBeGreaterThan(feed.y + feed.height - 1);
+        expect(Math.abs(feed.x - degree.x), 'the degree card is not in the same column').toBeLessThanOrEqual(1);
       } else {
         /*
          * M1: the banner is a single row — percent, identity, statistics,
          * action — and the band is two columns with the feed on the left.
+         * The right column stacks Up next above the degree card
+         * (me.module.css's wide `.band`: 'feed upnext' / 'feed degree').
          */
         expect(stats.x, 'the statistics are not beside the percent').toBeGreaterThan(percent.x + percent.width - 1);
         expect(feed.x + feed.width, 'the feed is not left of Up next').toBeLessThanOrEqual(upNext.x + 1);
         expect(upNext.y, 'the band is not two columns').toBeLessThan(feed.y + feed.height);
+        expect(Math.abs(upNext.x - degree.x), 'the degree card is not in the right column').toBeLessThanOrEqual(1);
+        expect(degree.y + 1, 'the degree card does not sit below Up next').toBeGreaterThan(
+          upNext.y + upNext.height - 1,
+        );
       }
     });
   });

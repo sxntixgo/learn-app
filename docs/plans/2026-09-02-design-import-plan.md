@@ -760,7 +760,7 @@ _Parallel with Phase 3 once Gate 2 passes._
 > states) under the profile header. Nothing about `/me` is a straight restyle, which is why
 > there is no `/me` task.
 
-- [ ] **Seed a degree, and pick up Home's degree card in a browser.** Degree progress is the
+- [x] **Seed a degree, and pick up Home's degree card in a browser.** Degree progress is the
       one M1 block with no browser-level coverage, and the reason is a fixture collision this
       phase owns: `listDegreeProgress` (`api/src/progression/views.ts`) joins **every** row of
       `degrees` against the viewer, so seeding one puts a Degrees section on every seeded
@@ -807,6 +807,21 @@ _Parallel with Phase 3 once Gate 2 passes._
       against the artboard.**
       **Acceptance:** none unless a human decides the public contract should change — that
       is a new task, not a bug.
+      **Model:** needs a human.
+- [ ] **`hasRealProgress` is narrower than the artboard, and was chosen to resolve a test
+      collision.** Phase 4 closed the seeded-degree collision in
+      `web/app/u/[handle]/DegreesSection.tsx`: a degree counts as owner content only once
+      there is something real toward it (earned, or `percent > 0`). That keeps
+      `profile-empty.spec.ts`, `viewport.spec.ts` and `a11y.spec.ts` green without scoping
+      `listDegreeProgress`. **But PL9/P9 draws "a not-started degree and its prerequisites",
+      which this rule hides**, and it equally hides a genuinely not-started-but-relevant
+      degree — the owner is enrolled in a required course and has finished nothing. Telling
+      "0% and never touched" apart from "0% but actually pursuing it" needs enrolment
+      awareness the endpoint does not have today. Nothing in the suite proves that case
+      either way. **This is a product decision made to satisfy fixtures and a human should
+      confirm it at Gate 4**, not a settled question.
+      **Acceptance:** a human confirms the rule, or `listDegreeProgress` gains the scoping
+      that would let the artboard's not-started card render honestly.
       **Model:** needs a human.
 - [ ] **`/search`** — `search.module.css` (172), results and empty state.
       **Acceptance:** `search.spec.ts` green; the result list matches the artboard at four
