@@ -18,6 +18,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import type { Lesson, QuizSubmitRequest, QuizSubmitResult } from '../../../../../src/lib/api';
 import type { components } from '../../../../../src/lib/api-types';
 import { submitQuizAction } from './actions';
@@ -31,9 +32,17 @@ export interface QuizProps {
   lessonSlug: string;
   quiz: QuizBlock;
   progress: Lesson['progress'];
+  /**
+   * The previous lesson's URL (PL6/P7's "← THE BASE CASE" back link, reused
+   * here as the graded-not-passed footer's "LESSON" link — "have another
+   * read of the material, then retry"). Undefined when this checkpoint is
+   * the course's first lesson, in which case the LESSON link is simply
+   * absent rather than pointing nowhere.
+   */
+  previousLessonHref?: string;
 }
 
-export default function Quiz({ courseSlug, lessonSlug, quiz, progress }: QuizProps) {
+export default function Quiz({ courseSlug, lessonSlug, quiz, progress, previousLessonHref }: QuizProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   // Design §9.1: a passed quiz stays passed on revisit — seeded from the
@@ -95,15 +104,28 @@ export default function Quiz({ courseSlug, lessonSlug, quiz, progress }: QuizPro
   }
 
   const allAnswered = quiz.questions.every((_, questionIndex) => answers[questionIndex] !== undefined);
+  const correctCount = result?.results.filter((r) => r.correct).length ?? 0;
 
   return (
     <div className={styles.quiz}>
+      {/*
+       * P7's graded banner: "N of M correct — not passed", a gold-bordered
+       * card. `result.passed` can't actually reach this render in practice
+       * (a passing submit also flips `passed` above, which returns the
+       * terminal .quizPassed state instead before this paints) — styled
+       * anyway rather than assuming that can never change.
+       */}
       {result ? (
-        <p className={result.passed ? styles.quizResultPass : styles.quizResultFail} role="status">
-          {result.passed
-            ? `Passed — ${Math.round(result.score * 100)}% correct.`
-            : `Not yet — ${Math.round(result.score * 100)}% correct (need ${Math.round(result.pass * 100)}%).`}
-        </p>
+        <div className={styles.quizResultBanner} role="status">
+          <p className={result.passed ? `${styles.quizResultHeading} ${styles.quizResultHeadingPass}` : styles.quizResultHeading}>
+            {correctCount} of {quiz.questions.length} correct — {result.passed ? 'passed' : 'not passed'}
+          </p>
+          <p className={styles.quizResultBody}>
+            {result.passed
+              ? 'Nice work — this checkpoint is complete.'
+              : "Have another read of the material, then retry. Attempts aren't limited and only your best result is recorded."}
+          </p>
+        </div>
       ) : null}
 
       {/*
@@ -127,8 +149,13 @@ export default function Quiz({ courseSlug, lessonSlug, quiz, progress }: QuizPro
                 const isWrongPick =
                   questionResult !== null && questionResult.choiceIndex === choiceIndex && !questionResult.correct;
 
+                // Not yet graded: a neutral "chosen" tint (selection isn't
+                // correctness). Once graded, correctness classes replace it
+                // — P7 shows both the student's own pick AND the actual
+                // correct choice, whether or not they're the same row.
                 const choiceClassName = [
                   styles.quizChoice,
+                  !questionResult && selected ? styles.quizChoiceSelected : '',
                   isCorrectChoice ? styles.quizChoiceCorrect : '',
                   isWrongPick ? styles.quizChoiceWrong : '',
                 ]
@@ -145,29 +172,60 @@ export default function Quiz({ courseSlug, lessonSlug, quiz, progress }: QuizPro
                       disabled={isPending}
                     />
                     <span>{choice.text}</span>
+                    {/*
+                     * The "✓" mark (P7) is decorative (aria-hidden); the
+                     * sr-only text beside it carries the same fact for
+                     * anyone not reading colour/glyphs off the row.
+                     */}
+                    {isCorrectChoice ? (
+                      <>
+                        <span className={styles.quizChoiceMark} aria-hidden="true">
+                          ✓
+                        </span>
+                        <span className={styles.srOnly}>Correct answer.</span>
+                      </>
+                    ) : null}
+                    {isWrongPick ? <span className={styles.srOnly}>Your answer — not correct.</span> : null}
                   </label>
                 );
               })}
             </div>
-            {questionResult ? (
-              <p className={questionResult.correct ? styles.quizFeedbackCorrect : styles.quizFeedbackWrong}>
-                {questionResult.correct ? 'Correct.' : 'Not quite — the highlighted choice was correct.'}
-              </p>
-            ) : null}
           </fieldset>
         );
       })}
 
       <div className={styles.quizControl}>
-        <button
-          type="button"
-          className={styles.completeButton}
-          onClick={handleSubmit}
-          disabled={isPending}
-          aria-busy={isPending}
-        >
-          {isPending ? 'Scoring…' : result ? 'Submit again' : 'Submit answers'}
-        </button>
+        {result && !result.passed ? (
+          // P7: graded and not passed — RETRY (resubmit) beside LESSON
+          // (back to the material the back link above also points at).
+          <div className={styles.quizRetryRow}>
+            <button
+              type="button"
+              className={styles.quizRetryButton}
+              onClick={handleSubmit}
+              disabled={isPending}
+              aria-busy={isPending}
+            >
+              {isPending ? 'Scoring…' : 'Retry'}
+            </button>
+            {previousLessonHref ? (
+              <Link href={previousLessonHref} className={styles.quizLessonLink}>
+                Lesson
+              </Link>
+            ) : null}
+          </div>
+        ) : (
+          // PL6: nothing graded yet — one "CHECK ANSWERS" pill.
+          <button
+            type="button"
+            className={styles.quizCheckButton}
+            onClick={handleSubmit}
+            disabled={isPending}
+            aria-busy={isPending}
+          >
+            {isPending ? 'Scoring…' : 'Check answers'}
+          </button>
+        )}
         {!allAnswered && !result ? (
           <p className={styles.progressNote}>Unanswered questions count as incorrect.</p>
         ) : null}
