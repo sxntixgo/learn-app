@@ -8,18 +8,62 @@
    * about it: the banner's own min-height, the sticky offset of the desktop
    * sidebar, and the sidebar's height. When they disagreed, the sidebar stuck
    * to the top of the viewport — behind the banner — and painted over it.
+   *
+   * The three rules, by file, so a future edit can find all of them:
+   *   1. top-bar.module.css  `.banner { min-height: var(--banner-height) }`
+   *   2. nav.module.css      `.nav { top: var(--banner-height) }`      (>=1024)
+   *   3. nav.module.css      `.nav { height: calc(100dvh - var(--banner-height)) }`
+   * Rule 1 sets the height, 2 parks the rail under it, 3 stops the rail
+   * overrunning the viewport by exactly that much. Change the token, not a
+   * rule. `shell-banner-rail.spec.ts` asserts 1 and 2 agree at 1194 and 1440
+   * by measuring the rendered banner in a browser — not by reading this file,
+   * because reading the CSS is what agreed last time while the page did not.
+   *
+   * NOTHING IN THE BANNER MAY BE TALLER THAN THIS. min-height is a floor, so
+   * a control that grows past it silently moves the banner's RENDERED height
+   * away from the token while rules 2 and 3 keep quoting the token. The
+   * banner holds a 44px brand link inside 2 x 0.6rem of padding — 63.2px,
+   * just under the 64px floor — which is exactly the kind of margin that
+   * disappears when someone adds a control, so the spec measures the rendered
+   * height rather than trusting this arithmetic.
    */
   --banner-height: 4rem;
+
+  /*
+   * The wide-tier rail (iPad landscape / Desktop artboards, spec §3 and §6):
+   * "the same permanent 224px teal rail". Used by nav.module.css for the
+   * rail itself and by top-bar.module.css to line the brand up with it, so
+   * the banner and the rail read as one continuous teal L rather than two
+   * teal boxes that nearly line up.
+   *
+   * `NAV_SIDEBAR_PX` in src/lib/heatmap.ts is the same number, and
+   * `heatmap.test.ts` now reads THIS declaration to prove it: the constant
+   * spent a phase saying 180 while the rail was 224, describing a page that
+   * did not exist. The heatmap's fits-in-the-column arithmetic is the only
+   * consumer, and it is the kind of wrong nothing renders.
+   */
+  --rail-width: 224px;
 }
 
-/* Clearance for the fixed bottom tab bar so it never covers the tail of the
-   page content or the footer beneath it. Matches nav.module.css's ~44px
-   link height plus its own vertical padding, with slack. Only reserved when
-   Nav actually renders something (Task D: signed out, Nav renders null and
-   there is nothing to clear space for). */
-.root[data-nav-visible='true'] {
-  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
-}
+/*
+ * THERE IS NO BOTTOM RESERVATION ANY MORE, AND THAT IS THE POINT OF THIS
+ * COMMENT. `.root[data-nav-visible='true'] { padding-bottom: 4.5rem }` used
+ * to reserve clearance for the fixed bottom tab bar, and a rule inside a
+ * 1024px media query cancelled it. It is gone with the tab bar: the narrow tier is a
+ * drawer now (artboard P11, nav.module.css), which is `position: fixed` over
+ * the page while it is open and absent from the box model entirely while it
+ * is not, so nothing at any width sits between the end of the content and
+ * the bottom of the document.
+ *
+ * KEEP THE WARNING EVEN THOUGH THE RULE IS GONE. The cancelling rule was
+ * once written `.root` — (0,1,0) against the reservation's (0,2,0) — so it
+ * never won, and 72px of page background sat below the footer at EVERY
+ * width, including the ones with no tab bar to clear. Measured, not guessed:
+ * 72px at 1440 as well as at 375. If a rule ever comes back here that
+ * another rule has to cancel, it cancels with the SAME SELECTOR, and
+ * `shell-layout.spec.ts` measures the gap below the footer at all four
+ * widths precisely because this was invisible to the eye at three of them.
+ */
 
 /*
  * DOES NOT STRETCH. It used to (`flex: 1`), which pushed the footer to the
@@ -46,18 +90,10 @@
   min-width: 0;
 }
 
-@media (min-width: 768px) {
-  /*
-   * SAME SELECTOR AS THE RULE IT CANCELS. This was `.root`, which is (0,1,0)
-   * against the attribute selector's (0,2,0) — so it never won, and 72px of
-   * page background sat below the footer at EVERY width, including the ones
-   * with no fixed tab bar to clear. Measured, not guessed: the gap was 72px
-   * at 1440 as well as at 375.
-   *
-   * Nav is an in-flow sidebar here, not a fixed overlay, so there is nothing
-   * to reserve space for.
-   */
-  .root[data-nav-visible='true'] {
-    padding-bottom: 0;
-  }
-}
+/*
+ * NO TIER MEDIA QUERY LIVES HERE ANY MORE. The only thing this file changed
+ * at 1024px was cancelling the tab bar's clearance, and there is no
+ * clearance to cancel — so the shell's own box model is now the same at all
+ * four widths and the tier difference is entirely Nav's. nav.module.css's
+ * header remains the documented home of the 1024px boundary.
+ */

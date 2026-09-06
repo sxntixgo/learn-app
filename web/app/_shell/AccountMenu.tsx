@@ -59,6 +59,23 @@ export default function AccountMenu({ user, manage, themeControl }: AccountMenuP
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || !element.open) return;
+      /*
+       * STOP HERE, NOT JUST `preventDefault`. When this menu is open inside
+       * the narrow-tier drawer, Nav.tsx has its OWN `document` Escape
+       * listener with a guard meant to leave this press to the menu:
+       * "innermost first... the next [press] finds no open details and
+       * closes the drawer." That guard reads `element.querySelector
+       * ('details[open]')` at the time IT runs — but both listeners are on
+       * the same `document`, and `close()` below has, by then, already set
+       * `open = false`. Two listeners on one node fire in registration
+       * order, which is an accident of mount timing (this one mounts with
+       * the menu, Nav's only when the drawer opens) — not something to
+       * depend on. `stopImmediatePropagation` makes the ordering
+       * irrelevant: no other `document` keydown listener for this event
+       * runs at all, so the drawer's guard never gets a chance to see a
+       * closed menu and close itself in the same press.
+       */
+      event.stopImmediatePropagation();
       close();
       // Focus returns to the control that opened it, which is where a
       // keyboard user expects to be after dismissing a menu.

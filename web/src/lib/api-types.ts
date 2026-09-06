@@ -596,6 +596,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/courses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The actor's own enrolled courses, with progress
+         * @description Every course the actor holds an ACTIVE enrollment in, with the course's live lesson count, how many of those lessons the actor has completed, and the rounded percent — the data the app shell's `ENROLLED` rail needs (docs/design/2026-09-02-artboard-spec.md §6).
+         *     Same counting rule as everywhere else: archived lessons, and lessons in archived modules, are excluded from both totals, so "3 of 5" means the same thing here as on a profile or a course page.
+         *     Enrollment is the ONLY membership test. Unlike the `courses` array on a profile (design §11), which publishes just the completed and in-progress ones, this lists a freshly-enrolled course with zero completed lessons too — the rail is the learner's own list of where they are, not a public achievement summary.
+         *     Gated by `course:progress:read` on the actor themselves, the same action `/api/v1/courses/{courseSlug}/progress` uses: student-only and self-only. An operator account (design §5.1: "no enrollments, no progress") is refused rather than served an empty array, because "you may not ask" and "you have none" are different answers.
+         */
+        get: operations["getMyCourses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{courseSlug}/lessons/{lessonSlug}": {
         parameters: {
             query?: never;
@@ -1394,6 +1417,19 @@ export interface components {
              */
             kind: "lesson" | "exercise" | "quiz";
             state: components["schemas"]["CourseProgressLessonState"];
+        };
+        /** @description One course the actor is actively enrolled in, with their progress through it. Archived lessons never count toward totalLessons / completedLessons. */
+        EnrolledCourse: {
+            /** @description The course's globally-unique slug */
+            slug: string;
+            /** @description The course's title */
+            title: string;
+            /** @description Count of the course's non-archived lessons. */
+            totalLessons: number;
+            /** @description Count of those lessons the actor has completed. */
+            completedLessons: number;
+            /** @description completedLessons / totalLessons as a rounded percent (0 if totalLessons is 0). */
+            percent: number;
         };
         /** @description The actor's progress summary for a course. Archived lessons never count toward totalLessons/completedLessons. */
         CourseProgressSummary: {
@@ -3482,6 +3518,35 @@ export interface operations {
                 };
             };
             /** @description The actor may not read a learner's degrees (design §5.1 — admin is exclusive) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMyCourses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The actor's active enrollments, ordered by course title */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrolledCourse"][];
+                };
+            };
+            /** @description The actor may not read a learner's own progress (design §5.1 — admin is exclusive) */
             403: {
                 headers: {
                     [name: string]: unknown;

@@ -1,6 +1,20 @@
 /*
  * The banner tokens (design/CHOSEN-PALETTE.md, tokens.css) were transcribed
  * in phase 1/3 but unused until this shell — this is their first consumer.
+ *
+ * WHAT IS LEFT IN HERE AFTER THE ARTBOARD IMPORT. The wide artboards have no
+ * top bar: the 224px rail runs the full height of the screen and carries the
+ * logo, the destinations, the enrolled courses and the account control
+ * (artboard-spec §6). Two of those moved — the courses and the account menu
+ * are in nav.module.css's rail now — and the brand stayed, because the
+ * banner is still the header landmark, still the only chrome a signed-out
+ * visitor gets, and still what the sidebar must not paint over.
+ *
+ * So at >= 1024px the brand is laid out to occupy exactly `--rail-width`,
+ * against the same teal (`--color-banner-bg` and `--color-rail-bg` are one
+ * value in both themes) and with no divider under it. The mark then sits
+ * where M1 draws it, at the top of the teal column, and the banner reads as
+ * the top arm of an L rather than as a second bar.
  */
 
 .banner {
@@ -8,11 +22,23 @@
   top: 0;
   /* Above the sidebar (10). The sidebar used to be 40 and covered this. */
   z-index: 30;
+  /*
+   * RULE 1 OF THE THREE THAT MUST AGREE ABOUT --banner-height (the other two
+   * are nav.module.css's `top` and `height`). See shell.module.css. Anything
+   * added in here that is taller than 4rem breaks the agreement silently,
+   * because min-height is a floor and the other two rules quote the token.
+   */
   min-height: var(--banner-height);
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /*
+   * flex-start, not space-between: below 1024px the first child is the
+   * hamburger (P11) and the brand sits next to it, at the left, rather than
+   * being pushed to the opposite edge by the space between two items. The
+   * signed-out controls take the far right themselves — see `.controls`.
+   */
+  justify-content: flex-start;
   gap: 0.75rem;
   flex-wrap: wrap;
   padding: 0.6rem 1rem;
@@ -21,8 +47,8 @@
 }
 
 .brand {
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
-  font-weight: 700;
+  font-family: var(--font-sans), sans-serif;
+  font-weight: 800;
   letter-spacing: -0.03em;
   font-size: 1.05rem;
   color: var(--color-banner-text);
@@ -30,11 +56,57 @@
   min-height: 44px;
   display: flex;
   align-items: center;
+  gap: var(--space-1);
+}
+
+/*
+ * The mark: a 2x2 checker of the rail's own two colours, at 28px with a
+ * small radius — M1's `width:28px;height:28px;background:#BFE4E9;
+ * border-radius:7px` with a two-tone grid inside it. Drawn in CSS rather
+ * than shipped as an SVG so it themes for free: both tones are tokens.
+ */
+.mark {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  background: var(--color-banner-text);
+}
+
+.markCell {
+  background: var(--color-banner-bg);
+}
+
+.markCell:nth-child(2),
+.markCell:nth-child(3) {
+  background: transparent;
 }
 
 .controls {
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+/* Tier breakpoint — 1024px; nav.module.css's header is its documented home. */
+@media (min-width: 1024px) {
+  .banner {
+    /* One teal surface with the rail below it, so the divider would draw a
+       line across the middle of a continuous shape. */
+    border-bottom: none;
+    padding-left: 0;
+  }
+
+  .brand {
+    /* Exactly the rail's column, so the mark lands where M1 puts it. */
+    box-sizing: border-box;
+    width: var(--rail-width);
+    padding-left: var(--space-3);
+  }
 }

@@ -1,0 +1,69 @@
+/*
+ * The hamburger that opens the narrow-tier nav drawer (artboard P11).
+ *
+ * P11 draws it at the left of the teal band: three 2px bars, 30px wide, in
+ * the banner's own text colour. The bars are 30px; the BUTTON is 44px square,
+ * which is the narrow tier's minimum touch target (artboard-spec §3) and the
+ * one number here that is not cosmetic.
+ *
+ * Tier breakpoint — 1024px; nav.module.css's header is its documented home.
+ * Above it the rail is permanent and there is nothing to open, so the control
+ * is not merely hidden but unreachable by keyboard too (`display: none`
+ * removes it from the tab order) — which is what keeps the drawer's `open`
+ * state impossible to reach at the wide tier.
+ */
+
+.toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-banner-text);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  background: color-mix(in oklch, var(--color-banner-text) 12%, transparent);
+}
+
+.toggle:focus-visible {
+  outline: var(--border-regular) solid var(--color-banner-text);
+  outline-offset: 2px;
+}
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 30px;
+}
+
+.bars > span {
+  display: block;
+  height: 2px;
+  background: currentColor;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (min-width: 1024px) {
+  .toggle {
+    display: none;
+  }
+}

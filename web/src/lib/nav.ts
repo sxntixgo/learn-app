@@ -4,7 +4,7 @@
  * matching rule is testable without a browser.
  *
  * Five destinations: Catalog, Search (Phase 16 — design §16's full-text
- * search), Dashboard, Grading (Phase 9 — design §9.4's grading queue), and
+ * search), Home, Grading (Phase 9 — design §9.4's grading queue), and
  * Admin (plan phase 5's import screen — design §14 item 6). Admin's label
  * doubles as its own "clearly marked as admin" marker (design brief); do
  * not add more admin destinations here ahead of the phase that builds
@@ -101,9 +101,25 @@ export interface NavAudience {
  * that opens a page headed "Your desk" makes a reader wonder whether they
  * landed where they meant to. Rename one and the test makes you rename the
  * other.
+ *
+ * HOME LIVES AT `/me` — a documented assumption, not a settled fact.
+ * The imported design (docs/design/2026-09-02-artboard-spec.md §2) makes the
+ * nav Home · Catalog · Search, and §7 Q1 left open which route Home is.
+ * Pending human review this takes option (a): `/me` is relabelled Home and
+ * `/` stays Catalog. The reason is that this list was ALREADY in the design's
+ * order, so the whole IA change is one label; option (b) — Home at `/`,
+ * Catalog moved to a new `/catalog` — reads better as a URL but costs a
+ * route, a redirect, and churn through the specs and the PWA manifest for
+ * nothing a reader can see. Reversible: it is this line plus the `<h1>` the
+ * test binds to it.
+ *
+ * The label moved in Phase 2; the CONTENT has not. The design also folds the
+ * dashboard's resume/streak/activity/up-next/degree panels onto Home and
+ * strips Catalog back to browsing — that is Phase 3, and until it lands
+ * "Home" opens the activity feed that used to be called Dashboard.
  */
 export const NAV_DESTINATIONS: readonly NavDestination[] = [
-  { href: '/me', label: 'Dashboard' },
+  { href: '/me', label: 'Home' },
   { href: '/', label: 'Catalog', activePrefixes: ['/courses'] },
   { href: '/search', label: 'Search', restrictedToSearch: true },
 ];

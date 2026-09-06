@@ -1,8 +1,20 @@
 /*
- * Three tiny forms styled to read as one segmented control. Lives inside
- * the top banner, so it borrows the banner's own tokens rather than the
- * page surface ones — it needs to read against --color-banner-bg, not
- * --color-page.
+ * Three tiny forms styled to read as one segmented control.
+ *
+ * TWO GROUNDS NOW, NOT ONE. This used to be banner-only chrome and borrowed
+ * the banner's own tokens (--color-banner-bg/-text/-divider) unconditionally.
+ * Shell.tsx now also renders it INSIDE AccountMenu's panel — a "Theme"
+ * section in the account menu's dropdown, whose ground is
+ * --color-surface-raised, not the teal banner. Banner tokens there put
+ * near-white (light) / light-teal (dark) text on a near-white or dark-grey
+ * neutral surface: unreadable in light, muddy in dark — the defect this file
+ * was fixed for.
+ *
+ * The default below is the PANEL pairing (page-surface tokens, same as
+ * account-menu.module.css's `.item`/`.signOut`), because the account menu is
+ * where this control lives once someone is signed in. `data-tone='banner'`
+ * (set by TopBar, the signed-out-only caller) switches back to the banner
+ * pairing for that one remaining teal context.
  */
 
 .group {
@@ -20,10 +32,10 @@
   min-height: 44px;
   min-width: 44px;
   padding: 0.35rem 0.6rem;
-  border: 1px solid var(--color-banner-divider);
-  border-radius: 6px;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-md);
   background: transparent;
-  color: var(--color-banner-text);
+  color: var(--color-text);
   font-family: var(--font-mono), 'IBM Plex Mono', monospace;
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -33,19 +45,38 @@
 }
 
 .button:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--color-banner-text) 12%, transparent);
+  background: color-mix(in oklch, var(--color-text) 12%, transparent);
 }
 
 .button:focus-visible {
-  outline: 2px solid var(--color-banner-text);
+  outline: 2px solid var(--color-text);
   outline-offset: 2px;
 }
 
 /* The current choice: weight change, not colour alone (design §14.2). */
 .button[aria-pressed='true'] {
   font-weight: 700;
-  border-color: var(--color-banner-text);
+  border-color: var(--color-text);
   cursor: default;
+}
+
+/* The banner context (TopBar, signed out): the ground is teal, so the
+   control needs the banner's own pairing, not the page/panel one above. */
+.group[data-tone='banner'] .button {
+  border-color: var(--color-banner-divider);
+  color: var(--color-banner-text);
+}
+
+.group[data-tone='banner'] .button:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--color-banner-text) 12%, transparent);
+}
+
+.group[data-tone='banner'] .button:focus-visible {
+  outline-color: var(--color-banner-text);
+}
+
+.group[data-tone='banner'] .button[aria-pressed='true'] {
+  border-color: var(--color-banner-text);
 }
 
 .button:disabled {

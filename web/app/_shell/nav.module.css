@@ -1,24 +1,215 @@
 /*
- * One <nav>, two shapes (design §14.2). Below 768px: a fixed bottom tab
- * bar, padded for the iOS home-indicator safe area so it never sits under
- * the system gesture bar. At/above 768px: an in-flow, collapsible sidebar.
+ * One <nav>, two shapes (design §14.2). Below 1024px: a DRAWER over the page,
+ * opened by the banner's hamburger (artboard P11). At/above 1024px: the
+ * in-flow, collapsible 224px teal rail (artboard M1).
+ *
+ * TIER BREAKPOINT — 1024px is the canonical value; this file's top-of-file
+ * comment is its one documented home (design §3, artboard-spec §3). It
+ * comes from the artboards, not a round number: iPhone and iPad portrait
+ * (834px) are the identical eleven screens with the same ids — one column,
+ * hamburger, no side rail — while iPad landscape (1194px) and Desktop are
+ * "identical... the same permanent 224px teal rail — no hamburger." The
+ * boundary sits between the two: above iPad portrait (834), below iPad
+ * landscape (1194).
+ *
+ * This is a plain literal, not a var(): CSS custom properties cannot be
+ * read inside an `@media` condition, so every place the app switches shell
+ * layout repeats the number `1024px` rather than consuming a token. The
+ * other repeats are nav-drawer.module.css, top-bar.module.css,
+ * account-menu.module.css and NavDrawer.tsx's `matchMedia`.
+ *
+ * Was 768px until the artboard import (design §3, "Today's shell is
+ * wrong"): that gave iPad portrait (834px) a sidebar the design does not
+ * want, since design calls for the hamburger tier through iPad portrait and
+ * only switches to the rail at iPad landscape.
+ *
+ * WHAT REPLACED THE BOTTOM TAB BAR, and what went with it. This tier used to
+ * be a fixed bar across the bottom of the screen, and shell.module.css
+ * reserved page padding so the footer cleared it. The drawer is over the
+ * page only while it is open, and takes no space at all when it is not, so
+ * that reservation is gone — see shell.module.css, which keeps the record of
+ * how its cancelling rule got the specificity wrong last time.
  *
  * The active-item marker is never colour alone (design §14.2, CHOSEN-
- * PALETTE.md rule 1: yellow is structural only, never a fill): a 2px yellow
- * rule under the label, paired with a font-weight change.
+ * PALETTE.md rule 1: gold is structural only, never a fill): at both tiers
+ * it is a 3px gold left rule plus a weight and family change.
  */
 
+/*
+ * NARROW TIER — the drawer (artboard P11). Full height at the left of the
+ * screen, over everything including the banner, on a wash of the rail's own
+ * teal. P11 draws it 300px wide inside a 390px screen and 360px inside 834,
+ * which is one expression rather than two: 77vw, capped.
+ */
 .nav {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 40;
-  background: var(--color-surface-raised);
-  border-top: 1px solid var(--color-border-hairline);
-  /* iOS home-indicator safe area — without this the bar sits under the
-     system gesture strip on an iPhone/iPad. */
+  inset: 0 auto 0 0;
+  /* Over the banner (30) as well as the page: P11's drawer runs to the top
+     of the screen, and the hamburger is behind it while it is open. */
+  z-index: 50;
+  width: min(77vw, 360px);
+  /* Opened by the attribute below. `display` is the ONLY property that rule
+     sets, so nothing else in this file has to out-specify an attribute
+     selector to reshape the rail at the wide tier. */
+  display: none;
+  flex-direction: column;
+  background: var(--color-rail-bg);
+  color: var(--color-rail-text);
+  /* iOS home-indicator safe area — the drawer runs to the bottom edge. */
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.nav[data-open='true'] {
+  display: flex;
+}
+
+/*
+ * The wash behind the drawer (P11: the page dimmed under a teal veil).
+ * Rendered by Nav.tsx only while the drawer is open, and the drawer can only
+ * open at this tier — so this element simply does not exist at the wide one
+ * and no rule has to cancel it.
+ */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: color-mix(in oklch, var(--color-rail-bg) 55%, transparent);
+}
+
+/*
+ * The drawer's own dismiss control, and — signed in — P11's identity block
+ * (mark, name, @handle) sharing the same row. `space-between` gives each its
+ * own corner: identity at the left where P11 draws it, close at the right
+ * where a pointer user's only way out of a drawer that covers the hamburger
+ * needs to be.
+ */
+.drawerHeader {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-1) var(--space-2) var(--space-4);
+}
+
+/*
+ * P11's identity header: a small checker mark (the same two-tone pattern as
+ * the banner's brand mark, top-bar.module.css's `.mark`, swapped onto the
+ * rail's own pairing since this sits on --color-rail-bg) plus the name and
+ * `@handle`. WIDE NEVER SEES THIS — `.drawerHeader` is `display: none` there
+ * (below), and M1's rail has no identity block at its top, only the "Learn
+ * App" brand, which stays in the banner.
+ */
+.identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.identityMark {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  background: var(--color-rail-text);
+}
+
+.identityMarkCell {
+  background: var(--color-rail-bg);
+}
+
+.identityMarkCell:nth-child(2),
+.identityMarkCell:nth-child(3) {
+  background: transparent;
+}
+
+.identityText {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.identityName {
+  font-family: var(--font-sans), sans-serif;
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--color-rail-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.identityHandle {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.7rem;
+  color: color-mix(in oklch, var(--color-rail-text) 85%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-rail-text);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.close:hover {
+  background: color-mix(in oklch, var(--color-rail-text) 12%, transparent);
+}
+
+.close:focus-visible {
+  outline: var(--border-regular) solid var(--color-rail-text);
+  outline-offset: -2px;
+}
+
+/*
+ * THE SCROLLING PART, and the reason it is a separate element.
+ *
+ * The `overflow-y: auto` used to live on `.nav`. That is a scroll container,
+ * and a scroll container CLIPS — including the account menu's absolutely-
+ * positioned panel, which opens upward out of the bottom of the rail (and of
+ * the drawer). Putting the scroll on an inner element leaves `.nav` itself
+ * unclipped, so the panel can escape while the destination list and the
+ * enrolled courses still scroll when they are too tall for the viewport.
+ */
+.scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  /* Vertical only: a horizontal scrollbar inside a 224px rail — or a 300px
+     drawer — is always a layout bug rather than something a reader wants. */
+  overflow-x: hidden;
+}
+
+/*
+ * The account control, pinned at the bottom (artboard M1: "Santiago ▾" below
+ * a `flex: 1` spacer; P11 puts "Sign out" in the same place). AccountMenu
+ * itself is rendered by Shell and handed to Nav as a prop, so the one account
+ * menu in the app moved into the nav rather than being duplicated per tier.
+ */
+.account {
+  flex: 0 0 auto;
+  display: block;
+  padding: var(--space-3) var(--space-4);
 }
 
 .collapseToggle {
@@ -42,58 +233,106 @@
   margin: 0;
   padding: 0;
   display: flex;
-  width: 100%;
+  flex-direction: column;
+}
+
+/*
+ * The `ENROLLED` section (artboard M1) — WIDE TIER ONLY, and that is the
+ * design's choice rather than a shortage of room. P11's drawer has no
+ * enrolled list: the narrow set puts the same courses, with the same
+ * progress bars, on Home instead (P2, "Your courses" with a CATALOG → link).
+ * Putting them in the drawer as well would render that list twice at 375.
+ */
+.enrolled {
+  display: none;
 }
 
 .list li {
-  flex: 1 1 0;
+  flex: 0 0 auto;
   min-width: 0;
 }
 
+/*
+ * The destination row, at both tiers: a full-bleed band with a 3px left rule
+ * (P11 and M1 draw the same shape — `padding:13px 20px;border-left:3px
+ * solid ...`). The rule is present and transparent on every row so becoming
+ * current never shifts the text.
+ *
+ * 19px at narrow, from P11: the narrow tier's body floor is 17px
+ * (artboard-spec §3) and the destinations are the largest text in the drawer.
+ */
 .link {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 0.2rem;
+  justify-content: flex-start;
+  gap: var(--space-2);
   min-height: 44px;
-  padding: 0.4rem 0.25rem;
-  color: var(--color-text-secondary);
+  padding: var(--space-2) var(--space-4);
+  border-left: var(--border-thick) solid transparent;
+  color: var(--color-rail-text);
   text-decoration: none;
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
-  font-size: 0.72rem;
+  font-family: var(--font-serif), serif;
+  font-size: 1.1875rem;
 }
 
 .link:hover {
-  color: var(--color-text);
+  background: color-mix(in oklch, var(--color-rail-text) 10%, transparent);
 }
 
 .link:focus-visible {
-  outline: 2px solid var(--color-link);
+  outline: var(--border-regular) solid var(--color-rail-text);
   outline-offset: -2px;
 }
 
+/* P11 shows no icons in the drawer — the destinations are text at 19px. The
+   rail draws them (M1), so this is a tier difference in layout, not a
+   difference in what the nav contains. */
 .icon {
-  display: flex;
+  display: none;
 }
 
 .label {
-  border-bottom: 2px solid transparent;
-  padding-bottom: 0.1rem;
+  min-width: 0;
 }
 
-/* Current destination: weight + the one yellow, structural only — never a
-   fill, per CHOSEN-PALETTE.md rule 1. */
+/*
+ * Current destination, three cues and not one: the gold left rule, a heavier
+ * weight, and a wash of the nav's own text colour. Colour alone is never the
+ * marker (design §14.2), and gold on the rail measures 2.13:1 (Phase 1's
+ * palette audit) — it is structure here, never the thing you have to read.
+ * P11 switches the family too: the current row is Plus Jakarta Sans 800
+ * where the others are Source Serif 4 400.
+ */
 .link[data-active='true'] {
-  color: var(--color-text);
+  background: color-mix(in oklch, var(--color-rail-text) 14%, transparent);
+  border-left-color: var(--color-accent-gold);
+  color: var(--color-rail-text);
+  font-family: var(--font-sans), sans-serif;
+  font-weight: 800;
 }
 
-.link[data-active='true'] .label {
-  font-weight: 700;
-  border-bottom-color: var(--color-accent-yellow);
-}
-
-@media (min-width: 768px) {
+/*
+ * WIDE TIER — the permanent 224px teal rail (artboard-spec §3, §6; verified
+ * on all seven signed-in wide artboards as `width:224px;background:#0E5457`).
+ *
+ * Top to bottom, exactly as M1 draws it: the destination list, a hairline,
+ * the `ENROLLED` course list, a spacer, and the account control pinned at
+ * the bottom. Two of those — the courses and the account — are new here:
+ * they moved INTO the rail from elsewhere in the shell, which is the whole
+ * structural difference between this and the three-link sidebar it replaces.
+ *
+ * WHERE THE ARTBOARD'S LOGO WENT. M1 puts the "Learn App" mark at the top of
+ * the rail, above the destinations, because the wide artboards have no top
+ * bar at all — the rail runs the full height of the screen. This shell keeps
+ * its banner (it is the header landmark, it is what a signed-out visitor
+ * gets, and `shell-layout.spec.ts` hit-tests it), so the mark stays in the
+ * banner's brand and top-bar.module.css lines that brand up with
+ * `--rail-width`. `--color-banner-bg` and `--color-rail-bg` are the same
+ * value in both themes, so the banner and the rail paint as one continuous
+ * teal L and the mark lands where the artboard puts it. The one visible
+ * deviation is that the teal continues across the top of the content column.
+ */
+@media (min-width: 1024px) {
   .nav {
     /*
      * STICKY BELOW THE BANNER, AND BENEATH IT IN THE STACK.
@@ -106,13 +345,16 @@
      * the content like any static element.
      *
      * Having scrolled up behind the banner, it then painted OVER it, because
-     * the mobile rule's `z-index: 40` was never reset here and the banner is
-     * 30. That is the reported symptom: the left of the top bar disappearing
+     * the drawer's `z-index: 50` is never wanted here and the banner is 30.
+     * That is the reported symptom: the left of the top bar disappearing
      * under the sidebar on scroll.
      *
      * `flex-start` + an explicit height gives sticky something to work
      * within; `top` is the banner's height so the sidebar parks under it
-     * rather than behind it.
+     * rather than behind it. `top` and `height` are the second and third of
+     * the three rules that must agree about `--banner-height` — see
+     * shell.module.css, which names all three and the spec that measures
+     * them in a browser.
      */
     position: sticky;
     top: var(--banner-height);
@@ -122,15 +364,19 @@
     z-index: 10;
     align-self: flex-start;
     height: calc(100dvh - var(--banner-height));
-    overflow-y: auto;
-    width: 180px;
+    /*
+     * NOT `overflow-y: auto` — that lives on `.scroll`. A scroll container
+     * clips, and what it clipped here was the account menu's panel opening
+     * upward out of the bottom of the rail.
+     */
+    overflow: visible;
+    width: var(--rail-width);
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    border-top: none;
-    border-right: 1px solid var(--color-border-hairline);
-    padding-bottom: 0;
+    background: var(--color-rail-bg);
+    padding: 0 0 var(--space-4);
     transition: width 150ms ease-out;
   }
 
@@ -138,54 +384,131 @@
     width: 64px;
   }
 
+  /* Nothing opened it here, so nothing has to close it. */
+  .drawerHeader {
+    display: none;
+  }
+
   .collapseToggle {
     display: flex;
     align-items: center;
     justify-content: center;
+    align-self: flex-end;
     min-height: 44px;
     min-width: 44px;
-    margin: 0.6rem;
-    border: 1px solid var(--color-border-hairline);
-    border-radius: 8px;
+    /* Tight to the rail's top-right corner: this control is not in the
+       artboards at all (they have no collapse affordance), so it earns as
+       little vertical space above the destinations as a 44px target allows. */
+    margin: 0 var(--space-1) 0 0;
+    border: var(--border-hairline) solid color-mix(in oklch, var(--color-rail-text) 35%, transparent);
+    border-radius: var(--radius-md);
     background: transparent;
-    color: var(--color-text-secondary);
+    color: var(--color-rail-text);
     font-size: 1rem;
     cursor: pointer;
   }
 
   .collapseToggle:hover {
-    color: var(--color-text);
+    background: color-mix(in oklch, var(--color-rail-text) 12%, transparent);
   }
 
   .collapseToggle:focus-visible {
-    outline: 2px solid var(--color-link);
+    outline: var(--border-regular) solid var(--color-rail-text);
     outline-offset: 2px;
   }
 
-  .list {
-    flex-direction: column;
-    padding: 0.25rem 0.6rem 0.6rem;
-    gap: 0.15rem;
-  }
-
-  .list li {
-    flex: 0 0 auto;
-  }
-
+  /* The rail is a denser column than the drawer: M1's rows are 0.95rem with
+     an icon, where P11's are 19px text. */
   .link {
-    flex-direction: row;
-    justify-content: flex-start;
-    font-size: 0.85rem;
-    padding: 0.55rem 0.65rem;
-    border-radius: 8px;
+    gap: var(--space-2);
+    font-family: var(--font-sans), sans-serif;
+    font-size: 0.95rem;
+    font-weight: 500;
+    padding: var(--space-2) var(--space-3);
   }
 
-  .nav[data-collapsed='true'] .link {
-    justify-content: center;
+  .icon {
+    display: flex;
   }
 
-  .nav[data-collapsed='true'] .label {
+  .enrolled {
+    display: block;
+    margin: var(--space-4) var(--space-3) 0;
+    padding-top: var(--space-4);
+    border-top: var(--border-hairline) solid color-mix(in oklch, var(--color-rail-text) 25%, transparent);
+  }
+
+  /* Nothing but an icon fits at 64px, so the courses go with the labels. */
+  .nav[data-collapsed='true'] .enrolled {
     display: none;
+  }
+
+  .enrolledLabel {
+    display: block;
+    margin-bottom: var(--space-2);
+    font-family: var(--font-mono), monospace;
+    font-size: 0.65rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-rail-text);
+  }
+
+  .courses {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .course {
+    display: block;
+    text-decoration: none;
+    color: var(--color-rail-text);
+  }
+
+  .course:focus-visible {
+    outline: var(--border-regular) solid var(--color-rail-text);
+    outline-offset: 2px;
+  }
+
+  .courseTitle {
+    display: block;
+    margin-bottom: var(--space-0);
+    font-family: var(--font-serif), serif;
+    font-weight: 600;
+    font-size: 0.875rem;
+    line-height: 1.3;
+  }
+
+  .course:hover .courseTitle {
+    text-decoration: underline;
+  }
+
+  /*
+   * The progress bar is DECORATION. `.courseTitle` already carries the
+   * percent as text for a screen reader (Nav.tsx builds the label), so this
+   * pair of divs is aria-hidden and the reading is never bar-shaped.
+   */
+  .progressTrack {
+    display: block;
+    height: 5px;
+    border-radius: var(--radius-pill);
+    background: color-mix(in oklch, var(--color-rail-text) 25%, transparent);
+    overflow: hidden;
+  }
+
+  .progressFill {
+    display: block;
+    height: 100%;
+    border-radius: var(--radius-pill);
+    background: var(--color-rail-text);
+  }
+
+  .account {
+    padding: var(--space-3) var(--space-3) 0;
   }
 }
 

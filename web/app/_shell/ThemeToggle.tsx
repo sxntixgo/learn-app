@@ -6,6 +6,12 @@
  * no hover-only affordance, no client JS required, and the SSR'd `current`
  * prop (read from the cookie in layout.tsx) means the pressed state is
  * correct on the very first paint too, same as the theme itself.
+ *
+ * `tone` picks the token pairing for the ground it renders on (see
+ * theme-toggle.module.css): 'panel' (default) for AccountMenu's dropdown,
+ * on --color-surface-raised; 'banner' for TopBar's signed-out control, on
+ * the teal banner. Two real grounds, so this is a legitimate fork — not the
+ * per-tier kind account-menu.module.css's `.summary` deliberately dropped.
  */
 
 import { setThemeAction } from './theme-actions';
@@ -18,9 +24,15 @@ const OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: 'system', label: 'Auto' },
 ];
 
-export default function ThemeToggle({ current }: { current: ThemePreference }) {
+export default function ThemeToggle({
+  current,
+  tone = 'panel',
+}: {
+  current: ThemePreference;
+  tone?: 'panel' | 'banner';
+}) {
   return (
-    <div className={styles.group} role="group" aria-label="Colour theme">
+    <div className={styles.group} data-tone={tone} role="group" aria-label="Colour theme">
       {OPTIONS.map((option) => {
         const isCurrent = option.value === current;
         const submit = setThemeAction.bind(null, option.value);

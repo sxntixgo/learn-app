@@ -17,12 +17,24 @@ async function signIn(page: Page) {
 }
 
 test.describe('the app shell', () => {
-  for (const width of [375, 834, 1440]) {
+  /*
+   * ALL FOUR ARTBOARD WIDTHS, AND THE SAME ASSERTION AT EVERY ONE — which is
+   * the change the drawer bought. This used to branch at 768: below it the
+   * fixed bottom tab bar needed 72px of clearance reserved under the page,
+   * above it that reservation had to be cancelled. The narrow tier is a
+   * drawer now (artboard P11): `position: fixed` over the page while open,
+   * out of the box model entirely while closed, so there is nothing to clear
+   * at any width and no cancelling rule to get the specificity of wrong.
+   *
+   * That specificity is why this test exists. `.root[data-nav-visible='true']`
+   * reserved the 72px and the rule meant to cancel it was written `.root` —
+   * (0,1,0) against (0,2,0), so it never won and the dead space sat below the
+   * footer at 1440 exactly as it did at 375. Nobody saw it: page background
+   * under a page is invisible. The branch is gone from this test on purpose —
+   * a reservation coming back anywhere now fails here at every width.
+   */
+  for (const width of [375, 834, 1194, 1440]) {
     test(`${width}px: the footer reaches the bottom of the document`, async ({ browser }) => {
-      // The bug: `.root[data-nav-visible='true']` reserved 72px of clearance
-      // for the fixed mobile tab bar, and the desktop rule meant to cancel it
-      // was `.root` — (0,1,0) against (0,2,0), so it never won. Measured 72px
-      // of dead space below the footer at 1440 as well as at 375.
       const context = await browser.newContext({ viewport: { width, height: 900 } });
       try {
         const page = await context.newPage();
@@ -34,14 +46,7 @@ test.describe('the app shell', () => {
           return Math.round(document.documentElement.scrollHeight - (footer.bottom + window.scrollY));
         });
 
-        if (width < 768) {
-          // Below 768 the tab bar is a fixed overlay, and the reservation is
-          // deliberate — the footer must clear it rather than sit under it.
-          expect(gap, 'the mobile tab bar needs its clearance').toBeGreaterThan(40);
-        } else {
-          // Above it the nav is an in-flow sidebar and nothing overlays.
-          expect(gap, 'dead space below the footer').toBeLessThanOrEqual(1);
-        }
+        expect(gap, 'dead space below the footer').toBeLessThanOrEqual(1);
       } finally {
         await context.close();
       }

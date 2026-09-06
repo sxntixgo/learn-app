@@ -506,6 +506,101 @@ describe('me routes', () => {
   // badge is still returned, and `earned` never comes from re-evaluating the
   // criteria.
   // ===========================================================================
+  describe('GET /api/v1/me/courses', () => {
+    // A SECOND course, enrolled but never opened. The rail has to list it —
+    // that is the difference between this route and the profile's `courses`
+    // array, which publishes only what is completed or in progress.
+    const UNTOUCHED_SLUG = `me-courses-untouched-${RUN_ID}`;
+    // And a third the actor is NOT enrolled in, to prove enrollment is the
+    // membership test rather than "any course with a progress row".
+    const UNENROLLED_SLUG = `me-courses-unenrolled-${RUN_ID}`;
+
+    beforeAll(async () => {
+      await pool.query(`insert into enrollments (user_id, course_id) values ($1, $2)`, [actor.id, courseId]);
+
+      const untouched = await pool.query<{ id: string }>(
+        `insert into courses (slug, title) values ($1, $2) returning id`,
+        [UNTOUCHED_SLUG, 'AAA Untouched Course'],
+      );
+      const untouchedModule = await pool.query<{ id: string }>(
+        `insert into modules (course_id, key, title, position) values ($1, 'mod-a', 'Module A', 0) returning id`,
+        [untouched.rows[0]!.id],
+      );
+      await pool.query(
+        `insert into lessons
+           (course_id, module_id, lesson_key, slug, title, kind, position, source_path, content_hash, blocks)
+         values ($1, $2, 'untouched-one', 'untouched-one', 'Untouched One', 'lesson', 0, 'u1.md', 'hash-u1', '[]')`,
+        [untouched.rows[0]!.id, untouchedModule.rows[0]!.id],
+      );
+      await pool.query(`insert into enrollments (user_id, course_id) values ($1, $2)`, [
+        actor.id,
+        untouched.rows[0]!.id,
+      ]);
+
+      await pool.query(`insert into courses (slug, title) values ($1, $2)`, [UNENROLLED_SLUG, 'ZZZ Unenrolled']);
+    });
+
+    it('lists the active enrollments with their progress, ordered by title', async () => {
+      const fastify = await buildServer({ actor });
+      const response = await fastify.inject({ method: 'GET', url: '/api/v1/me/courses' });
+
+      expect(response.statusCode).toBe(200);
+      const courses = JSON.parse(response.payload) as Array<{
+        slug: string;
+        title: string;
+        totalLessons: number;
+        completedLessons: number;
+        percent: number;
+      }>;
+
+      const slugs = courses.map((c) => c.slug);
+      expect(slugs).toContain(COURSE_SLUG);
+      expect(slugs).toContain(UNTOUCHED_SLUG);
+      // Not enrolled — so not in the rail, however visible the course is.
+      expect(slugs).not.toContain(UNENROLLED_SLUG);
+      // Ordered by title: 'AAA Untouched Course' before 'Me Route Test Course'.
+      expect(slugs.indexOf(UNTOUCHED_SLUG)).toBeLessThan(slugs.indexOf(COURSE_SLUG));
+
+      const untouched = courses.find((c) => c.slug === UNTOUCHED_SLUG)!;
+      expect(untouched.totalLessons).toBe(1);
+      expect(untouched.completedLessons).toBe(0);
+      expect(untouched.percent).toBe(0);
+
+      const started = courses.find((c) => c.slug === COURSE_SLUG)!;
+      expect(started.title).toBe('Me Route Test Course');
+      expect(started.totalLessons).toBeGreaterThan(0);
+      // completed/total, rounded — the same arithmetic the course progress
+      // route does, asserted rather than assumed.
+      expect(started.percent).toBe(Math.round((started.completedLessons / started.totalLessons) * 100));
+
+      await fastify.close();
+    });
+
+    it('calls can() with "course:progress:read" for the actor themselves — the seam guard', async () => {
+      const canSpy = vi.fn().mockReturnValue(true);
+      const fastify = await buildServer({ actor, can: canSpy });
+
+      const response = await fastify.inject({ method: 'GET', url: '/api/v1/me/courses' });
+
+      expect(response.statusCode).toBe(200);
+      const [, actionArg, resourceArg] = canSpy.mock.calls[0] as [unknown, unknown, { userId?: string }];
+      expect(actionArg).toBe('course:progress:read');
+      // Self-scoped: omitting the userId would deny, and naming someone
+      // else's would be another learner's progress.
+      expect(resourceArg.userId).toBe(actor.id);
+
+      await fastify.close();
+    });
+
+    it('returns 403 when the injected policy denies access', async () => {
+      const fastify = await buildServer({ actor, can: () => false });
+      const response = await fastify.inject({ method: 'GET', url: '/api/v1/me/courses' });
+
+      expect(response.statusCode).toBe(403);
+      await fastify.close();
+    });
+  });
+
   describe('GET /api/v1/me/badges', () => {
     const EARNED_SLUG = `me-badge-earned-${RUN_ID}`;
     const LOCKED_SLUG = `me-badge-locked-${RUN_ID}`;

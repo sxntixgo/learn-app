@@ -9,7 +9,7 @@ import {
 
 const catalog = NAV_DESTINATIONS.find((d) => d.href === '/')!;
 const search = NAV_DESTINATIONS.find((d) => d.href === '/search')!;
-const dashboard = NAV_DESTINATIONS.find((d) => d.href === '/me')!;
+const home = NAV_DESTINATIONS.find((d) => d.href === '/me')!;
 const grading = MANAGE_DESTINATIONS.find((d) => d.href === '/grading')!;
 const admin = MANAGE_DESTINATIONS.find((d) => d.href === '/admin/imports')!;
 const invites = MANAGE_DESTINATIONS.find((d) => d.href === '/invites')!;
@@ -17,10 +17,19 @@ const invites = MANAGE_DESTINATIONS.find((d) => d.href === '/invites')!;
 const FULL_AUDIENCE = { isTeacher: true, canInvite: true, isAdmin: true, canSearch: true };
 
 describe('NAV_DESTINATIONS', () => {
-  it('is exactly Dashboard, Catalog, Search — the three everyday destinations, in that order', () => {
-    // Order is the assertion, not just membership: Dashboard first because it
-    // is where a session starts.
+  it('is exactly Home, Catalog, Search — the three everyday destinations, in that order', () => {
+    // Order is the assertion, not just membership: Home first because it is
+    // where a session starts.
     expect(NAV_DESTINATIONS.map((d) => d.href)).toEqual(['/me', '/', '/search']);
+  });
+
+  it('reads Home · Catalog · Search — the imported design\'s IA (artboard spec §2)', () => {
+    // The labels, not just the routes: the design import changed the IA by
+    // renaming one destination, and a rename is the only thing that could
+    // silently undo it. Home is at `/me` by the assumption documented on
+    // NAV_DESTINATIONS (spec §7 Q1, option (a)); if that assumption is ever
+    // reversed, this and nav-labels.test.ts are what say so.
+    expect(NAV_DESTINATIONS.map((d) => d.label)).toEqual(['Home', 'Catalog', 'Search']);
   });
 
   it('holds no role-gated destination — those live in MANAGE_DESTINATIONS', () => {
@@ -63,7 +72,7 @@ describe('MANAGE_DESTINATIONS', () => {
     expect(grading.restrictedToTeacher).toBe(true);
     expect(catalog.restrictedToTeacher).toBeUndefined();
     expect(search.restrictedToTeacher).toBeUndefined();
-    expect(dashboard.restrictedToTeacher).toBeUndefined();
+    expect(home.restrictedToTeacher).toBeUndefined();
     expect(admin.restrictedToTeacher).toBeUndefined();
     expect(invites.restrictedToTeacher).toBeUndefined();
   });
@@ -85,7 +94,7 @@ describe('MANAGE_DESTINATIONS', () => {
   it('marks Search, and only Search, restricted to search — same grant as course:list, not a role name', () => {
     expect(search.restrictedToSearch).toBe(true);
     expect(catalog.restrictedToSearch).toBeUndefined();
-    expect(dashboard.restrictedToSearch).toBeUndefined();
+    expect(home.restrictedToSearch).toBeUndefined();
     expect(grading.restrictedToSearch).toBeUndefined();
     expect(invites.restrictedToSearch).toBeUndefined();
     expect(admin.restrictedToSearch).toBeUndefined();
@@ -95,7 +104,7 @@ describe('MANAGE_DESTINATIONS', () => {
 describe('visibleNavDestinations', () => {
   const student = { isTeacher: false, canInvite: false, isAdmin: false, canSearch: true };
 
-  it('leaves a student with Dashboard, Catalog, and Search only', () => {
+  it('leaves a student with Home, Catalog, and Search only', () => {
     expect(visibleNavDestinations(student).map((d) => d.href)).toEqual(['/me', '/', '/search']);
   });
 
@@ -163,19 +172,19 @@ describe('isNavActive', () => {
     expect(isNavActive('/courses/intro-to-ts/lessons/setup', catalog)).toBe(true);
   });
 
-  it('matches Dashboard exactly and on its own sub-routes', () => {
-    expect(isNavActive('/me', dashboard)).toBe(true);
-    expect(isNavActive('/me/settings', dashboard)).toBe(true);
-    expect(isNavActive('/', dashboard)).toBe(false);
-    expect(isNavActive('/courses/intro-to-ts', dashboard)).toBe(false);
+  it('matches Home exactly and on its own sub-routes', () => {
+    expect(isNavActive('/me', home)).toBe(true);
+    expect(isNavActive('/me/settings', home)).toBe(true);
+    expect(isNavActive('/', home)).toBe(false);
+    expect(isNavActive('/courses/intro-to-ts', home)).toBe(false);
   });
 
   it('does not match a path that merely starts with the same characters', () => {
-    const merch: NavDestination = { href: '/me', label: 'Dashboard' };
+    const merch: NavDestination = { href: '/me', label: 'Home' };
     expect(isNavActive('/merch', merch)).toBe(false);
   });
 
-  it('matches Admin exactly and on its own sub-routes, but not the catalog or dashboard', () => {
+  it('matches Admin exactly and on its own sub-routes, but not the catalog or home', () => {
     expect(isNavActive('/admin/imports', admin)).toBe(true);
     expect(isNavActive('/admin/imports/stream', admin)).toBe(true);
     expect(isNavActive('/', admin)).toBe(false);
@@ -192,7 +201,7 @@ describe('isNavActive', () => {
     expect(isNavActive('/invite/some-token', invites)).toBe(false);
   });
 
-  it('matches Grading exactly and while grading one submission, but not the catalog or dashboard', () => {
+  it('matches Grading exactly and while grading one submission, but not the catalog or home', () => {
     expect(isNavActive('/grading', grading)).toBe(true);
     expect(isNavActive('/grading/anything', grading)).toBe(true);
     expect(isNavActive('/', grading)).toBe(false);

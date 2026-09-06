@@ -40,20 +40,30 @@ export const PAGE_MAX_WIDTH_PX = 1160;
 export const ACTIVITY_CARD_CHROME_PX = 42;
 
 /**
- * Width the in-flow nav sidebar takes out of the content column at >= 768px,
- * in px. The declared 180px is border-box, so it already includes the 1px
- * right hairline — measured, not assumed: 834 - 180 - 48 - 42 = 564 is what
- * the browser reports, and 181 would put it at 563.
+ * Width the in-flow nav sidebar takes out of the content column, in px —
+ * the wide tier's teal rail, `--rail-width` in app/_shell/shell.module.css.
  *
- * Below 768px the nav is a bottom bar and takes no horizontal space, which is
- * what makes this a step-dependent term rather than a constant subtraction —
- * and it appears at exactly the breakpoint where the window widens, so the
- * step that gains the most columns is also the one that loses the most width.
+ * Below `NAV_SIDEBAR_FROM_PX` the nav is a drawer over the page, out of flow
+ * and taking no horizontal space at all, which is what makes this a
+ * step-dependent term rather than a constant subtraction.
+ *
+ * THESE TWO NUMBERS ARE NOT FREE TO DRIFT, and both of them did. This said
+ * 180 while the rail was 224, and `NAV_SIDEBAR_FROM_PX` said 768 while the
+ * tier boundary was 1024 — so `availableHeatmapWidthPx` was describing a page
+ * that did not exist in either direction, which is the exact failure the
+ * constant above it was written to prevent. Nothing went red, because
+ * `heatmap.test.ts` was self-consistent arithmetic rather than a measurement.
+ * It is not any more: that file now reads `--rail-width` out of
+ * shell.module.css and the `@media (min-width: …)` boundary out of
+ * nav.module.css and fails if either stops matching these.
  */
-export const NAV_SIDEBAR_PX = 180;
+export const NAV_SIDEBAR_PX = 224;
 
-/** The viewport width from which the nav becomes an in-flow sidebar. */
-export const NAV_SIDEBAR_FROM_PX = 768;
+/**
+ * The viewport width from which the nav becomes an in-flow sidebar — the
+ * shell's tier boundary (nav.module.css's header is its documented home).
+ */
+export const NAV_SIDEBAR_FROM_PX = 1024;
 
 /**
  * Horizontal page padding, one side, by the viewport width it applies from —
@@ -86,10 +96,27 @@ export function pageGutterForWidth(viewportWidth: number): number {
  * The width actually available to the heatmap's scroll viewport at
  * `viewportWidth` — the number `windowWidthPx(step)` has to fit inside.
  *
- * Verified against a real browser at the three canonical widths (375/834/1440
- * measure 301/564/1054), which is the only way this number can be trusted:
- * every previous version of it was derived and every previous version was
- * wrong.
+ * 834 gained 180px when the tier boundary moved to 1024: iPad portrait is
+ * the narrow tier now, so the rail it used to subtract is not rendered there.
+ *
+ * IT IS DELIBERATELY CONSERVATIVE, and measurement is what says by how much.
+ * The heatmap's containing block on the profile measures 343 / 786 / 922 /
+ * 1112 at 375 / 834 / 1194 / 1440 (Chromium, this build) against the 301 /
+ * 744 / 880 / 1054 this function returns. Two terms account for the gap, and
+ * both are the same shape as the sidebar constants above — a number that
+ * outlived the page it described:
+ *
+ *   - ACTIVITY_CARD_CHROME_PX (42) is `/me`'s `.activity` card. The heatmap
+ *     moved to the profile, where `.figure` sits directly in `.section` with
+ *     no card padding and no border at all.
+ *   - PAGE_GUTTER_STEPS' 1200px step (32px) does not take effect on the
+ *     profile: `main.page` measures a 24px gutter at 1440, not 32.
+ *
+ * Both make this UNDER-state the room available, so no declared window can
+ * overflow because of them, and `heatmap.test.ts` pins the model against
+ * those measurements so it can never start over-stating instead. Correcting
+ * them is a separate change with a real consequence — more room means the
+ * window steps could widen — and is not part of the sidebar fix.
  */
 export function availableHeatmapWidthPx(viewportWidth: number): number {
   const sidebar = viewportWidth >= NAV_SIDEBAR_FROM_PX ? NAV_SIDEBAR_PX : 0;

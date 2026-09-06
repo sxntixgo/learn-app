@@ -36,7 +36,15 @@ test('a profile with nothing in it shows no empty sections', async ({ page }) =>
   // client-side navigation and cleared again. Two matches is a strict-mode
   // violation, so the test failed on roughly one run in three depending on
   // whether the announcer still had text when the assertion ran.
-  await expect(page.getByText(`@${fixtures.avatarUser.handle}`, { exact: true })).toBeVisible();
+  //
+  // Scoped to `main`, added when the shell grew P11's identity header
+  // (Nav.tsx: mark, name, `@handle`, at the top of the narrow-tier drawer).
+  // That header carries the same `@handle` text in the DOM at every width —
+  // `display: none` above 1024px (nav.module.css's `.drawerHeader`), but
+  // still present, not absent — so at this test's default (wide) viewport an
+  // unscoped match now resolves to two elements: the hidden drawer one and
+  // this page's own. `main` is what this test is actually about anyway.
+  await expect(page.locator('main').getByText(`@${fixtures.avatarUser.handle}`, { exact: true })).toBeVisible();
 
   for (const heading of ['Badges', 'Degrees', 'Recent activity']) {
     await expect(page.getByRole('heading', { name: heading, exact: true }), heading).toHaveCount(0);
