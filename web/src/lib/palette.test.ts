@@ -132,7 +132,6 @@ const NOT_MEASURABLE = ['--color-logo-tile'];
  */
 const ALIASES: Record<string, string> = {
   '--color-accent-yellow': '--color-accent-gold',
-  '--color-heat-5': '--color-heat-4',
   '--color-banner-bg': '--color-rail-bg',
   '--color-banner-text': '--color-rail-text',
   '--color-banner-divider': '--color-rail-text',
@@ -229,7 +228,6 @@ function rolesFor(scheme: Scheme): Record<string, Role> {
     ...Object.fromEntries(
       Array.from({ length: RAMP_STEPS }, (_, step) => [`--color-heat-${step}`, { kind: 'ramp' } as Role]),
     ),
-    '--color-heat-5': { kind: 'ramp' },
 
     // Hairlines.
     '--color-border-hairline': { kind: 'hairline', grounds: ['--color-page', '--color-surface-raised'] },
@@ -423,11 +421,11 @@ describe('the heatmap ramp, where colour is the only signal', () => {
    *
    * FIVE steps, 0..4. The artboards define the ramp literally, as an array
    * of five hexes (`const steps = [...]` in both the light and dark files);
-   * tokens.css used to carry six. `--color-heat-5` survives only as a
-   * deprecated alias of `--color-heat-4`, because one CSS module still
-   * references it and component migration is Phases 2-5 — so it is asserted
-   * as an alias above and left out of the ramp here, where a sixth step
-   * would otherwise register as a zero-distance step against itself.
+   * tokens.css used to carry six, with `--color-heat-5` surviving only as a
+   * deprecated alias of `--color-heat-4` until the heatmap component moved
+   * to the profile screen (Phase 4 of
+   * docs/plans/2026-09-02-design-import-plan.md) and the alias retired with
+   * it — see intensityLevel in src/lib/heatmap.ts.
    */
   for (const scheme of BOTH_SCHEMES) {
     it(`${scheme}: each of the five steps is distinguishable from the next, under every vision`, () => {

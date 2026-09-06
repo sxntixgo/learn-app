@@ -3,8 +3,10 @@
  * without a browser (design §10, §14.3).
  *
  * The window policy lives here as data — HEATMAP_WINDOW_STEPS — and is
- * implemented in `app/me/heatmap.module.css` as media queries. `heatmap.test.ts`
- * parses that CSS and asserts the two agree, so the numbers cannot drift apart.
+ * implemented in `app/u/[handle]/heatmap.module.css` as media queries (moved
+ * there from `app/me/` in Phase 4 of
+ * docs/plans/2026-09-02-design-import-plan.md). `heatmap.test.ts` parses that
+ * CSS and asserts the two agree, so the numbers cannot drift apart.
  *
  * Why the window is chosen by CSS rather than by JavaScript: the page is
  * server-rendered, and the server does not know the viewport. Measuring it on
@@ -163,6 +165,15 @@ export const HEATMAP_WINDOW_STEPS: readonly HeatmapWindowStep[] = [
   // overflowing from its first pixel. 834 is also the iPad portrait width
   // this design is aimed at (§14.2). 26 * (16 + 3) + 36 = 530 against 564.
   { minViewportWidth: 834, weeks: 26, cellPx: 14, gapPx: 3, labelPx: 36 },
+  // iPad landscape: PL9/P9's own drawn figure — "LAST 48 WEEKS"
+  // (docs/design/2026-09-02-artboard-spec.md §4) — which is the WIDE
+  // TIER's figure, not a fixed one: it is simply what 48 weeks at this cell
+  // size needs, the same derivation as every other step here. From 1194,
+  // NOT the shell's 1024: at 1024 the rail has just taken 224px and 48
+  // weeks needs ~852px against the 710px available there, so — same
+  // reasoning as the tablet step above — the step can only start where it
+  // actually fits. 48 * (14 + 3) + 36 = 852 against 880 available.
+  { minViewportWidth: 1194, weeks: 48, cellPx: 14, gapPx: 3, labelPx: 36 },
   // Desktop: from 1360, for the same reason — 53 weeks needs ~1043px, and
   // below 1340 the content column has not yet reached the 1160px cap that
   // makes that possible. The full year is the promise that actually matters,
@@ -247,17 +258,21 @@ function isoWeekdayIndex(date: Date): number {
 }
 
 /**
- * Maps a day's count onto the five-step ramp, relative to the busiest day in
- * the window. 0 is its own state — the empty cell is deliberately not step one
- * (design §10), or a quiet week reads as a dead grid. Any activity at all is
- * at least step one, and the busiest day is always step five, so the ramp is
- * used in full whenever there is any variation to show.
+ * Maps a day's count onto the five-step ramp (0..4 — see tokens.css's
+ * `--color-heat-0`..`--color-heat-4`; `--color-heat-5` was a deprecated
+ * duplicate of step 4, retired once this component moved to the profile in
+ * Phase 4 of docs/plans/2026-09-02-design-import-plan.md), relative to the
+ * busiest day in the window. 0 is its own state — the empty cell is
+ * deliberately not step one (design §10), or a quiet week reads as a dead
+ * grid. Any activity at all is at least step one, and the busiest day is
+ * always step four, so the ramp is used in full whenever there is any
+ * variation to show.
  */
 export function intensityLevel(count: number, maxCount: number): number {
   if (count <= 0) return 0;
   const span = Math.max(1, maxCount - 1);
-  const level = 1 + Math.floor(((count - 1) / span) * 4);
-  return Math.min(5, Math.max(1, level));
+  const level = 1 + Math.floor(((count - 1) / span) * 3);
+  return Math.min(4, Math.max(1, level));
 }
 
 /**

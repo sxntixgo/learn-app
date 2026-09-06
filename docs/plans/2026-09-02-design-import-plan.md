@@ -246,9 +246,11 @@ place to be wrong._
       the new one. Clean up per-module as Phases 2–5 touch each file.
       **Acceptance:** `grep -rl "Libre Franklin" web/app --include=*.css` is empty by Gate 6.
       **Model:** `haiku`
-- [ ] **`--color-accent-yellow`, the banner/footer tokens and `--color-heat-5` are deprecated
-      aliases**, kept so no CSS module strands a `var()`. Each retires as its consumers
-      migrate: yellow has 15, banner 4, footer 1, heat-5 1.
+- [ ] **`--color-accent-yellow`, the banner/footer tokens and ~~`--color-heat-5`~~ are
+      deprecated aliases**, kept so no CSS module strands a `var()`. Each retires as its
+      consumers migrate: yellow has 15, banner 4, footer 1. **`--color-heat-5` is retired
+      (2026-09-06)** — the heatmap was its one consumer, and Phase 4 migrated it; the ramp is
+      five steps, `intensityLevel` 0..4.
       **Acceptance:** by Gate 6 `tokens.css` declares no alias, and the dangling-`var()`
       check still passes.
       **Model:** `haiku`
@@ -770,7 +772,7 @@ _Parallel with Phase 3 once Gate 2 passes._
       **Acceptance:** a browser spec renders the degree card at both tiers, and
       `profile-empty.spec.ts` still passes.
       **Model:** `sonnet`
-- [ ] **`/u/[handle]` absorbs the heatmap and badges** — `profile.module.css` (221),
+- [x] **`/u/[handle]` absorbs the heatmap and badges** — `profile.module.css` (221),
       `heatmap.module.css` (307), `badges.module.css` (229), `Identicon`/`Avatar`, plus the
       Degrees panel ("1 IN PROGRESS", with a not-started degree and its prerequisites) and
       the visibility explainer line. The heatmap's visible window is already width-derived
@@ -782,6 +784,30 @@ _Parallel with Phase 3 once Gate 2 passes._
       heat ramp reads as five distinct steps in both themes; locked badges are visibly
       distinct from earned ones.
       **Model:** `sonnet`
+- [ ] **Owner-enrichment on the profile shares the degree fixture's blast radius.**
+      `/me/badges` and `/me/degrees` enumerate every instance-wide definition against the
+      caller, so seeding **any** badge or degree makes it render as locked / in-progress on
+      **every** owner's own profile view — not only the seeded account's. `badges` and
+      `degrees` are both empty in `learn_test` today, so nothing surfaces yet. The screens
+      at risk are `profile-empty.spec.ts` (its whole subject is an account with nothing in
+      it) and `viewport.spec.ts` / `a11y.spec.ts`, which both view `E2E_VIEWPORT_HANDLE`'s
+      own profile as owner.
+      **Acceptance:** whichever account receives a seeded degree, `profile-empty.spec.ts`'s
+      `avatarUser` and `viewportUser` still show zero Degrees content unless deliberately
+      given one.
+      **Model:** `sonnet`
+- [ ] **A non-owner viewer cannot match PL9, permanently and by design.** A stranger never
+      sees a badge total ("3 OF 9") or a degree's prerequisites, because the public contract
+      does not carry them for anyone but the owner — `ProfileBadge` is earned-only
+      (`api/src/profile/load.ts`: "a profile shows what you have, not what you are missing")
+      and `ProfileDegree` omits curriculum detail (`serialize.ts`). Both are deliberate,
+      documented API decisions, so Phase 4 rendered the owner's own view from the existing
+      `/me/*` endpoints and gave every other viewer the public fallback, rather than
+      inventing an endpoint. **Gate 4/6 must know this before comparing a non-owner render
+      against the artboard.**
+      **Acceptance:** none unless a human decides the public contract should change — that
+      is a new task, not a bug.
+      **Model:** needs a human.
 - [ ] **`/search`** — `search.module.css` (172), results and empty state.
       **Acceptance:** `search.spec.ts` green; the result list matches the artboard at four
       widths.

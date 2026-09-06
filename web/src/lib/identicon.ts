@@ -34,7 +34,6 @@ export const IDENTICON_COLORS: readonly string[] = Object.freeze([
   'var(--color-link)',
   'var(--color-heat-3)',
   'var(--color-heat-4)',
-  'var(--color-heat-5)',
   'var(--color-tag-text)',
 ]);
 

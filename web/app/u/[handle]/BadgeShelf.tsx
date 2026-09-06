@@ -1,5 +1,15 @@
 /*
- * The badge shelf on `/me` (design §9.3), earned first then locked.
+ * The badge shelf on the profile's own owner (design §9.3), earned first
+ * then locked.
+ *
+ * OWNER ONLY. `BadgeProgress` — earned AND locked, with the scalar progress
+ * toward each — comes from `/api/v1/me/badges`, which only ever answers for
+ * the signed-in actor themselves. `page.tsx` renders this component
+ * precisely when `profile.viewer === 'owner'`; every other viewer sees the
+ * public, earned-only list built from `sections.badges` instead (design §11:
+ * "a profile shows what you have, not what you are missing" — locked
+ * progress is not something the account holder opted to publish about
+ * themselves).
  *
  * EARNED AND LOCKED ARE TOLD APART FOUR WAYS, only one of which is colour
  * (design §14, WCAG 1.4.1 — "never by colour alone"):
@@ -14,8 +24,8 @@
  * src/lib/badges.ts, tested without a browser.
  */
 
-import type { BadgeProgress } from '../../src/lib/api';
-import { badgeStatusLabel, describeProgress, formatAwardedAt } from '../../src/lib/badges';
+import type { BadgeProgress } from '../../../src/lib/api';
+import { badgeStatusLabel, describeProgress, formatAwardedAt } from '../../../src/lib/badges';
 import styles from './badges.module.css';
 
 export interface BadgeShelfProps {

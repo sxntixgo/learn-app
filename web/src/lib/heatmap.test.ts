@@ -60,18 +60,21 @@ function readCssVarsByBreakpoint(cssPath: string, names: readonly string[]): Map
 }
 
 describe('heatmapWindowForWidth', () => {
-  it('gives ~12 weeks on a phone, ~26 on a tablet, 53 on a desktop (design §10)', () => {
+  it('gives ~12 weeks on a phone, ~26 on a tablet, 48 on iPad landscape, 53 on a desktop (design §10)', () => {
     expect(visibleWeeksForWidth(375)).toBe(12);
     expect(visibleWeeksForWidth(834)).toBe(26);
+    expect(visibleWeeksForWidth(1194)).toBe(48);
     expect(visibleWeeksForWidth(1440)).toBe(53);
   });
 
   it('switches exactly at the declared breakpoints, never between them', () => {
-    // 834 and 1360, not the shell's 768/1200: a step may only begin where its
-    // own week count actually fits. See HEATMAP_WINDOW_STEPS.
+    // 834, 1194 and 1360, not the shell's 768/1024/1200: a step may only
+    // begin where its own week count actually fits. See HEATMAP_WINDOW_STEPS.
     expect(visibleWeeksForWidth(833)).toBe(12);
     expect(visibleWeeksForWidth(834)).toBe(26);
-    expect(visibleWeeksForWidth(1359)).toBe(26);
+    expect(visibleWeeksForWidth(1193)).toBe(26);
+    expect(visibleWeeksForWidth(1194)).toBe(48);
+    expect(visibleWeeksForWidth(1359)).toBe(48);
     expect(visibleWeeksForWidth(1360)).toBe(53);
   });
 
@@ -139,7 +142,8 @@ describe('the window actually fits the viewport it is for', () => {
   const cases = [
     { viewport: 375, step: 0 },
     { viewport: 834, step: 1 },
-    { viewport: 1440, step: 2 },
+    { viewport: 1194, step: 2 },
+    { viewport: 1440, step: 3 },
   ];
 
   for (const { viewport, step: stepIndex } of cases) {
@@ -223,7 +227,9 @@ describe('the nav sidebar the heatmap subtracts is the one the shell renders', (
 
 describe('the shipped CSS implements the declared window policy', () => {
   it('heatmap.module.css declares the same steps as HEATMAP_WINDOW_STEPS', () => {
-    const vars = readCssVarsByBreakpoint(path.join(WEB_DIR, 'app', 'me', 'heatmap.module.css'), [
+    // app/u/[handle]/, not app/me/ — the heatmap moved to the profile in
+    // Phase 4 of docs/plans/2026-09-02-design-import-plan.md.
+    const vars = readCssVarsByBreakpoint(path.join(WEB_DIR, 'app', 'u', '[handle]', 'heatmap.module.css'), [
       '--hm-window-weeks',
       '--hm-cell',
       '--hm-gap',
@@ -268,21 +274,21 @@ describe('intensityLevel', () => {
   });
 
   it('puts the busiest day at the top of the five-step ramp', () => {
-    expect(intensityLevel(10, 10)).toBe(5);
+    expect(intensityLevel(10, 10)).toBe(4);
     expect(intensityLevel(1, 1)).toBe(1);
   });
 
-  it('spreads the range between 1 and 5 without ever hitting 0', () => {
+  it('spreads the range between 1 and 4 without ever hitting 0', () => {
     const levels = [1, 3, 5, 6, 10].map((c) => intensityLevel(c, 10));
-    expect(levels).toEqual([1, 1, 2, 3, 5]);
+    expect(levels).toEqual([1, 1, 2, 2, 4]);
     for (const level of levels) {
       expect(level).toBeGreaterThanOrEqual(1);
-      expect(level).toBeLessThanOrEqual(5);
+      expect(level).toBeLessThanOrEqual(4);
     }
   });
 
-  it('never returns more than 5 even if a count exceeds the reported max', () => {
-    expect(intensityLevel(99, 3)).toBe(5);
+  it('never returns more than 4 even if a count exceeds the reported max', () => {
+    expect(intensityLevel(99, 3)).toBe(4);
   });
 });
 
@@ -355,7 +361,7 @@ describe('buildHeatmapWeeks', () => {
     const days = daysFrom('2026-08-10', 7, { '2026-08-11': 4 });
     const cells = buildHeatmapWeeks(days, 4)[0]!.cells;
 
-    expect(cells[1]).toMatchObject({ date: '2026-08-11', count: 4, level: 5 });
+    expect(cells[1]).toMatchObject({ date: '2026-08-11', count: 4, level: 4 });
     expect(cells[1]!.label).toBe('4 activities on Tuesday, 11 August 2026');
     expect(cells[0]).toMatchObject({ date: '2026-08-10', count: 0, level: 0 });
   });

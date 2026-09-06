@@ -24,11 +24,16 @@
 
 import { useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
-import type { HeatmapDay } from '../../src/lib/api';
-import { LABELLED_WEEKDAY_ROWS, WEEKDAY_ROWS, buildHeatmapWeeks } from '../../src/lib/heatmap';
+import type { HeatmapDay } from '../../../src/lib/api';
+import { LABELLED_WEEKDAY_ROWS, WEEKDAY_ROWS, buildHeatmapWeeks } from '../../../src/lib/heatmap';
 import styles from './heatmap.module.css';
 
-const LEVELS = [0, 1, 2, 3, 4, 5] as const;
+// FIVE levels, 0..4 — not 0..5. tokens.css's --color-heat-5 was a deprecated
+// alias of --color-heat-4 kept only because this file still had a
+// data-level='5' cell; moving here (Phase 4 of
+// docs/plans/2026-09-02-design-import-plan.md) is what retires it, so the
+// legend must stop offering a sixth swatch nothing distinct backs.
+const LEVELS = [0, 1, 2, 3, 4] as const;
 
 export interface HeatmapProps {
   days: HeatmapDay[];
