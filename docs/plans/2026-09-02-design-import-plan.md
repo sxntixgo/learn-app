@@ -13,8 +13,10 @@ modules (6 455 lines), a semantic OKLCH token layer (`app/tokens.css`), light/da
 
 ## Status
 
-**Phases 0, 1, 2 and 2b are complete. Phase 3 is 4 of 7.** Done: Lesson reader, Annotatable
-overlay, Checkpoint, Home. Remaining: Catalog, Course, Shiki dual-theme parity.
+**Phases 0, 1, 2, 2b and 3 are complete.** Phase 3 closed 2026-09-06 at 7 of 7: Lesson
+reader, Annotatable overlay, Checkpoint, Home, Catalog, Course, Shiki dual-theme parity.
+**Phase 3 now stands at Gate 3, which needs a human** — read a real lesson on the actual
+iPad, both orientations, both themes. Phase 4 is next.
 
 All of it is committed on **`feat/design-import`** (pushed 2026-09-06), one commit per phase
 with Home last. Before that the whole import sat uncommitted in a 93-file working tree on
@@ -22,8 +24,8 @@ with Home last. Before that the whole import sat uncommitted in a 93-file workin
 deliberately still uncommitted and are not part of this work.
 
 **Current green baseline (2026-09-06), superseding every figure written below:**
-`npx playwright test` **164 passed** · `npx vitest run` **107 files / 2012 tests** ·
-`web` unit **440** · lint green · `next build` green.
+`npx playwright test` **184 passed** · `npx vitest run` **108 files / 2022 tests** ·
+lint green · `typecheck` green · `next build` green.
 
 **Phase 0 is done** (2026-09-02). `/design-login` is authorized, all eight artboards are
 read, and the extraction is written up in
@@ -619,7 +621,7 @@ _The pages the product exists for. Sequential after Phase 2; parallel with each 
       **Acceptance:** a graded checkpoint renders at both tiers with its pass threshold and
       per-question state, matching the artboard.
       **Model:** `sonnet`
-- [ ] **Shiki dual-theme parity** — code blocks follow an explicit `data-theme` choice, not
+- [x] **Shiki dual-theme parity** — code blocks follow an explicit `data-theme` choice, not
       just the OS, if the design moves either code theme.
       **Acceptance:** a spec sets `data-theme='dark'` under a light OS preference and asserts
       the `.shiki` background is the dark token.
@@ -675,6 +677,40 @@ Home was implemented twice: a first agent was killed mid-task by a weekly rate l
 2026-09-05 and left the work uncommitted and unverified. The second agent kept nearly all of
 it — the gap was that **nothing measured the acceptance**, no fixture could render a
 populated Home, and the two contrast defects above were sitting in it.
+
+### Phase 3 outcome (2026-09-06)
+
+**Complete, 7 of 7.** `npx vitest run` **108 files / 2022 tests** · `npx playwright test`
+**184 passed, 0 failed** · lint · typecheck · `next build` all green ·
+`web/test-results/` absent.
+
+| Task | Model | Commit |
+| --- | --- | --- |
+| Lesson reader | `sonnet` | `feat(lesson)` |
+| Annotatable overlay | `opus` | `feat(annotations)` |
+| Checkpoint | `sonnet` | `feat(checkpoint)` |
+| Home | `opus` | `feat(home)` |
+| Catalog | `sonnet` | `feat(catalog)` |
+| Course | `sonnet` | `feat(course)` |
+| Shiki dual-theme parity | `haiku` | `feat(shiki)` |
+
+**Shiki needed no styling change.** Spec §8 lists "Shiki-at-render-time" under what did not
+change, and the three `.shiki` blocks in `globals.css` were already correct. The task was
+therefore entirely the missing proof, and the proof was checked by mutation: removing the
+`html:not([data-theme='light'])` guard makes `shiki-dual-theme.spec.ts` fail with expected
+`rgb(255, 255, 255)` / received `rgb(34, 39, 46)`. The reverse assertion stays green under
+that mutation because it covers the unconditional `html[data-theme='dark']` rule, which the
+guard does not affect — both assertions are needed.
+
+**Phase 1 debt retired along the way**, opportunistically, as each phase touched a file:
+`'Libre Franklin'` fallbacks **17 → 11** modules, `var(--color-accent-yellow)` consumers
+**down to 12**.
+
+**Two environment faults cost real time and are not code defects.** Postgres was killed
+mid-task twice (the symptom is ~41 vitest files failing with `ECONNREFUSED`, which reads as
+broken code — check `pg_isready -h localhost` first). And `next build` intermittently fails
+with `ENOTEMPTY: rmdir '.next/standalone'` when two builds overlap; `rm -rf web/.next` and
+rebuild.
 
 > **Gate 3.** Read a real lesson on the actual iPad, both orientations, both themes — the
 > same judgement Gate 1 of the platform plan asked for. This is the product.
