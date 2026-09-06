@@ -1,0 +1,243 @@
+/*
+ * The reader's course contents (design import plan, Phase 3 — Contents.tsx
+ * carries the "why one component" reasoning). Mobile-first: everything
+ * below describes the narrow-tier SHEET (P6) by default; the 1024px block
+ * at the bottom turns the same markup into the wide-tier in-flow PANEL
+ * (PL4/PL5). Tier boundary at 1024px per nav.module.css's documented home
+ * (artboard-spec §3).
+ */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  border: none;
+  margin: 0;
+  padding: 0;
+  background: var(--color-text);
+  opacity: 0.34;
+  cursor: default;
+}
+
+.panel {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 61;
+  display: none;
+  flex-direction: column;
+  max-height: 80dvh;
+  overflow-y: auto;
+  background: var(--color-page);
+  border-top: var(--border-hairline) solid var(--color-border-hairline);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: 0 -2px 16px 0 var(--color-border-hairline);
+  padding: var(--space-3) var(--space-3) var(--space-5);
+}
+
+.panel[data-open='true'] {
+  display: flex;
+}
+
+.panelHeader {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding-top: var(--space-3);
+}
+
+.panelHeader::before {
+  content: '';
+  position: absolute;
+  top: var(--space-1);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 44px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-hairline);
+}
+
+.panelTitle {
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+}
+
+.panelCourse {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.panelBody {
+  display: flex;
+  flex-direction: column;
+}
+
+.module {
+  margin-bottom: var(--space-3);
+}
+
+.moduleTag {
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  color: var(--color-accent-gold-text);
+}
+
+.lessonList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lessonRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0.55rem 0;
+  border-top: var(--border-hairline) solid var(--color-border-hairline);
+  text-decoration: none;
+  color: inherit;
+}
+
+.lessonList li:first-child .lessonRow {
+  border-top: none;
+}
+
+.dot {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border-radius: var(--radius-pill);
+  box-sizing: border-box;
+  border: 1.5px solid var(--color-border-hairline);
+  background: transparent;
+}
+
+.dot[data-state='done'] {
+  background: var(--color-accent-gold);
+  border-color: var(--color-accent-gold);
+}
+
+.dot[data-state='current'] {
+  background: var(--color-link);
+  border-color: var(--color-link);
+}
+
+.lessonTitle {
+  flex: 1;
+  font-family: var(--font-serif), 'Source Serif 4', serif;
+  font-size: 0.95rem;
+  line-height: 1.3;
+  color: var(--color-text-secondary);
+}
+
+.lessonTitle[data-state='current'],
+.lessonTitle[data-state='done'] {
+  color: var(--color-text);
+}
+
+/*
+ * The two toggle pills (Contents.tsx: one call site per tier). Both are
+ * always in the DOM — same technique as the hamburger in
+ * app/_shell/NavDrawer.tsx — and this file, not the component, decides
+ * which one belongs at the current width.
+ */
+.toggleWide {
+  display: none;
+}
+
+.toggleNarrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 0.7rem;
+  border: 1.5px solid var(--color-border-hairline);
+  border-radius: var(--radius-pill);
+  background: none;
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.toggleNarrow:focus-visible,
+.toggleWide:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+@media (min-width: 1024px) {
+  .backdrop {
+    display: none;
+  }
+
+  .panel {
+    /* Sticks under the banner, same offset the wide-tier rail itself uses
+       (nav.module.css `.nav { top: var(--banner-height) }`) — the panel is
+       the reading column's own sidebar, not the shell's. */
+    position: sticky;
+    z-index: auto;
+    flex: none;
+    display: none;
+    width: 276px;
+    max-height: none;
+    height: calc(100dvh - var(--banner-height));
+    top: var(--banner-height);
+    align-self: flex-start;
+    background: var(--color-surface-raised);
+    border: none;
+    border-right: var(--border-hairline) solid var(--color-border-hairline);
+    border-radius: 0;
+    box-shadow: none;
+    padding: var(--space-4) var(--space-3);
+  }
+
+  /*
+   * PL5: collapsed means ABSENT, not width:0 — `.page` (lesson.module.css)
+   * is `flex: 1` in the row this panel sits in, so removing the panel from
+   * the flex layout is what lets the reading column reclaim the space.
+   */
+  .panel[data-open='true'] {
+    display: flex;
+  }
+
+  .panelHeader {
+    display: none;
+  }
+
+  .toggleWide {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 0 0.9rem;
+    border: 1.5px solid var(--color-border-hairline);
+    border-radius: var(--radius-pill);
+    background: none;
+    margin-bottom: var(--space-4);
+    font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+    font-size: 0.66rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+  }
+
+  .toggleNarrow {
+    display: none;
+  }
+}
