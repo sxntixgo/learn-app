@@ -28,6 +28,8 @@ const { Pool } = pg;
 // second, possibly-drifting implementation of either.
 
 export const E2E_COURSE_SLUG = 'e2e-course';
+/** Phase 3 (catalog.spec.ts): the one tag the seeded course carries. */
+export const E2E_COURSE_TAG = 'sample';
 const E2E_MODULE_KEY = 'e2e-module';
 const E2E_LESSON_KEY = 'e2e-lesson';
 /**
@@ -412,17 +414,24 @@ async function ensureCourseModuleLesson(
   // unpublish (there is no code path that does this today, but nothing
   // stops a future admin-UI test from task 2 doing it) doesn't leave the
   // catalog spec unable to see it.
+  //
+  // `tags` carries one real tag (not `[]`, the column default) so
+  // catalog.spec.ts (Phase 3, docs/design/2026-09-02-artboard-spec.md §2)
+  // has a real chip to click — src/lib/catalog.ts derives the filter set
+  // from whatever tags the returned courses actually carry, so an untagged
+  // fixture course would render a filter row with nothing in it to filter.
   const course = await client.query<{ id: string; slug: string }>(
     `
-    insert into courses (slug, title, subtitle, visibility)
-    values ($1, $2, $3, 'open')
+    insert into courses (slug, title, subtitle, tags, visibility)
+    values ($1, $2, $3, $4, 'open')
     on conflict (slug) do update set
       title = excluded.title,
       subtitle = excluded.subtitle,
+      tags = excluded.tags,
       visibility = 'open'
     returning id, slug
     `,
-    [E2E_COURSE_SLUG, 'E2E Course', 'Seeded fixture data for the Playwright harness'],
+    [E2E_COURSE_SLUG, 'E2E Course', 'Seeded fixture data for the Playwright harness', [E2E_COURSE_TAG]],
   );
   const courseId = course.rows[0]!.id;
 

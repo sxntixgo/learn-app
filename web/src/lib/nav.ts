@@ -113,10 +113,12 @@ export interface NavAudience {
  * nothing a reader can see. Reversible: it is this line plus the `<h1>` the
  * test binds to it.
  *
- * The label moved in Phase 2; the CONTENT has not. The design also folds the
- * dashboard's resume/streak/activity/up-next/degree panels onto Home and
- * strips Catalog back to browsing — that is Phase 3, and until it lands
- * "Home" opens the activity feed that used to be called Dashboard.
+ * The label moved in Phase 2; the CONTENT followed in Phase 3. The design
+ * also folds the dashboard's resume/streak/activity/up-next/degree panels
+ * onto Home (`/me`/page.tsx) and strips Catalog (`/`/page.tsx) back to
+ * browsing — both landed, so "Home" now opens the merged screen and
+ * "Catalog" opens filters plus the course list, neither carrying the
+ * other's content.
  */
 export const NAV_DESTINATIONS: readonly NavDestination[] = [
   { href: '/me', label: 'Home' },

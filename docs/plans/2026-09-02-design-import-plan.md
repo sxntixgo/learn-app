@@ -591,7 +591,7 @@ _The pages the product exists for. Sequential after Phase 2; parallel with each 
       **Acceptance:** every element the M1 artboard shows is present at both tiers; nothing
       that was on `/me` is lost without being listed in the phase outcome.
       **Model:** `opus`
-- [ ] **Catalog (M2/P3) — browsing only.** Remove the progress banner and stats; add
+- [x] **Catalog (M2/P3) — browsing only.** Remove the progress banner and stats; add
       filters and the full course list.
       **Acceptance:** `catalog.spec.ts` green; a spec asserts no progress banner renders on
       Catalog (it moved to Home, and having it in both places is what the redesign fixed).
@@ -640,6 +640,24 @@ _The pages the product exists for. Sequential after Phase 2; parallel with each 
       direction as the defect.
       **Acceptance:** every `color-mix` in `web/app/**/*.module.css` has a measured floor by
       Gate 6, or `check-css-tokens.mjs` flags an unmeasured one.
+      **Model:** `sonnet`
+
+- [ ] **The artboard spec names no filter FIELD for M2/P3** — §2/§4 say only "filters, all
+      five courses, no progress banner, no stats". Catalog ships `?tag=`, chosen because tags
+      are the one categorical field `CourseSummary` already carries and the card already
+      displays; free-text was rejected as redundant with `/search`. **This is a judgement
+      call, not a spec fact** — check it at Gate 3 against the actual canvas. The GET-link
+      mechanics in `page.tsx` do not change if the field does; only
+      `web/src/lib/catalog.ts`'s derivation.
+      **Acceptance:** the filter field is confirmed against the artboard, or swapped.
+      **Model:** `sonnet`
+- [ ] **The seeded e2e catalog has one course, not the artboard's five.** So no browser
+      assertion proves the card grid actually reflows — only a container-width proxy.
+      Duplicating the course/module/lesson/enrolment/submission fixture machinery for a
+      second course was judged out of proportion to the Catalog task.
+      **Acceptance:** when a later phase adds a second fixture course (Phase 6's screenshot
+      pass will want one), extend `catalog.spec.ts` with a real two-card assertion — `box.x`
+      differs at wide tier, matches at narrow — the shape `home.spec.ts` already uses.
       **Model:** `sonnet`
 
 ### Phase 3 progress (2026-09-06)
