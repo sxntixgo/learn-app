@@ -13,6 +13,18 @@ modules (6 455 lines), a semantic OKLCH token layer (`app/tokens.css`), light/da
 
 ## Status
 
+**Phases 0, 1, 2 and 2b are complete. Phase 3 is 4 of 7.** Done: Lesson reader, Annotatable
+overlay, Checkpoint, Home. Remaining: Catalog, Course, Shiki dual-theme parity.
+
+All of it is committed on **`feat/design-import`** (pushed 2026-09-06), one commit per phase
+with Home last. Before that the whole import sat uncommitted in a 93-file working tree on
+`test/routes-coverage`; four `api/src/routes/*.test.ts` files from that earlier branch are
+deliberately still uncommitted and are not part of this work.
+
+**Current green baseline (2026-09-06), superseding every figure written below:**
+`npx playwright test` **164 passed** · `npx vitest run` **107 files / 2012 tests** ·
+`web` unit **440** · lint green · `next build` green.
+
 **Phase 0 is done** (2026-09-02). `/design-login` is authorized, all eight artboards are
 read, and the extraction is written up in
 [`../design/2026-09-02-artboard-spec.md`](../design/2026-09-02-artboard-spec.md). That
@@ -613,12 +625,51 @@ _The pages the product exists for. Sequential after Phase 2; parallel with each 
       the `.shiki` background is the dark token.
       **Model:** `haiku`
 
+### Newly discovered in Phase 3 — carried forward
+
+- [ ] **A `color-mix()` inside a CSS module is measured by nothing.** `check-css-tokens.mjs`
+      passes it the moment every part of the value is a `var()`, `palette.test.ts` only reads
+      `tokens.css`, and axe does not check these pairings. This found **two live defects on
+      the first screen to use the technique** — Home's `.statLabel` at 3.93:1 and
+      `.resumeCourse` at 4.40:1 in dark only, both against a 4.5 floor — because a mix over a
+      tile that is itself a wash of the same ink lifts the ground and costs more contrast than
+      the same alpha on the bare surface. The artboards are an alpha continuum (spec §5.2: 23
+      stops), so Phases 4 and 5 will write many more. `web/src/lib/home-contrast.test.ts` is
+      the pattern to generalise: composite in **gamma-encoded sRGB**, not linear light —
+      linear reports a brighter colour than the screen shows, i.e. wrong in the same silent
+      direction as the defect.
+      **Acceptance:** every `color-mix` in `web/app/**/*.module.css` has a measured floor by
+      Gate 6, or `check-css-tokens.mjs` flags an unmeasured one.
+      **Model:** `sonnet`
+
+### Phase 3 progress (2026-09-06)
+
+Four of seven done. `feat(lesson)`, `feat(annotations)`, `feat(checkpoint)`, `feat(home)`.
+
+Home is the one that changed the plan's own numbers: web unit **396 → 440** (+26
+`home.test.ts`, +18 `home-contrast.test.ts`) and e2e **155 → 164** (+9 `home.spec.ts`, which
+measures the acceptance at 375/834/1194/1440 with the tier read from `NAV_SIDEBAR_FROM_PX`
+rather than a typed literal). Two deliberate departures from what `/me` rendered, both
+recorded in the commit: the `h1` is Home not Dashboard (`nav-labels.test.ts` binds the nav
+label to it), and the feed is 10 rows not 50 now that it is one block of six.
+
+Home was implemented twice: a first agent was killed mid-task by a weekly rate limit on
+2026-09-05 and left the work uncommitted and unverified. The second agent kept nearly all of
+it — the gap was that **nothing measured the acceptance**, no fixture could render a
+populated Home, and the two contrast defects above were sitting in it.
+
 > **Gate 3.** Read a real lesson on the actual iPad, both orientations, both themes — the
 > same judgement Gate 1 of the platform plan asked for. This is the product.
 
 ---
 
-> ### ⚠️ e2e suite is at the edge of this machine's capacity
+> ### ✅ RESOLVED 2026-09-06 — e2e suite was at the edge of this machine's capacity
+>
+> **The two long-running dev servers are gone** (the container has since restarted; load
+> average is now 1.29 on 8 cores, not 8.11). The full suite runs **164 passed / 0 failed in
+> 2.5m**, three times in a row — back under the 2.7m this box records as healthy. No task
+> needed. The diagnosis below is kept because the failure shape is load-dependent and will
+> recur if servers are left running again.
 >
 > After the annotation-geometry spec landed, `npx playwright test` shows **1 failure —
 > `a11y.spec.ts:217 axe: public profile` — timing out at 30–35s**, plus serial-mode aborts.
@@ -653,6 +704,18 @@ _Parallel with Phase 3 once Gate 2 passes._
 > states) under the profile header. Nothing about `/me` is a straight restyle, which is why
 > there is no `/me` task.
 
+- [ ] **Seed a degree, and pick up Home's degree card in a browser.** Degree progress is the
+      one M1 block with no browser-level coverage, and the reason is a fixture collision this
+      phase owns: `listDegreeProgress` (`api/src/progression/views.ts`) joins **every** row of
+      `degrees` against the viewer, so seeding one puts a Degrees section on every seeded
+      account's profile and breaks `profile-empty.spec.ts`, whose whole subject is that an
+      account with nothing in it shows no sections. This phase adds the Degrees panel to the
+      profile anyway, so the fixture and the assertion belong here. Until then the card's
+      derivations are covered without a browser (`degreeTally`, `pickDegree` in
+      `home.test.ts`) and the gap is stated at the top of `home.spec.ts`.
+      **Acceptance:** a browser spec renders the degree card at both tiers, and
+      `profile-empty.spec.ts` still passes.
+      **Model:** `sonnet`
 - [ ] **`/u/[handle]` absorbs the heatmap and badges** — `profile.module.css` (221),
       `heatmap.module.css` (307), `badges.module.css` (229), `Identicon`/`Avatar`, plus the
       Degrees panel ("1 IN PROGRESS", with a not-started degree and its prerequisites) and
@@ -717,6 +780,13 @@ _The phase that decides whether any of the above is actually true._
       check border colours, which is exactly how the old yellow's 2.46:1 survived 69 passing
       assertions. Phase 1's palette test is what covers that, not this.
       **Acceptance:** zero violations at 4 widths × 2 themes.
+      **Model:** `sonnet`
+- [ ] **Three moderate axe violations on every route** — `landmark-main-is-top-level`,
+      `landmark-no-duplicate-main`, `landmark-unique`. A nested or duplicated `<main>` between
+      the shell and each page. **Pre-existing and shell-wide, not any one screen's**: the
+      identical three appear on `/invites` and `/settings/account` in `a11y.spec.ts`'s own
+      output. Below the suite's critical bar, so nothing fails today.
+      **Acceptance:** zero moderate landmark violations across the matrix.
       **Model:** `sonnet`
 - [ ] **Screenshot comparison** — capture each screen at 4 widths × 2 themes into
       `docs/design/screenshots/` and diff by eye against the artboards.
