@@ -859,7 +859,32 @@ choice, not a transcription. The 640px itself is spec-backed (§5.4).
 
 _Mostly tables and forms; the tier question is “what does a wide table do at 375”._
 
-- [ ] **Grading queue + grading view** — `grading.module.css`, `grading-view.module.css` (237)
+> ### ⚠️ Most of this phase contradicts the spec, and is being done anyway — deliberately
+>
+> **Only six routes have artboards**: `/`, `/login`, `/search`, `/settings/profile`,
+> `/settings/account`, `/u/[handle]`. The artboard spec has an explicit section — *"Routes
+> with no artboard — out of scope, left as they are"* — naming `/grading`,
+> `/grading/…/submissions/[userId]`, `/invites`, `/invite/[token]`,
+> `/admin/{imports,people,audit}`, `/no-access` and `/kitchen-sink`, and saying *"nothing
+> redesigns them, and they are not per-screen tasks."* This plan's own Phase 0 findings
+> record the same thing — *"a real scope reduction: 11 screens to build, not 19"* — but
+> **this phase's checklist was written before that and never updated.**
+>
+> Measured against the spec, only **Settings** (PL10/PL11) and the `/login` half of the last
+> task are in scope. The other three and a half tasks restyle screens the design says to
+> leave alone.
+>
+> **On 2026-09-07 the repo owner was shown this and chose to restyle them anyway.** That is
+> a deliberate scope decision, not the checklist being followed blindly.
+>
+> **What it means for these tasks:** there is no artboard to match, so "per the artboard" in
+> the acceptance lines below cannot be taken literally. The standard instead is the app's own
+> two-tier system (1024px boundary), the token layer, and the precedent set by the screens
+> that *do* have artboards. **Every invented design decision must be recorded in the file
+> that makes it**, the way the grading view's 276px sidebar and split layout are — because
+> nothing downstream can check them against a canvas at Gate 6.
+
+- [x] **Grading queue + grading view** — `grading.module.css`, `grading-view.module.css` (237)
       **Acceptance:** the split grading view collapses per the artboard at narrow tier; no
       horizontal page scroll at 375.
       **Model:** `sonnet`
