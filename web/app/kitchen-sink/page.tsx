@@ -198,7 +198,7 @@ function TypographySample({
 
 export default function KitchenSink() {
   return (
-    <main className="kitchen-sink">
+    <div className="kitchen-sink">
       <header className="header">
         <h1 className="header__title">Design Tokens — Gate 1</h1>
         <p className="header__desc">
@@ -466,6 +466,6 @@ export default function KitchenSink() {
           />
         </div>
       </TokenSection>
-    </main>
+    </div>
   );
 }

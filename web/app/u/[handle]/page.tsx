@@ -185,7 +185,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ handle
     !sectionHasContent(sections, 'activity_heatmap');
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <header className={styles.header}>
         <Avatar avatar={profile.avatar} size={96} label={null} />
         <div className={styles.identity}>
@@ -321,6 +321,6 @@ export default async function ProfilePage({ params }: { params: Promise<{ handle
           </ol>
         </section>
       ) : null}
-    </main>
+    </div>
   );
 }

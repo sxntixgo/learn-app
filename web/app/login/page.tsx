@@ -43,7 +43,7 @@ export default async function LoginPage({
   }
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <h1 className={styles.title}>Sign in</h1>
       {justDeleted ? (
         <p className={styles.notice} role="status">
@@ -52,6 +52,6 @@ export default async function LoginPage({
       ) : null}
       <p className={styles.intro}>Sign in to browse courses and pick up where you left off.</p>
       <LoginForm next={next} />
-    </main>
+    </div>
   );
 }

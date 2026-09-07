@@ -64,7 +64,7 @@ export default async function GradingViewPage({
   const returned = submission.returnedAt ? formatOccurredAt(submission.returnedAt, me.timezone) : null;
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <Link href="/grading" className={styles.back}>
         ← Grading queue
       </Link>
@@ -88,6 +88,6 @@ export default async function GradingViewPage({
         highlighted={highlighted}
         initialSubmission={submission}
       />
-    </main>
+    </div>
   );
 }

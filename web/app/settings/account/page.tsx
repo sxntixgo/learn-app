@@ -44,7 +44,7 @@ export default async function AccountSettingsPage() {
   const isAdmin = await fetchIsAdmin();
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <h1 className={styles.title}>Account &amp; password</h1>
 
       {/*
@@ -123,6 +123,6 @@ export default async function AccountSettingsPage() {
       </section>
         </>
       )}
-    </main>
+    </div>
   );
 }

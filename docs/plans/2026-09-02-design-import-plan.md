@@ -1032,13 +1032,36 @@ _The phase that decides whether any of the above is actually true._
       assertions. Phase 1's palette test is what covers that, not this.
       **Acceptance:** zero violations at 4 widths × 2 themes.
       **Model:** `sonnet`
-- [ ] **Three moderate axe violations on every route** — `landmark-main-is-top-level`,
+- [x] **Three moderate axe violations on every route** — `landmark-main-is-top-level`,
       `landmark-no-duplicate-main`, `landmark-unique`. A nested or duplicated `<main>` between
       the shell and each page. **Pre-existing and shell-wide, not any one screen's**: the
       identical three appear on `/invites` and `/settings/account` in `a11y.spec.ts`'s own
       output. Below the suite's critical bar, so nothing fails today.
       **Acceptance:** zero moderate landmark violations across the matrix.
       **Model:** `sonnet`
+- [ ] **`/invites` viewed as a TEACHER is not rendering a full document.** With the landmark
+      trio gone, this is the one route whose axe output still looks structurally wrong:
+      `document-title` and `html-has-lang` (both **serious**), plus `landmark-one-main` and
+      `region`. A missing `<title>` and `lang` mean the response is not going through the
+      root layout at all — an error boundary or a permission path rendering bare, not a
+      styling problem. Every other route reports 0/0/0. **This blocks the a11y-matrix task's
+      "zero violations" acceptance and is a real defect, not a design-import artifact.**
+      **Acceptance:** `/invites` as a teacher renders through the root layout, with a title
+      and a lang attribute, and reports the same 0 serious / 0 moderate every other route
+      does.
+      **Model:** `sonnet`
+- [ ] **`/kitchen-sink` reports 53 nodes of serious `color-contrast`.** Plausibly inherent —
+      it is the token proof sheet and deliberately paints every token, including pairings
+      never used together in the product. But it is a **serious** finding at 53 nodes, and
+      nobody has decided whether it is expected. Either exclude the page from the scan with
+      a stated reason, or fix the pairings it is actually asserting.
+      **Acceptance:** the count is zero, or the exclusion is documented in `a11y.spec.ts`
+      with the reason.
+      **Model:** `sonnet`
+- [ ] **`heading-order` on the lesson reader and the grading view**, one node each. Pre-dates
+      this phase and unrelated to the landmark fix.
+      **Acceptance:** zero `heading-order` violations across the matrix.
+      **Model:** `haiku`
 - [ ] **Screenshot comparison** — capture each screen at 4 widths × 2 themes into
       `docs/design/screenshots/` and diff by eye against the artboards.
       **Acceptance:** a contact sheet in the plan outcome; each accepted difference from the

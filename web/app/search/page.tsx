@@ -82,17 +82,17 @@ export default async function SearchPage({
     // see the module comment above). Not a redirect: this account will
     // never pass that floor by signing in again.
     return (
-      <main className={styles.page}>
+      <div className={styles.page}>
         <h1 className={styles.title}>Search</h1>
         <p className={styles.empty}>
           Search isn&rsquo;t available for this account. If that seems wrong, ask whoever administers this instance.
         </p>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <h1 className={styles.title}>Search</h1>
       <p className={styles.intro}>Find a lesson by title or by words in its text, across every course you can see.</p>
 
@@ -169,6 +169,6 @@ export default async function SearchPage({
           ))}
         </div>
       )}
-    </main>
+    </div>
   );
 }

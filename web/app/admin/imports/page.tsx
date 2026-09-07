@@ -27,7 +27,7 @@ export default async function AdminImportsPage() {
   const [me, runs] = await withAuthRedirect('/admin/imports', () => Promise.all([fetchMe(), fetchImportRuns(50)]));
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <AdminNav current="/admin/imports" />
       <div className={styles.heading}>
         <h1 className={styles.title}>Import content</h1>
@@ -51,6 +51,6 @@ export default async function AdminImportsPage() {
         </h2>
         <ImportHistory runs={runs} timezone={me.timezone} />
       </section>
-    </main>
+    </div>
   );
 }

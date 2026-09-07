@@ -150,7 +150,7 @@ export default async function LessonPage({
             currentLessonSlug={lesson.slug}
           />
         ) : null}
-        <main className={styles.page}>
+        <div className={styles.page}>
           {course && currentModule && !isCheckpoint ? (
             <div className={styles.mobileHeader}>
               <div className={styles.mobileHeaderRow}>
@@ -304,7 +304,7 @@ export default async function LessonPage({
               </nav>
             ) : null}
           </article>
-        </main>
+        </div>
       </div>
     </ContentsProvider>
   );

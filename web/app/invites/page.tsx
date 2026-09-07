@@ -37,7 +37,7 @@ export default async function InvitesPage() {
   const courses = isTeacher ? await fetchCourses() : [];
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <div className={styles.heading}>
         <h1 className={styles.title}>Invitations</h1>
       </div>
@@ -66,6 +66,6 @@ export default async function InvitesPage() {
         </h2>
         <InviteList invites={invites} timezone={me.timezone} />
       </section>
-    </main>
+    </div>
   );
 }
