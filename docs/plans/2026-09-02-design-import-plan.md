@@ -942,11 +942,57 @@ _Mostly tables and forms; the tier question is “what does a wide table do at 3
       **Acceptance:** each admin table is readable at 375 without page-level horizontal
       scroll; the live import stream still renders.
       **Model:** `sonnet`
-- [ ] **`/login` and `/no-access`** — `login.module.css` (111), `no-access.module.css` (33)
+- [x] **`/login` and `/no-access`** — `login.module.css` (111), `no-access.module.css` (33)
       **Acceptance:** `session.spec.ts` green; both centre correctly at four widths.
       **Model:** `haiku`
 
 ---
+
+### Phase 5 outcome (2026-09-07)
+
+**Complete, 5 of 5.** `npx vitest run` **109 files / 2025 tests** · `npx playwright test`
+**224 passed, 0 failed** · lint · typecheck · `next build` green · `web/test-results/`
+absent.
+
+| Task | Model | Commit |
+| --- | --- | --- |
+| Grading queue + grading view | `sonnet` | `feat(grading)` |
+| Invitations + invite accept | `sonnet` | `feat(invites)` |
+| Settings profile + account | `sonnet` | `feat(settings)` |
+| Admin imports / people / audit | `sonnet` | `feat(admin)` |
+| `/login` and `/no-access` | `haiku` | `feat(auth-screens)` |
+
+**The phase asked "what does a wide table do at 375" and the answer, five times over,
+was: there is no table.** Grading's queue was already a card list, and invitations, people,
+imports and audit all became one — a single idiom for the whole workflow section rather than
+four. `overflow-wrap: anywhere` on the long fields is what holds 375px, not a media query,
+so there is no breakpoint to get wrong.
+
+**Two real defects were found by chasing what looked like flakes:**
+
+1. **`/invites` grew forever.** `a11y.spec.ts`'s axe scan had reached 31s against a 30s
+   timeout — failing in full runs, passing in isolation. The test database held **336
+   invitations** and the page renders all of them. `clearAccumulatedAccounts` had already
+   fixed this exact shape for `/admin/people`, and missed invites for a stated reason:
+   `invites.issued_by` goes **null** when an account is deleted, so the rows outlive their
+   issuer. `clearAccumulatedInvites` closes it — 336 rows to 3, the scan 31s to 4.2s, and
+   still 3 after a full run.
+2. **A spec whose cost scaled with that same state.** The first draft of
+   `invite-link.spec.ts` asserted a box for every row on `/invites`: 15s in isolation, 30s
+   timeout in the full suite. Now samples five.
+
+**Phase 1 debt is nearly retired**, file by file as each was touched: `--color-accent-yellow`
+has **no consumers left in `web/app`**, split by meaning as it went — genuine failures to
+`--color-error`, structural borders and badges to `--color-accent-gold`. `'Libre Franklin'`
+fallbacks are down from 17 modules to a handful.
+
+**`/no-access` changed nothing but its documentation, deliberately.** It was already on the
+token layer, already centred, and carried neither debt. Inventing a redesign for a 33-line
+screen the spec says to leave alone would have been change for its own sake.
+
+**Centring is measured, not assumed.** `auth-screens.spec.ts` compares each page's rendered
+box against the viewport at four widths, because `toBeVisible()` passes just as happily on a
+full-bleed or off-centre box.
 
 ## Phase 6 — Verification matrix
 
