@@ -4,6 +4,35 @@
  * same journey, and the two screens should not look like different products.
  *
  * 44px minimum on every control, nothing revealed on hover.
+ *
+ * ---------------------------------------------------------------------
+ * Phase 5 (docs/plans/2026-09-02-design-import-plan.md) restyle notes.
+ * /invite has NO artboard — the artboard spec's "Routes with no
+ * artboard — out of scope, left as they are" names it explicitly — so
+ * nothing below is a transcription.
+ *
+ * NO WIDE-TIER TREATMENT, ON PURPOSE. Unlike invites.module.css (a list
+ * that has page width to use), this is a short, single-purpose form —
+ * three fields at most — so widening the column at 1024px+ would only
+ * stretch line lengths past a comfortable reading width for no benefit.
+ * Kept at the same 30rem centred column across all four widths: the same
+ * posture search.module.css documents for ITS narrow tier ("no hover-only
+ * affordance ... 375px is the same layout as wide, just narrower"),
+ * applied here to every width because there is no content that changes
+ * shape with room.
+ *
+ * `.error`'s border is retired off the deprecated `--color-accent-yellow`
+ * alias onto `--color-error` — it marks a failed submission
+ * (`state.error` from AcceptForm's action state), which is exactly what
+ * grading-view.module.css's own retirement of the same alias calls "an
+ * error, not an indicator" (CLAUDE.md's Phase 1 carried-forward item).
+ *
+ * The old pre-Phase-1 sans fallback is retired in favour of Plus Jakarta
+ * Sans, matching every other restyled screen's font stack — the other
+ * half of the same carried-forward item (the Gate 6 acceptance is a
+ * repo-wide grep for the old family name, so it must not appear here even
+ * in a comment).
+ * ---------------------------------------------------------------------
  */
 
 .page {
@@ -42,7 +71,7 @@
 }
 
 .label {
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   font-size: 0.9rem;
 }
@@ -66,7 +95,7 @@
   border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-size: 1rem;
   width: 100%;
 }
@@ -88,7 +117,7 @@
   border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   font-size: 1rem;
   cursor: pointer;
@@ -111,7 +140,7 @@
 .error {
   margin: 0;
   padding-left: 0.6rem;
-  border-left: 2px solid var(--color-accent-yellow);
+  border-left: 2px solid var(--color-error);
   font-size: 0.9rem;
   color: var(--color-text);
   line-height: 1.5;

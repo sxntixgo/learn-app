@@ -13,19 +13,40 @@ modules (6 455 lines), a semantic OKLCH token layer (`app/tokens.css`), light/da
 
 ## Status
 
-**Phases 0, 1, 2, 2b and 3 are complete.** Phase 3 closed 2026-09-06 at 7 of 7: Lesson
-reader, Annotatable overlay, Checkpoint, Home, Catalog, Course, Shiki dual-theme parity.
-**Phase 3 now stands at Gate 3, which needs a human** — read a real lesson on the actual
-iPad, both orientations, both themes. Phase 4 is next.
+**Phases 0, 1, 2, 2b, 3 and 4 are complete and merged to `main`. Phase 5 is in progress.**
 
-All of it is committed on **`feat/design-import`** (pushed 2026-09-06), one commit per phase
-with Home last. Before that the whole import sat uncommitted in a 93-file working tree on
-`test/routes-coverage`; four `api/src/routes/*.test.ts` files from that earlier branch are
-deliberately still uncommitted and are not part of this work.
+| Phase | State | Landed |
+| --- | --- | --- |
+| 0 Import and extract | complete | PR #1, merge `738b81c` |
+| 1 Token layer | complete | PR #1 |
+| 2 App shell, both tiers | complete | PR #1 |
+| 2b Configurable profile rate limit | complete | PR #1 |
+| 3 The reading core (7 tasks) | complete | PR #1 |
+| 4 Profile and search (3 tasks) | complete | PR #2, merge `0907cd0` |
+| 5 Workflow and admin (5 tasks) | **1 of 5** | branch `feat/phase-5-workflow-admin` |
+| 6 Verification matrix | not started | — |
 
-**Current green baseline (2026-09-06), superseding every figure written below:**
-`npx playwright test` **184 passed** · `npx vitest run` **108 files / 2022 tests** ·
+**⛔ Two gates are open and both need a human, not an agent:**
+
+1. **Gate 3** — read a real lesson on the actual iPad, both orientations, both themes. It was
+   never met; Phases 3 and 4 were merged to `main` without it.
+2. **Two Phase 4 product decisions** shipped unratified — `hasRealProgress` hides a
+   not-started degree that PL9 draws, and a non-owner profile view cannot match PL9 at all.
+   Both are carried-forward items under Phase 4.
+
+**Current green baseline (2026-09-07), superseding every figure written below:**
+`npx playwright test` **204 passed** · `npx vitest run` **109 files / 2025 tests** ·
 lint green · `typecheck` green · `next build` green.
+
+**Two environment faults cost hours across Phases 3–5 and are not code defects.** Postgres
+does not survive a container restart and its absence presents as ~41 vitest files failing
+with `ECONNREFUSED`, which reads as broken code — check `pg_isready -h localhost` first; the
+working start command is in CLAUDE.md. And `next build` intermittently fails with
+`ENOTEMPTY: rmdir '.next/standalone'` when two builds overlap — `rm -rf web/.next` and
+rebuild.
+
+Four `api/src/routes/*.test.ts` files from the earlier `test/routes-coverage` branch remain
+deliberately uncommitted and are not part of this work.
 
 **Phase 0 is done** (2026-09-02). `/design-login` is authorized, all eight artboards are
 read, and the extraction is written up in
@@ -888,8 +909,17 @@ _Mostly tables and forms; the tier question is “what does a wide table do at 3
       **Acceptance:** the split grading view collapses per the artboard at narrow tier; no
       horizontal page scroll at 375.
       **Model:** `sonnet`
-- [ ] **Invitations + invite accept** — `invites.module.css` (334), `accept.module.css`
+- [x] **Invitations + invite accept** — `invites.module.css` (334), `accept.module.css`
       **Acceptance:** `invite-link.spec.ts` green at four widths.
+      **Model:** `sonnet`
+- [ ] **`/invites` is shared, accumulating state and no spec may iterate it unbounded.**
+      Every spec that issues an invitation adds a row nothing removes, so any assertion whose
+      cost scales with row count costs a different amount on every run. Phase 5's first draft
+      of `invite-link.spec.ts` checked every row's box individually: 15s in isolation, and a
+      30s timeout in the full suite — a flake caused by the assertion, not the page. It now
+      samples five. Any future spec touching this list has the same trap available to it.
+      **Acceptance:** no spec iterates `/invites` rows unbounded; page-level guarantees are
+      asserted at page level.
       **Model:** `sonnet`
 - [ ] **Settings profile + account** — `settings.module.css` (296), `account.module.css` (270)
       **Acceptance:** `account-export-deletion.spec.ts` and `password.spec.ts` green.
