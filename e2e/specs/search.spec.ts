@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
-import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { test, expect, type Browser, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import type { E2eFixtures } from '../../tools/src/e2e-seed.ts';
+import { NAV_SIDEBAR_FROM_PX } from '../../web/src/lib/heatmap.ts';
 
 // Phase 16 task 2: search UI specs. Machine-checks the plan's own
 // acceptance line — "usable at 375px; keyboard reachable; empty and
@@ -18,6 +19,43 @@ const fixturesPath = new URL('../.fixtures.json', import.meta.url);
 const fixtures: E2eFixtures = JSON.parse(readFileSync(fixturesPath, 'utf8'));
 
 const PHONE = { width: 375, height: 812 };
+
+// PL7 wide / P8 narrow (docs/design/2026-09-02-artboard-spec.md §4), design-
+// import plan Phase 4's "/search" task — "the result list matches the
+// artboard at four widths." Same four widths and the same
+// NAV_SIDEBAR_FROM_PX-derived tier as home.spec.ts, catalog.spec.ts and
+// course.spec.ts, not a typed width literal (artboard-spec §3's own
+// warning: the tier boundary moved once already and a hardcoded 768
+// silently described a page that no longer existed).
+const WIDTHS = [
+  { name: 'iPhone', width: 375, height: 812 },
+  { name: 'iPad portrait', width: 834, height: 1194 },
+  { name: 'iPad landscape', width: 1194, height: 834 },
+  { name: 'Desktop', width: 1440, height: 900 },
+] as const;
+
+function tierOf(width: number): 'narrow' | 'wide' {
+  return width >= NAV_SIDEBAR_FROM_PX ? 'wide' : 'narrow';
+}
+
+/**
+ * "Present" means it occupies pixels, not that it is in the DOM.
+ *
+ * `toBeVisible()` alone would pass for an element the layout has collapsed
+ * to zero width — precisely what a mis-specified grid column does. Same
+ * helper as course.spec.ts and home.spec.ts.
+ */
+async function expectRendered(
+  locator: Locator,
+  label: string,
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  await expect(locator, `${label} is not visible`).toBeVisible();
+  const box = await locator.boundingBox();
+  expect(box, `${label} has no bounding box`).not.toBeNull();
+  expect(box!.width, `${label} rendered ${box!.width}px wide`).toBeGreaterThan(0);
+  expect(box!.height, `${label} rendered ${box!.height}px tall`).toBeGreaterThan(0);
+  return box!;
+}
 
 test.describe.configure({ mode: 'serial' });
 
@@ -287,3 +325,90 @@ test.describe('usable at 375px (plan, Phase 16: "usable at 375px", not merely no
     );
   });
 });
+
+/*
+ * DESIGN-IMPORT PLAN, PHASE 4: "/search" — PL7 wide / P8 narrow. Acceptance:
+ * "the result list matches the artboard at four widths." The artboard spec
+ * names no per-screen layout detail for Search beyond the screen inventory
+ * row ("Search — results"), so search.module.css's wide-tier block is a
+ * judgement call (documented in that file's header): a single, wider
+ * column at 1024px+, the same posture as course.module.css, rather than
+ * catalog.module.css's card grid — grouped results read top to bottom as
+ * one scanning flow, not independent browsing tiles. This block is the
+ * measured half of that acceptance line: `boundingBox()` in a real
+ * browser, never `display` read off a stylesheet, for the same reason
+ * course.spec.ts and home.spec.ts give — a collapsed column passes
+ * `toBeVisible()` just fine.
+ */
+for (const { name, width, height } of WIDTHS) {
+  const tier = tierOf(width);
+
+  test(`the result list renders at ${width} (${name}, ${tier} tier)`, async ({ browser, baseURL }) => {
+    await withPage(
+      browser,
+      baseURL,
+      studentState,
+      async (page) => {
+        await page.goto(`/search?q=${encodeURIComponent(MATCHING_QUERY)}`);
+
+        await expect(page.getByRole('heading', { name: 'Search', level: 1 })).toBeVisible();
+
+        // The seeded lesson's course group and card render exactly once —
+        // a CSS-hidden per-tier duplicate would satisfy toBeVisible() but
+        // put the heading in the page twice for a screen reader.
+        await expect(page.getByRole('heading', { name: 'E2E Course', level: 2 })).toHaveCount(1);
+        const resultLink = page.getByRole('link', { name: /Getting started/ });
+        await expect(resultLink).toHaveCount(1);
+        const resultBox = await expectRendered(resultLink, 'the seeded result card');
+        expect(resultBox.x, 'the result card starts left of the viewport').toBeGreaterThanOrEqual(0);
+        expect(resultBox.x + resultBox.width, 'the result card overflows the viewport').toBeLessThanOrEqual(
+          width + 1,
+        );
+
+        // The highlighted match renders as a real element in both tiers,
+        // not escaped text (page.tsx's comment on renderSnippet).
+        await expectRendered(resultLink.locator('mark').first(), 'the highlighted match');
+
+        const overflows = await page.evaluate(
+          () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+        );
+        expect(overflows, `the page scrolls horizontally at ${width}`).toBe(false);
+      },
+      { width, height },
+    );
+  });
+
+  test(`the ${tier} tier's Search column at ${width}`, async ({ browser, baseURL }) => {
+    await withPage(
+      browser,
+      baseURL,
+      studentState,
+      async (page) => {
+        await page.goto(`/search?q=${encodeURIComponent(MATCHING_QUERY)}`);
+
+        // Measured, not read off the stylesheet: search.module.css caps
+        // the narrow column at 60ch (~480px in this page's serif context,
+        // same as catalog.module.css and course.module.css) and widens it
+        // to a flat 640px at 1024px+, the same 1024px boundary as every
+        // other restyled Phase 3/4 screen. Asserting the RENDERED width is
+        // what would catch that boundary being wired to the old 768px
+        // literal — artboard-spec §3's own warning.
+        //
+        // `main main`, not `main`: the shell wraps every route in its own
+        // <main> (app/_shell/Shell.tsx) and this page renders a second one
+        // inside it — a pre-existing, shell-wide landmark duplication
+        // (Phase 6's known finding, not this task's to fix, same reasoning
+        // catalog.spec.ts and course.spec.ts already document).
+        const main = page.locator('main main');
+        const box = await expectRendered(main, 'the search main column');
+
+        if (tier === 'narrow') {
+          expect(box.width, 'narrow column is unexpectedly wide').toBeLessThan(550);
+        } else {
+          expect(box.width, 'wide column did not widen past the narrow cap').toBeGreaterThan(550);
+        }
+      },
+      { width, height },
+    );
+  });
+}

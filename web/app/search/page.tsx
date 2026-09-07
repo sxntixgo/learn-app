@@ -10,7 +10,12 @@ export const metadata: Metadata = {
 };
 
 /*
- * Search (design §16, plan Phase 16 task 2). A plain `<form method="get">`
+ * Search (PL7 wide, P8 narrow — docs/design/2026-09-02-artboard-spec.md
+ * §4). Structure and behaviour below predate the design import (design
+ * §16, plan Phase 16 task 2) and are unchanged by it — search.module.css's
+ * header records the wide-tier styling this phase added and the one
+ * judgement call it required, since the artboard spec names no per-screen
+ * layout detail for Search beyond "Search — results". A plain `<form method="get">`
  * reading `?q=`, same idiom as /admin/audit's filter (that page's own
  * comment: "a query parameter the server already reads is exactly what a
  * GET form is for, and it keeps this screen working with no JavaScript") —

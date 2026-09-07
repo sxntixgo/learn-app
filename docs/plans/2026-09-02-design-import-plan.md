@@ -705,8 +705,8 @@ that mutation because it covers the unconditional `html[data-theme='dark']` rule
 guard does not affect — both assertions are needed.
 
 **Phase 1 debt retired along the way**, opportunistically, as each phase touched a file:
-`'Libre Franklin'` fallbacks **17 → 11** modules, `var(--color-accent-yellow)` consumers
-**down to 12**.
+`'Libre Franklin'` fallbacks **17 → 10** modules (Phase 4's `/search` took the last three),
+`var(--color-accent-yellow)` consumers **down to 12**, and `--color-heat-5` fully retired.
 
 **Two environment faults cost real time and are not code defects.** Postgres was killed
 mid-task twice (the symptom is ~41 vitest files failing with `ECONNREFUSED`, which reads as
@@ -823,12 +823,37 @@ _Parallel with Phase 3 once Gate 2 passes._
       **Acceptance:** a human confirms the rule, or `listDegreeProgress` gains the scoping
       that would let the artboard's not-started card render honestly.
       **Model:** needs a human.
-- [ ] **`/search`** — `search.module.css` (172), results and empty state.
+- [x] **`/search`** — `search.module.css` (172), results and empty state.
       **Acceptance:** `search.spec.ts` green; the result list matches the artboard at four
       widths.
       **Model:** `sonnet`
 
 ---
+
+### Phase 4 outcome (2026-09-06)
+
+**Complete, 3 of 3.** `npx vitest run` **109 files / 2025 tests** · `npx playwright test`
+**192 passed, 0 failed** · lint · typecheck · `next build` green · `web/test-results/`
+absent. Verified on a dropped-and-remigrated database, with a second consecutive seed run,
+because that is the shape that turned CI red in Phase 3.
+
+| Task | Model | Commit |
+| --- | --- | --- |
+| `/u/[handle]` absorbs heatmap and badges | `sonnet` | `feat(profile)` |
+| Seed a degree, assert Home's degree card | `sonnet` | `test(degrees)` |
+| `/search` | `sonnet` | `feat(search)` |
+
+**⛔ Two product decisions in this phase need a human, and are NOT settled by it being
+green.** Both are listed as carried-forward items above: `hasRealProgress` hides a
+not-started degree the artboard explicitly draws, and a non-owner profile view cannot match
+PL9 at all. Neither is a bug; both were judged, documented, and left visible rather than
+absorbed silently.
+
+**Two judgement calls the artboard spec does not actually make**, each recorded in the file
+that implements it: Catalog's filter field (Phase 3) and Search's wide tier. §4 lists Search
+only as "PL7 wide / P8 narrow — Search — results" and §6 details only Home and the lesson
+reader, so the single 640px column at 1024px+ — Course's posture, not Catalog's grid — is a
+choice, not a transcription. The 640px itself is spec-backed (§5.4).
 
 ## Phase 5 — Workflow and administration screens
 
