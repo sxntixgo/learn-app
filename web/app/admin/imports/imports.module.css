@@ -8,6 +8,50 @@
  * touch target used everywhere else in this app (lesson.module.css's
  * .completeButton, nav.module.css's .link) — this is a real admin action,
  * not a place to shrink hit targets for density.
+ *
+ * ---------------------------------------------------------------------
+ * Phase 5 (docs/plans/2026-09-02-design-import-plan.md) restyle notes.
+ * /admin/imports has NO artboard — the artboard spec's "Routes with no
+ * artboard — out of scope, left as they are" names `/admin/{imports,people,
+ * audit}` explicitly — so nothing below is a transcription. This file, and
+ * people.module.css / audit.module.css alongside it, are the phase's real
+ * "wide table" candidates (grading and invites both turned out to be card
+ * lists already). Decisions made here, and why:
+ *
+ * 1. THE WIDE-TABLE QUESTION, ANSWERED THE SAME WAY AS INVITES: NOT BY
+ *    BUILDING A TABLE. This was never an HTML <table> — the run history is
+ *    an <ol> of bordered cards (`.historyItem`), each holding a <dl> of
+ *    label/value rows, same list-of-records idiom as invites.module.css's
+ *    `.item`/`.metaRow`. There is no table to collapse and no columns to
+ *    squeeze at 375: `overflow-wrap: anywhere` on free-text values
+ *    (`.historyMetaValue`) is what earns "no horizontal scroll", and the
+ *    form above it is a single column at every width. A real desktop admin
+ *    table (sortable columns, bulk actions) is out of scope — YAGNI, and
+ *    there is no artboard asking for one.
+ * 2. TIER BOUNDARY MOVED 768px -> 1024px. `.historyHead`'s wrap-to-nowrap
+ *    breakpoint below read 768, the exact pre-Phase-1 staleness CLAUDE.md's
+ *    carried-forward item warns about (a literal describing a page that no
+ *    longer exists — Phase 1 moved the real tier boundary to 1024px in
+ *    nav.module.css / shell.module.css). Moved to match
+ *    `NAV_SIDEBAR_FROM_PX` (web/src/lib/heatmap.ts), the one documented
+ *    home of that constant.
+ * 3. YELLOW RETIRED, SPLIT BY WHAT IT ACTUALLY MEANS, checked case by case
+ *    against this file rather than assumed (tokens.css: every use of
+ *    `--color-accent-yellow` was a border or tinted background, aliased to
+ *    `--color-accent-gold`; invites.module.css and grading-view.module.css
+ *    made the same split first):
+ *      - `.adminBadge`'s border is a plain structural label border, no
+ *        error meaning -> `--color-accent-gold`.
+ *      - `.requestError` (a failed import POST) and `.resultFailed` /
+ *        `.statusPill[data-status='failed']` / the failed step marker are
+ *        all literally failure states -> `--color-error`.
+ *      - the *active* step marker is mid-progress, not a failure — the
+ *        same "pay attention" indicator role gold always held (tokens.css)
+ *        -> `--color-accent-gold`.
+ * 4. The old pre-Phase-1 sans fallback is retired in favour of Plus Jakarta
+ *    Sans, matching invites.module.css / search.module.css / grading-view
+ *    .module.css — the other half of the same carried-forward item.
+ * ---------------------------------------------------------------------
  */
 
 .page {
@@ -30,14 +74,16 @@
 
 /*
  * "Clearly marked as admin" (design brief) — a small, always-visible label,
- * never a hover-only affordance. Yellow used structurally as a border only
+ * never a hover-only affordance. Gold used structurally as a border only
  * (CHOSEN-PALETTE.md rule 1: never a fill, never body text), same idiom as
- * nav.module.css's active-item underline.
+ * nav.module.css's active-item underline. See this file's header comment
+ * (item 3) for why this is `--color-accent-gold`, not the deprecated
+ * `--color-accent-yellow` alias it used to read.
  */
 .adminBadge {
   display: inline-block;
   padding: 0.15rem 0.55rem;
-  border: 1px solid var(--color-accent-yellow);
+  border: 1px solid var(--color-accent-gold);
   border-radius: var(--radius-pill, 999px);
   font-family: var(--font-mono), 'IBM Plex Mono', monospace;
   font-size: 0.7rem;
@@ -86,7 +132,7 @@
 }
 
 .label {
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   font-size: 0.9rem;
 }
@@ -103,7 +149,7 @@
   border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-size: 0.95rem;
   width: 100%;
 }
@@ -126,7 +172,7 @@
   border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   font-size: 0.95rem;
   cursor: pointer;
@@ -146,10 +192,12 @@
   outline-offset: 2px;
 }
 
+/* A failed import request is an error, not an indicator — see this file's
+   header comment (item 3) on why this is `--color-error`. */
 .requestError {
   margin: 1rem 0 0;
   padding-left: 0.6rem;
-  border-left: 2px solid var(--color-accent-yellow);
+  border-left: 2px solid var(--color-error);
   font-size: 0.85rem;
   color: var(--color-text-secondary);
 }
@@ -177,7 +225,7 @@
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-size: 0.85rem;
   color: var(--color-text-secondary);
 }
@@ -202,8 +250,10 @@
   color: var(--color-text);
 }
 
+/* Mid-progress, not a failure — the same "pay attention" indicator role
+   gold always held (see this file's header comment, item 3). */
 .step[data-status='active'] .stepMarker {
-  border-color: var(--color-accent-yellow);
+  border-color: var(--color-accent-gold);
 }
 
 .step[data-status='active'] .stepLabel {
@@ -211,8 +261,9 @@
   font-weight: 700;
 }
 
+/* A failed stage is an error, not an indicator (header comment, item 3). */
 .step[data-status='failed'] .stepMarker {
-  border-color: var(--color-accent-yellow);
+  border-color: var(--color-error);
   border-width: 3px;
 }
 
@@ -226,9 +277,10 @@
   font-size: 0.95rem;
 }
 
+/* A failed import result is an error (header comment, item 3). */
 .resultFailed {
   padding-left: 0.6rem;
-  border-left: 2px solid var(--color-accent-yellow);
+  border-left: 2px solid var(--color-error);
 }
 
 .resultFailedTitle {
@@ -299,8 +351,9 @@
   color: var(--color-link);
 }
 
+/* A failed run is an error, not an indicator (header comment, item 3). */
 .statusPill[data-status='failed'] {
-  border-color: var(--color-accent-yellow);
+  border-color: var(--color-error);
   color: var(--color-text);
   font-weight: 700;
 }
@@ -358,7 +411,13 @@
   color: var(--color-text-secondary);
 }
 
-@media (min-width: 768px) {
+/* THE TIER BOUNDARY IS 1024px (nav.module.css's header is its one
+   documented home; NAV_SIDEBAR_FROM_PX in web/src/lib/heatmap.ts is the
+   same number for code that can reference a constant instead of a
+   literal). Repeated here, not aliased, because CSS custom properties do
+   not work in `@media` conditions — see header comment item 2 on why this
+   used to read 768. */
+@media (min-width: 1024px) {
   .historyHead {
     flex-wrap: nowrap;
   }

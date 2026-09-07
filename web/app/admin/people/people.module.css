@@ -2,6 +2,26 @@
  * The admin roster. Same column-of-cards shape as the import screen
  * (imports.module.css) — one idiom for the admin section, not three.
  * Every control clears 44px; nothing appears on hover.
+ *
+ * ---------------------------------------------------------------------
+ * Phase 5 (docs/plans/2026-09-02-design-import-plan.md) restyle notes.
+ * /admin/people has NO artboard (see imports.module.css's header for the
+ * full argument). Same three decisions apply here, briefly:
+ *
+ * 1. WIDE-TABLE QUESTION: not a table. One account = one bordered card
+ *    (`.item`) with its roles and budget form inside; `overflow-wrap:
+ *    anywhere` on `.handle`/`.email` is what prevents horizontal scroll at
+ *    375, not a media query. No breakpoint needed — the card column is
+ *    already single-width at every tier.
+ * 2. YELLOW RETIRED, split by meaning (see imports.module.css item 3):
+ *    `.adminBadge`'s border is structural, not an error ->
+ *    `--color-accent-gold`. `.requestError`'s border-left marks a failed
+ *    role/budget request, which is literally an error -> `--color-error`.
+ *    `.note` (the sibling selector) already overrides its own
+ *    border-left-color to the hairline token, so it never actually showed
+ *    yellow — no change needed there.
+ * 3. Sans fallback -> Plus Jakarta Sans (same carried-forward item).
+ * ---------------------------------------------------------------------
  */
 
 .page {
@@ -25,7 +45,7 @@
 .adminBadge {
   display: inline-block;
   padding: 0.15rem 0.55rem;
-  border: 1px solid var(--color-accent-yellow);
+  border: 1px solid var(--color-accent-gold);
   border-radius: var(--radius-pill, 999px);
   font-family: var(--font-mono), 'IBM Plex Mono', monospace;
   font-size: 0.7rem;
@@ -90,7 +110,7 @@
 
 .legend {
   padding: 0;
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   font-size: 0.85rem;
 }
@@ -122,7 +142,7 @@
 }
 
 .label {
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   font-size: 0.85rem;
 }
@@ -142,7 +162,7 @@
   border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-size: 0.95rem;
 }
 
@@ -163,7 +183,7 @@
   border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   font-size: 0.9rem;
   cursor: pointer;
@@ -191,13 +211,16 @@
   max-width: var(--measure-prose, 46ch);
 }
 
+/* .requestError marks a failed request — an error (see header comment,
+   item 2). .note overrides border-left-color below, so it never shows this
+   colour. */
 .requestError,
 .note {
   margin: 0.75rem 0 0;
   padding-left: 0.6rem;
   font-size: 0.85rem;
   line-height: 1.5;
-  border-left: 2px solid var(--color-accent-yellow);
+  border-left: 2px solid var(--color-error);
   color: var(--color-text);
 }
 

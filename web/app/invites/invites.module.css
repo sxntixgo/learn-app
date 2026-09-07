@@ -9,6 +9,48 @@
  * Every control keeps the 44px minimum touch target used everywhere else,
  * and nothing is revealed on hover: the Revoke button is always present, so
  * it works on the 375px layout this app is designed for first.
+ *
+ * ---------------------------------------------------------------------
+ * Phase 5 (docs/plans/2026-09-02-design-import-plan.md) restyle notes.
+ * /invites has NO artboard — the artboard spec's "Routes with no
+ * artboard — out of scope, left as they are" names it explicitly, and
+ * this plan's own Phase 5 header says the same — so nothing below is a
+ * transcription. Decisions made here, and why:
+ *
+ * 1. THE WIDE-TABLE QUESTION, ANSWERED BY NOT BUILDING A TABLE. Phase 5
+ *    frames this file as "the widest table-shaped thing in the phase" and
+ *    asks what a wide table does at 375. The answer: this was never an
+ *    HTML <table>. Each invitation is a bordered card (`.item`) holding a
+ *    <dl> of label/value rows — the same list-of-records idiom
+ *    grading.module.css's header documents for the grading queue and
+ *    imports.module.css uses for import history — so there is no table to
+ *    collapse and no columns to squeeze. `overflow-wrap: anywhere` on
+ *    every free-text value (email, token, meta) is what actually earns
+ *    "no horizontal scroll at 375", not a media query.
+ * 2. TIER BOUNDARY MOVED 768px -> 1024px. This file predates Phase 1's move
+ *    of the tier boundary (nav.module.css / shell.module.css) and was
+ *    never updated: `.itemHead`'s wrap-to-nowrap breakpoint below still
+ *    read 768, the exact staleness CLAUDE.md's Phase 1 carried-forward
+ *    item warns about (a hardcoded literal describing a page that no
+ *    longer exists). Moved to match `NAV_SIDEBAR_FROM_PX`
+ *    (web/src/lib/heatmap.ts), the one documented home of that constant.
+ * 3. YELLOW RETIRED, SPLIT BY WHAT IT ACTUALLY MEANS (CLAUDE.md's Phase 1
+ *    carried-forward item on `--color-accent-yellow`; grading-view.module
+ *    .css made the same split first — see its `.rubricInput` comment).
+ *    `.requestError`'s border marks a failed request, which is an error —
+ *    `--color-error`. The one-time-link callout (`.issued`) and the
+ *    "pending" status pill are not errors; they are the same "pay
+ *    attention, act on this" indicator role the deprecated alias always
+ *    pointed at (tokens.css: "--color-accent-yellow ... Aliased to
+ *    --color-accent-gold"), so they move to `--color-accent-gold` — the
+ *    live token holding the identical value, not a new colour.
+ * 4. The old pre-Phase-1 sans fallback is retired in favour of Plus Jakarta
+ *    Sans, matching every other restyled screen's font stack
+ *    (search.module.css, grading-view.module.css) — the other half of the
+ *    same carried-forward item (CLAUDE.md; the Gate 6 acceptance is a repo-
+ *    wide grep for the old family name, so it must not appear here even in
+ *    a comment).
+ * ---------------------------------------------------------------------
  */
 
 .page {
@@ -73,7 +115,7 @@
 
 .legend {
   padding: 0;
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   font-size: 0.9rem;
 }
@@ -101,7 +143,7 @@
 }
 
 .label {
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   font-size: 0.9rem;
 }
@@ -127,7 +169,7 @@
   border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-size: 0.95rem;
   width: 100%;
 }
@@ -158,7 +200,7 @@
   border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   font-size: 0.95rem;
   cursor: pointer;
@@ -184,21 +226,24 @@
   outline-offset: 2px;
 }
 
+/* A failed request is an error, not an indicator — see this file's header
+   comment (item 3) on why this is `--color-error` and not the deprecated
+   `--color-accent-yellow` alias it used to read. */
 .requestError {
   margin: 1rem 0 0;
   padding-left: 0.6rem;
-  border-left: 2px solid var(--color-accent-yellow);
+  border-left: 2px solid var(--color-error);
   font-size: 0.85rem;
   color: var(--color-text-secondary);
 }
 
-/* The one-time link. Bordered rather than filled — yellow is structural
+/* The one-time link. Bordered rather than filled — gold is structural
    only (CHOSEN-PALETTE.md rule 1) — and the token wraps rather than
    overflowing a 375px viewport. */
 .issued {
   margin-top: 1.25rem;
   padding: 1rem 1.1rem;
-  border: 1px solid var(--color-accent-yellow);
+  border: 1px solid var(--color-accent-gold);
   border-radius: var(--radius-lg);
   background: var(--color-page);
   display: flex;
@@ -293,7 +338,7 @@
 }
 
 .statusPill[data-status='pending'] {
-  border-color: var(--color-accent-yellow);
+  border-color: var(--color-accent-gold);
   color: var(--color-text);
   font-weight: 700;
 }
@@ -327,7 +372,13 @@
   color: var(--color-text);
 }
 
-@media (min-width: 768px) {
+/* THE TIER BOUNDARY IS 1024px (nav.module.css's header is its one
+   documented home; NAV_SIDEBAR_FROM_PX in web/src/lib/heatmap.ts is the
+   same number for code that can reference a constant instead of a
+   literal). Repeated here, not aliased, because CSS custom properties do
+   not work in `@media` conditions — see header comment item 2 on why this
+   used to read 768. */
+@media (min-width: 1024px) {
   .itemHead {
     flex-wrap: nowrap;
   }

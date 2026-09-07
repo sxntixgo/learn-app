@@ -3,6 +3,25 @@
  * section. The filter strip wraps at 375px rather than scrolling sideways,
  * and each filter is a link with a 44px target — no dropdown, so it works
  * with JavaScript switched off.
+ *
+ * ---------------------------------------------------------------------
+ * Phase 5 (docs/plans/2026-09-02-design-import-plan.md) restyle notes.
+ * /admin/audit has NO artboard (see imports.module.css's header for the
+ * full argument). Same three decisions apply here, briefly:
+ *
+ * 1. WIDE-TABLE QUESTION: not a table. One entry = one bordered card
+ *    (`.item`); `overflow-wrap: anywhere` on `.actor`/`.detail` is what
+ *    prevents horizontal scroll at 375, not a media query. The filter
+ *    strip already wraps rather than scrolling (see comment above) — no
+ *    tier breakpoint needed anywhere in this file.
+ * 2. YELLOW RETIRED, split by meaning (see imports.module.css item 3):
+ *    both remaining uses are "current selection" indicators, not errors
+ *    -> `--color-accent-gold`. `.adminBadge`'s border is the same
+ *    structural label as every other admin screen; `.filter[data-active]`
+ *    marking the selected filter is the same role admin-nav.module.css's
+ *    `.currentLink` and nav.module.css's active-item marker already play.
+ * 3. Sans fallback -> Plus Jakarta Sans (same carried-forward item).
+ * ---------------------------------------------------------------------
  */
 
 .page {
@@ -26,7 +45,7 @@
 .adminBadge {
   display: inline-block;
   padding: 0.15rem 0.55rem;
-  border: 1px solid var(--color-accent-yellow);
+  border: 1px solid var(--color-accent-gold);
   border-radius: var(--radius-pill, 999px);
   font-family: var(--font-mono), 'IBM Plex Mono', monospace;
   font-size: 0.7rem;
@@ -56,7 +75,7 @@
   padding: 0 0.75rem;
   border: 1px solid var(--color-border-hairline);
   border-radius: var(--radius-pill, 999px);
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   text-decoration: none;
@@ -71,9 +90,11 @@
   outline-offset: 2px;
 }
 
-/* The selected filter is marked by weight and border, not colour alone. */
+/* The selected filter is marked by weight and border, not colour alone —
+   the same current-selection role gold plays elsewhere (header comment,
+   item 2), never an error. */
 .filter[data-active='true'] {
-  border-color: var(--color-accent-yellow);
+  border-color: var(--color-accent-gold);
   color: var(--color-text);
   font-weight: 700;
 }

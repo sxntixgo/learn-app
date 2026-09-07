@@ -13,19 +13,45 @@ modules (6 455 lines), a semantic OKLCH token layer (`app/tokens.css`), light/da
 
 ## Status
 
-**Phases 0, 1, 2, 2b and 3 are complete.** Phase 3 closed 2026-09-06 at 7 of 7: Lesson
-reader, Annotatable overlay, Checkpoint, Home, Catalog, Course, Shiki dual-theme parity.
-**Phase 3 now stands at Gate 3, which needs a human** — read a real lesson on the actual
-iPad, both orientations, both themes. Phase 4 is next.
+**Phases 0, 1, 2, 2b, 3 and 4 are complete and merged to `main`. Phase 5 is in progress.**
 
-All of it is committed on **`feat/design-import`** (pushed 2026-09-06), one commit per phase
-with Home last. Before that the whole import sat uncommitted in a 93-file working tree on
-`test/routes-coverage`; four `api/src/routes/*.test.ts` files from that earlier branch are
-deliberately still uncommitted and are not part of this work.
+| Phase | State | Landed |
+| --- | --- | --- |
+| 0 Import and extract | complete | PR #1, merge `738b81c` |
+| 1 Token layer | complete | PR #1 |
+| 2 App shell, both tiers | complete | PR #1 |
+| 2b Configurable profile rate limit | complete | PR #1 |
+| 3 The reading core (7 tasks) | complete | PR #1 |
+| 4 Profile and search (3 tasks) | complete | PR #2, merge `0907cd0` |
+| 5 Workflow and admin (5 tasks) | **1 of 5** | branch `feat/phase-5-workflow-admin` |
+| 6 Verification matrix | not started | — |
 
-**Current green baseline (2026-09-06), superseding every figure written below:**
-`npx playwright test` **184 passed** · `npx vitest run` **108 files / 2022 tests** ·
+**⛔ Gate 3 is still open and needs a human, not an agent** — read a real lesson on the
+actual iPad, both orientations, both themes. It was never met; Phases 3, 4 and 5 all reached
+`main` (or a green PR) without it.
+
+**✅ Phase 4's two product decisions were ratified by the repo owner on 2026-09-07**:
+`hasRealProgress` hiding a not-started degree PL9 draws, and a non-owner profile view being
+unable to match PL9. Both stand as shipped; Gate 4/6 should not file either as a defect.
+
+**⚠️ One live tripwire**: badges have no `hasRealProgress` equivalent, so seeding any badge
+will put a "0 of N" section on every owner's profile and turn `profile-empty.spec.ts` red
+somewhere that looks unrelated. Left unfixed deliberately — see the Phase 4 carried-forward
+item.
+
+**Current green baseline (2026-09-07), superseding every figure written below:**
+`npx playwright test` **204 passed** · `npx vitest run` **109 files / 2025 tests** ·
 lint green · `typecheck` green · `next build` green.
+
+**Two environment faults cost hours across Phases 3–5 and are not code defects.** Postgres
+does not survive a container restart and its absence presents as ~41 vitest files failing
+with `ECONNREFUSED`, which reads as broken code — check `pg_isready -h localhost` first; the
+working start command is in CLAUDE.md. And `next build` intermittently fails with
+`ENOTEMPTY: rmdir '.next/standalone'` when two builds overlap — `rm -rf web/.next` and
+rebuild.
+
+Four `api/src/routes/*.test.ts` files from the earlier `test/routes-coverage` branch remain
+deliberately uncommitted and are not part of this work.
 
 **Phase 0 is done** (2026-09-02). `/design-login` is authorized, all eight artboards are
 read, and the extraction is written up in
@@ -792,11 +818,23 @@ _Parallel with Phase 3 once Gate 2 passes._
       at risk are `profile-empty.spec.ts` (its whole subject is an account with nothing in
       it) and `viewport.spec.ts` / `a11y.spec.ts`, which both view `E2E_VIEWPORT_HANDLE`'s
       own profile as owner.
-      **Acceptance:** whichever account receives a seeded degree, `profile-empty.spec.ts`'s
-      `avatarUser` and `viewportUser` still show zero Degrees content unless deliberately
-      given one.
+      **DEGREES ARE NOW GUARDED; BADGES ARE NOT.** `degreesSectionHasContent` filters on
+      `hasRealProgress` (`earned || percent > 0`), so a seeded degree no longer surfaces on
+      an untouched account. `badgesSectionHasContent` has no equivalent — it is a bare
+      `ownerBadges.length > 0`, and `/me/badges` enumerates every instance-wide badge
+      definition against the caller exactly as `/me/degrees` does.
+      **So the first person to seed a badge will grow a "0 of N" Badges section on EVERY
+      owner's profile**, including an account with nothing, and `profile-empty.spec.ts` will
+      go red somewhere that looks unrelated to what they changed. It is latent only because
+      `badges` is empty in `learn_test` (verified 0 rows, 2026-09-07).
+      **Deliberately left unfixed, 2026-09-07, repo owner's call.** The symmetric guard would
+      hide the locked-badge presentation PL9 explicitly draws — the same artboard conflict
+      `hasRealProgress` already carries — so the tripwire is recorded rather than traded for
+      a second one. The clean fix is scoping `/me/badges` and `/me/degrees` to the viewer in
+      the API, after which neither section needs a UI guard.
+      **Acceptance:** whoever seeds a badge either adds the guard, or scopes the endpoints.
       **Model:** `sonnet`
-- [ ] **A non-owner viewer cannot match PL9, permanently and by design.** A stranger never
+- [x] **A non-owner viewer cannot match PL9, permanently and by design.** A stranger never
       sees a badge total ("3 OF 9") or a degree's prerequisites, because the public contract
       does not carry them for anyone but the owner — `ProfileBadge` is earned-only
       (`api/src/profile/load.ts`: "a profile shows what you have, not what you are missing")
@@ -805,10 +843,10 @@ _Parallel with Phase 3 once Gate 2 passes._
       `/me/*` endpoints and gave every other viewer the public fallback, rather than
       inventing an endpoint. **Gate 4/6 must know this before comparing a non-owner render
       against the artboard.**
-      **Acceptance:** none unless a human decides the public contract should change — that
-      is a new task, not a bug.
-      **Model:** needs a human.
-- [ ] **`hasRealProgress` is narrower than the artboard, and was chosen to resolve a test
+      **✅ RATIFIED by the repo owner, 2026-09-07.** The public contract stands; a non-owner
+      render is expected to differ from PL9, and Gate 4/6 should not file it as a defect.
+      **Model:** n/a — settled.
+- [x] **`hasRealProgress` is narrower than the artboard, and was chosen to resolve a test
       collision.** Phase 4 closed the seeded-degree collision in
       `web/app/u/[handle]/DegreesSection.tsx`: a degree counts as owner content only once
       there is something real toward it (earned, or `percent > 0`). That keeps
@@ -818,11 +856,11 @@ _Parallel with Phase 3 once Gate 2 passes._
       degree — the owner is enrolled in a required course and has finished nothing. Telling
       "0% and never touched" apart from "0% but actually pursuing it" needs enrolment
       awareness the endpoint does not have today. Nothing in the suite proves that case
-      either way. **This is a product decision made to satisfy fixtures and a human should
-      confirm it at Gate 4**, not a settled question.
-      **Acceptance:** a human confirms the rule, or `listDegreeProgress` gains the scoping
-      that would let the artboard's not-started card render honestly.
-      **Model:** needs a human.
+      either way.
+      **✅ RATIFIED by the repo owner, 2026-09-07.** The rule stands as shipped. Reopen only
+      if `listDegreeProgress` gains viewer scoping, which would let PL9's not-started card
+      render honestly and make the guard unnecessary.
+      **Model:** n/a — settled.
 - [x] **`/search`** — `search.module.css` (172), results and empty state.
       **Acceptance:** `search.spec.ts` green; the result list matches the artboard at four
       widths.
@@ -859,26 +897,119 @@ choice, not a transcription. The 640px itself is spec-backed (§5.4).
 
 _Mostly tables and forms; the tier question is “what does a wide table do at 375”._
 
-- [ ] **Grading queue + grading view** — `grading.module.css`, `grading-view.module.css` (237)
+> ### ⚠️ Most of this phase contradicts the spec, and is being done anyway — deliberately
+>
+> **Only six routes have artboards**: `/`, `/login`, `/search`, `/settings/profile`,
+> `/settings/account`, `/u/[handle]`. The artboard spec has an explicit section — *"Routes
+> with no artboard — out of scope, left as they are"* — naming `/grading`,
+> `/grading/…/submissions/[userId]`, `/invites`, `/invite/[token]`,
+> `/admin/{imports,people,audit}`, `/no-access` and `/kitchen-sink`, and saying *"nothing
+> redesigns them, and they are not per-screen tasks."* This plan's own Phase 0 findings
+> record the same thing — *"a real scope reduction: 11 screens to build, not 19"* — but
+> **this phase's checklist was written before that and never updated.**
+>
+> Measured against the spec, only **Settings** (PL10/PL11) and the `/login` half of the last
+> task are in scope. The other three and a half tasks restyle screens the design says to
+> leave alone.
+>
+> **On 2026-09-07 the repo owner was shown this and chose to restyle them anyway.** That is
+> a deliberate scope decision, not the checklist being followed blindly.
+>
+> **What it means for these tasks:** there is no artboard to match, so "per the artboard" in
+> the acceptance lines below cannot be taken literally. The standard instead is the app's own
+> two-tier system (1024px boundary), the token layer, and the precedent set by the screens
+> that *do* have artboards. **Every invented design decision must be recorded in the file
+> that makes it**, the way the grading view's 276px sidebar and split layout are — because
+> nothing downstream can check them against a canvas at Gate 6.
+
+- [x] **Grading queue + grading view** — `grading.module.css`, `grading-view.module.css` (237)
       **Acceptance:** the split grading view collapses per the artboard at narrow tier; no
       horizontal page scroll at 375.
       **Model:** `sonnet`
-- [ ] **Invitations + invite accept** — `invites.module.css` (334), `accept.module.css`
+- [x] **Invitations + invite accept** — `invites.module.css` (334), `accept.module.css`
       **Acceptance:** `invite-link.spec.ts` green at four widths.
       **Model:** `sonnet`
-- [ ] **Settings profile + account** — `settings.module.css` (296), `account.module.css` (270)
+- [ ] **`/invites` is shared, accumulating state and no spec may iterate it unbounded.**
+      Every spec that issues an invitation adds a row nothing removes, so any assertion whose
+      cost scales with row count costs a different amount on every run. Phase 5's first draft
+      of `invite-link.spec.ts` checked every row's box individually: 15s in isolation, and a
+      30s timeout in the full suite — a flake caused by the assertion, not the page. It now
+      samples five. Any future spec touching this list has the same trap available to it.
+      **Acceptance:** no spec iterates `/invites` rows unbounded; page-level guarantees are
+      asserted at page level.
+      **Model:** `sonnet`
+- [x] **Settings profile + account** — `settings.module.css` (296), `account.module.css` (270)
       **Acceptance:** `account-export-deletion.spec.ts` and `password.spec.ts` green.
       **Model:** `sonnet`
-- [ ] **Admin imports / people / audit** — `imports.module.css` (365), `people.module.css`
+- [ ] **Three off-system breakpoints survive in `web/app/u/[handle]/profile.module.css`,
+      which is already merged to `main`.** `@media (min-width: 768px)`, `@media (min-width:
+      48rem)` (the same 768 in disguise, which is why a grep for one misses the other) and a
+      stray `@media (min-width: 1200px)`. The documented tier boundary is **1024px** and the
+      density steps are **834 / 1440**; none of these is either. Phase 4's profile task
+      should have caught them and did not. **Deliberately not fixed in Phase 5**: moving
+      768 → 1024 changes what the 768–1023 band renders, there is no artboard covering that
+      band, and the file is merged code — that is a decision, not a typo fix.
+      `web/app/admin/imports/imports.module.css` has the same 768px breakpoint and is Phase
+      5's admin task, which can fix its own file.
+      **Acceptance:** `grep -rE 'min-width: (768px|48rem|1200px)' web/app --include=*.css` is
+      empty by Gate 6, or each survivor is justified in place.
+      **Model:** `sonnet`
+- [x] **Admin imports / people / audit** — `imports.module.css` (365), `people.module.css`
       (207), `audit.module.css` (139), `admin-nav.module.css`
       **Acceptance:** each admin table is readable at 375 without page-level horizontal
       scroll; the live import stream still renders.
       **Model:** `sonnet`
-- [ ] **`/login` and `/no-access`** — `login.module.css` (111), `no-access.module.css` (33)
+- [x] **`/login` and `/no-access`** — `login.module.css` (111), `no-access.module.css` (33)
       **Acceptance:** `session.spec.ts` green; both centre correctly at four widths.
       **Model:** `haiku`
 
 ---
+
+### Phase 5 outcome (2026-09-07)
+
+**Complete, 5 of 5.** `npx vitest run` **109 files / 2025 tests** · `npx playwright test`
+**224 passed, 0 failed** · lint · typecheck · `next build` green · `web/test-results/`
+absent.
+
+| Task | Model | Commit |
+| --- | --- | --- |
+| Grading queue + grading view | `sonnet` | `feat(grading)` |
+| Invitations + invite accept | `sonnet` | `feat(invites)` |
+| Settings profile + account | `sonnet` | `feat(settings)` |
+| Admin imports / people / audit | `sonnet` | `feat(admin)` |
+| `/login` and `/no-access` | `haiku` | `feat(auth-screens)` |
+
+**The phase asked "what does a wide table do at 375" and the answer, five times over,
+was: there is no table.** Grading's queue was already a card list, and invitations, people,
+imports and audit all became one — a single idiom for the whole workflow section rather than
+four. `overflow-wrap: anywhere` on the long fields is what holds 375px, not a media query,
+so there is no breakpoint to get wrong.
+
+**Two real defects were found by chasing what looked like flakes:**
+
+1. **`/invites` grew forever.** `a11y.spec.ts`'s axe scan had reached 31s against a 30s
+   timeout — failing in full runs, passing in isolation. The test database held **336
+   invitations** and the page renders all of them. `clearAccumulatedAccounts` had already
+   fixed this exact shape for `/admin/people`, and missed invites for a stated reason:
+   `invites.issued_by` goes **null** when an account is deleted, so the rows outlive their
+   issuer. `clearAccumulatedInvites` closes it — 336 rows to 3, the scan 31s to 4.2s, and
+   still 3 after a full run.
+2. **A spec whose cost scaled with that same state.** The first draft of
+   `invite-link.spec.ts` asserted a box for every row on `/invites`: 15s in isolation, 30s
+   timeout in the full suite. Now samples five.
+
+**Phase 1 debt is nearly retired**, file by file as each was touched: `--color-accent-yellow`
+has **no consumers left in `web/app`**, split by meaning as it went — genuine failures to
+`--color-error`, structural borders and badges to `--color-accent-gold`. `'Libre Franklin'`
+fallbacks are down from 17 modules to a handful.
+
+**`/no-access` changed nothing but its documentation, deliberately.** It was already on the
+token layer, already centred, and carried neither debt. Inventing a redesign for a 33-line
+screen the spec says to leave alone would have been change for its own sake.
+
+**Centring is measured, not assumed.** `auth-screens.spec.ts` compares each page's rendered
+box against the viewport at four widths, because `toBeVisible()` passes just as happily on a
+full-bleed or off-centre box.
 
 ## Phase 6 — Verification matrix
 

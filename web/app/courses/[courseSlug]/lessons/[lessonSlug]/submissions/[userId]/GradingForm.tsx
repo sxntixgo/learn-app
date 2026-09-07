@@ -144,105 +144,115 @@ export default function GradingForm({
   }
 
   return (
-    <>
-      <div className={styles.body}>
-        {blocks.map((block, index) => {
-          if (block.type === 'prose') {
-            return <div key={index} className={styles.prose} dangerouslySetInnerHTML={{ __html: block.html }} />;
-          }
-          if (block.type === 'code') {
-            const codeBlock = block as AnnotatedCodeBlock;
-            return (
-              <div key={index} className={styles.code}>
-                <AnnotatableCode
-                  // Remounts after a successful return so a fresh
-                  // initialAnnotations (server ids, nothing pending) replaces
-                  // whatever was staged locally — see the module comment.
-                  key={`${index}-${submission.updatedAt}`}
-                  html={highlighted[index] ?? ''}
-                  lang={codeBlock.lang ?? undefined}
-                  mode="grade"
-                  authorAnnotations={codeBlock.annotations}
-                  initialAnnotations={fromGradedAnnotations(submission.annotations, index, userId)}
-                  onChange={(next) => handleBlockChange(index, next)}
-                  originLabel={originLabel}
-                />
-              </div>
-            );
-          }
-          // Rubric blocks are scored in the dedicated form below, not
-          // rendered a second time here; a `quiz` block never reaches an
-          // exercise lesson (design §9.1: one lesson kind, one meaning).
-          return null;
-        })}
-      </div>
-
-      {criteria.length > 0 ? (
-        <section className={styles.rubric} aria-labelledby="grading-rubric-heading">
-          <h2 className={styles.rubricTitle} id="grading-rubric-heading">
-            Rubric
-          </h2>
-          <ul className={styles.rubricList}>
-            {criteria.map((criterion) => {
-              const fieldId = `rubric-${criterion.name.replace(/\s+/g, '-')}`;
-              const problem = rubricProblems[criterion.name];
+    // Split at the wide tier — a submission column (`.main`) beside a
+    // sticky rubric + return sidebar (`.sidebar`) — collapsing to a single
+    // stacked column (main, then rubric, then the return control, the same
+    // DOM order as before this split existed) below 1024px. See
+    // grading-view.module.css's header comment: this screen has no
+    // artboard, so the split itself is this task's own judgement call.
+    <div className={styles.layout}>
+      <div className={styles.main}>
+        <div className={styles.body}>
+          {blocks.map((block, index) => {
+            if (block.type === 'prose') {
+              return <div key={index} className={styles.prose} dangerouslySetInnerHTML={{ __html: block.html }} />;
+            }
+            if (block.type === 'code') {
+              const codeBlock = block as AnnotatedCodeBlock;
               return (
-                <li key={criterion.name} className={styles.rubricRow}>
-                  <label className={styles.rubricLabel} htmlFor={fieldId}>
-                    <span className={styles.rubricName}>
-                      {criterion.name}
-                      {criterion.track ? <span className={styles.rubricTrack}>{criterion.track}</span> : null}
-                    </span>
-                    <span className={styles.rubricMax}>max {criterion.max}</span>
-                  </label>
-                  <input
-                    id={fieldId}
-                    className={styles.rubricInput}
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    max={criterion.max}
-                    step="any"
-                    value={rubricInputs[criterion.name] ?? ''}
-                    onChange={(event) => handleRubricInput(criterion.name, event.target.value)}
-                    aria-invalid={problem ? true : undefined}
-                    aria-describedby={problem ? `${fieldId}-problem` : undefined}
+                <div key={index} className={styles.code}>
+                  <AnnotatableCode
+                    // Remounts after a successful return so a fresh
+                    // initialAnnotations (server ids, nothing pending) replaces
+                    // whatever was staged locally — see the module comment.
+                    key={`${index}-${submission.updatedAt}`}
+                    html={highlighted[index] ?? ''}
+                    lang={codeBlock.lang ?? undefined}
+                    mode="grade"
+                    authorAnnotations={codeBlock.annotations}
+                    initialAnnotations={fromGradedAnnotations(submission.annotations, index, userId)}
+                    onChange={(next) => handleBlockChange(index, next)}
+                    originLabel={originLabel}
                   />
-                  {problem ? (
-                    <p className={styles.rubricProblem} id={`${fieldId}-problem`} role="alert">
-                      {problem}
-                    </p>
-                  ) : null}
-                </li>
+                </div>
               );
-            })}
-          </ul>
-        </section>
-      ) : null}
-
-      <div className={styles.returnControl}>
-        <p className={styles.returnStatus} role="status">
-          {returnStatus === 'saving'
-            ? 'Returning…'
-            : submission.status === 'returned'
-              ? 'Returned to the student.'
-              : 'Not yet returned — the student cannot see any of this until you return it.'}
-        </p>
-        {returnStatus === 'error' && errorMessage ? (
-          <p className={styles.returnError} role="alert">
-            {errorMessage}
-          </p>
-        ) : null}
-        <button
-          type="button"
-          className={styles.returnButton}
-          onClick={() => void handleReturn()}
-          disabled={returnStatus === 'saving'}
-          aria-busy={returnStatus === 'saving'}
-        >
-          {returnStatus === 'saving' ? 'Returning…' : 'Return to student'}
-        </button>
+            }
+            // Rubric blocks are scored in the dedicated form below, not
+            // rendered a second time here; a `quiz` block never reaches an
+            // exercise lesson (design §9.1: one lesson kind, one meaning).
+            return null;
+          })}
+        </div>
       </div>
-    </>
+
+      <div className={styles.sidebar}>
+        {criteria.length > 0 ? (
+          <section className={styles.rubric} aria-labelledby="grading-rubric-heading">
+            <h2 className={styles.rubricTitle} id="grading-rubric-heading">
+              Rubric
+            </h2>
+            <ul className={styles.rubricList}>
+              {criteria.map((criterion) => {
+                const fieldId = `rubric-${criterion.name.replace(/\s+/g, '-')}`;
+                const problem = rubricProblems[criterion.name];
+                return (
+                  <li key={criterion.name} className={styles.rubricRow}>
+                    <label className={styles.rubricLabel} htmlFor={fieldId}>
+                      <span className={styles.rubricName}>
+                        {criterion.name}
+                        {criterion.track ? <span className={styles.rubricTrack}>{criterion.track}</span> : null}
+                      </span>
+                      <span className={styles.rubricMax}>max {criterion.max}</span>
+                    </label>
+                    <input
+                      id={fieldId}
+                      className={styles.rubricInput}
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      max={criterion.max}
+                      step="any"
+                      value={rubricInputs[criterion.name] ?? ''}
+                      onChange={(event) => handleRubricInput(criterion.name, event.target.value)}
+                      aria-invalid={problem ? true : undefined}
+                      aria-describedby={problem ? `${fieldId}-problem` : undefined}
+                    />
+                    {problem ? (
+                      <p className={styles.rubricProblem} id={`${fieldId}-problem`} role="alert">
+                        {problem}
+                      </p>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ) : null}
+
+        <div className={styles.returnControl}>
+          <p className={styles.returnStatus} role="status">
+            {returnStatus === 'saving'
+              ? 'Returning…'
+              : submission.status === 'returned'
+                ? 'Returned to the student.'
+                : 'Not yet returned — the student cannot see any of this until you return it.'}
+          </p>
+          {returnStatus === 'error' && errorMessage ? (
+            <p className={styles.returnError} role="alert">
+              {errorMessage}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className={styles.returnButton}
+            onClick={() => void handleReturn()}
+            disabled={returnStatus === 'saving'}
+            aria-busy={returnStatus === 'saving'}
+          >
+            {returnStatus === 'saving' ? 'Returning…' : 'Return to student'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

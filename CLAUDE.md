@@ -65,6 +65,10 @@ for the design and `docs/plans/2026-08-15-learning-platform-plan.md` for the pha
   CI runs it (added Phase 9, after nine phases in which web type errors could reach `main`
   undetected). When verifying web work, run `cd web && npx next build` — a clean
   `npm run typecheck` says nothing about it.
+- **`next build` fails with `ENOTEMPTY: rmdir '.next/standalone'` when two builds overlap.**
+  Not a code error and not your change — Playwright's `webServer` builds the app too, so a
+  manual `next build` racing it (or a previous run's leftovers) trips this. `rm -rf web/.next`
+  and rebuild. It cost four separate re-runs across Phases 3–5 before being written down.
 - **Run Playwright from the REPO ROOT, never from inside a workspace.** `npx playwright
   test` started in `web/` picks up the wrong config, reports "Vitest failed to access its
   internal state", and leaves a `web/test-results/` directory behind. Shell working

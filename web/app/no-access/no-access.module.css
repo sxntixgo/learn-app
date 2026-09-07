@@ -1,3 +1,21 @@
+/*
+ * The refusal screen. /no-access has NO ARTBOARD — the spec lists it under
+ * "routes with no artboard - out of scope, left as they are" — and is
+ * restyled in Phase 5 only because the repo owner chose to (plan, Phase 5
+ * header).
+ *
+ * WHAT CHANGED: nothing, and that is the finding. This file was already on
+ * the token layer, already centred (`margin: 0 auto` on a `--measure-prose`
+ * column), and carried neither a --color-accent-yellow consumer nor a
+ * 'Libre Franklin' fallback — the two Phase 1 debts every other Phase 5 file
+ * still had. Inventing a redesign for a 33-line screen the spec says to
+ * leave alone would have been change for its own sake.
+ *
+ * What it gained is proof: e2e/specs/auth-screens.spec.ts measures this
+ * page's rendered box against the viewport at all four widths, so the
+ * centring the acceptance asks about is now asserted rather than assumed.
+ */
+
 .page {
   max-width: var(--measure-prose, 46ch);
   margin: 0 auto;
