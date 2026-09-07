@@ -1,19 +1,44 @@
 /*
- * The profile settings screen (design §11, §14).
+ * Profile & visibility (PL10 wide, P10 narrow —
+ * docs/design/2026-09-02-artboard-spec.md §4). This screen DOES have an
+ * artboard, unlike most of Phase 5 — but the extraction in that spec only
+ * carries it in the §4 screen-inventory row ("Profile & visibility"); §6's
+ * per-screen layout deltas describe only Home and the lesson reader in any
+ * detail, the same gap Search's own header comment records for PL7/P8. So
+ * structure below is a JUDGEMENT CALL following the precedent set by the
+ * screens that DO have a described structure — course.module.css and
+ * search.module.css both read as a single, un-gridded column at every
+ * width, widening at the 1024px tier rather than reflowing — while colour
+ * is NOT a judgement call: §5.2's token roles are already load-bearing
+ * here (see the yellow-retirement note below).
  *
  * 375px-first, one column, no hover-only affordances, and every control at
  * least 44px tall — a <select> that is 30px high is not usable with a thumb.
+ *
+ * THE TIER BOUNDARY IS 1024px — one documented literal, repeated here
+ * because CSS custom properties do not work in `@media` conditions. Its one
+ * documented home is app/_shell/nav.module.css's header; see that file for
+ * why 1024 and not the old 768. This file used to read 48rem (768px), the
+ * exact stale-literal shape CLAUDE.md's Phase 1 carried-forward item warns
+ * about — a hardcoded width describing a tier boundary that moved.
+ *
+ * `--measure-full` (76ch → 100ch across the density steps) is for wide,
+ * full-bleed content — the footer, the lesson shell, an admin table. This
+ * page is forms and toggles, not prose or a grid, so it follows Course/
+ * Search's `60ch` instead: one of §5.4's own observed panel widths (600px)
+ * at this page's body size, and never so wide that a label and its <select>
+ * drift apart on a 1440px screen.
  */
 
 .page {
-  max-width: var(--measure-full);
+  max-width: 60ch;
   margin: 0 auto;
   padding: var(--space-4) var(--space-3) var(--space-7);
   color: var(--color-text);
 }
 
 .title {
-  font-size: 1.5rem;
+  font-size: clamp(1.5rem, 4vw + 0.5rem, 2.25rem);
   margin: 0 0 var(--space-4);
 }
 
@@ -188,11 +213,20 @@
   cursor: default;
 }
 
+/*
+ * A save/upload failure is an error, not an indicator — `--color-error`,
+ * not the deprecated `--color-accent-yellow` alias this used to read
+ * (CLAUDE.md's Phase 1 carried-forward item; invites.module.css's header
+ * and grading-view.module.css's `.rubricInput` comment made the same split
+ * first: the alias's own definition in tokens.css says it is aliased to
+ * `--color-accent-gold`, the "pay attention" indicator, which a failed
+ * request is not).
+ */
 .error {
   margin: 0;
   color: var(--color-text);
   font-weight: 600;
-  border-left: var(--border-thick) solid var(--color-accent-yellow);
+  border-left: var(--border-thick) solid var(--color-error);
   padding-left: var(--space-1);
 }
 
@@ -277,7 +311,7 @@
   cursor: default;
 }
 
-@media (min-width: 48rem) {
+@media (min-width: 1024px) {
   .page {
     padding-inline: var(--space-4);
   }

@@ -1,24 +1,65 @@
 /*
- * Export & delete account (plan: "Account deletion and data export"). Same
- * page shell and group/section idiom as ../profile/settings.module.css —
- * this is a sibling screen, not a new pattern — plus a bordered "what
- * survives" notice reusing the same yellow-accent-as-emphasis idiom
- * settings.module.css's .error and invites.module.css's .requestError
- * already use (design's rule 1: the yellow accent is structural, never a
- * fill, never body text — there is no separate "danger" colour in this
- * palette, so emphasis here comes from a thick left border, exactly like
- * every other "read this" moment in the app, not from inventing one).
+ * Account & password (PL11 wide, P11 narrow —
+ * docs/design/2026-09-02-artboard-spec.md §4, "Account & password (+ nav
+ * drawer, narrow)"). This screen DOES have an artboard, but as with
+ * ../profile/settings.module.css (PL10) the extraction only carries it in
+ * §4's screen-inventory row — §6's per-screen layout deltas describe only
+ * Home and the lesson reader. Structure below follows the same Course/
+ * Search single-column precedent settings.module.css documents; this file
+ * is a sibling of that one, not a new pattern.
+ *
+ * THE TIER BOUNDARY IS 1024px — one documented literal, repeated here
+ * because CSS custom properties do not work in `@media` conditions. Its one
+ * documented home is app/_shell/nav.module.css's header. This file used to
+ * read 48rem (768px) — the exact stale-literal shape CLAUDE.md's Phase 1
+ * carried-forward item warns about.
+ *
+ * "+ nav drawer, narrow" in the spec row names the P11 artboard's hamburger
+ * drawer, which is shell-level (app/_shell/NavDrawer.tsx), not this page's
+ * concern — every route gets the same drawer below 1024px, so nothing here
+ * changes for it. What this file does own is not fighting it: the page has
+ * no fixed-position chrome of its own that could sit under or collide with
+ * the drawer or its hamburger trigger.
+ *
+ * `--measure-full` (76ch → 100ch across the density steps) is sized for
+ * wide, full-bleed content — the footer, the lesson shell, an admin table.
+ * This page is forms and a confirmation flow, not prose or a grid, so it
+ * follows Course/Search's `60ch` instead, exactly as settings.module.css
+ * does — one of §5.4's own observed panel widths (600px) at this page's
+ * body size.
+ *
+ * YELLOW RETIRED, SPLIT BY WHAT IT ACTUALLY MEANS (CLAUDE.md's Phase 1
+ * carried-forward item; invites.module.css's header and grading-view.
+ * module.css's `.rubricInput` comment made the same split first).
+ * tokens.css's own definition of the deprecated alias says what it always
+ * meant: "Aliased to --color-accent-gold ... every use of
+ * --color-accent-yellow today is a border or a tinted background — the
+ * same structural role" — the indicator/"pay attention" role, not an error
+ * and not a danger colour (this palette has neither). So:
+ *   - `.error` (a failed save or a failed deletion attempt) is a REAL
+ *     error — `--color-error`, the same split grading-view.module.css's
+ *     `.rubricInput` and invites.module.css's `.requestError` made first.
+ *   - `.noticeBox` (what survives deletion), `.deleteButton`'s border (an
+ *     irreversible action, not a failure state — there is no danger
+ *     colour to reach for instead) and `.saved` (a success confirmation,
+ *     equally not a failure) keep the indicator role — `--color-accent-
+ *     gold`, the live token holding the identical value, not a new colour.
+ *     This is a judgement call for `.deleteButton` and `.saved`
+ *     specifically: nothing in the artboard spec says what an
+ *     irreversible-action border or a confirmation should be, only that
+ *     the retiring alias's own structural role is "pay attention," which
+ *     both of these are doing.
  */
 
 .page {
-  max-width: var(--measure-full);
+  max-width: 60ch;
   margin: 0 auto;
   padding: var(--space-4) var(--space-3) var(--space-7);
   color: var(--color-text);
 }
 
 .title {
-  font-size: 1.5rem;
+  font-size: clamp(1.5rem, 4vw + 0.5rem, 2.25rem);
   margin: 0 0 var(--space-4);
 }
 
@@ -77,7 +118,7 @@
   flex-direction: column;
   gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
-  border-left: var(--border-thick) solid var(--color-accent-yellow);
+  border-left: var(--border-thick) solid var(--color-accent-gold);
   border-radius: var(--radius-sm);
   background: var(--color-surface-raised);
   max-width: var(--measure-prose);
@@ -135,7 +176,7 @@
 .deleteButton {
   min-height: 44px;
   padding: var(--space-1) var(--space-4);
-  border: var(--border-regular) solid var(--color-accent-yellow);
+  border: var(--border-regular) solid var(--color-accent-gold);
   border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
@@ -162,11 +203,11 @@
   margin: 0;
   color: var(--color-text);
   font-weight: 600;
-  border-left: var(--border-thick) solid var(--color-accent-yellow);
+  border-left: var(--border-thick) solid var(--color-error);
   padding-left: var(--space-1);
 }
 
-@media (min-width: 48rem) {
+@media (min-width: 1024px) {
   .page {
     padding-inline: var(--space-4);
   }
@@ -244,16 +285,20 @@
  * the fold of the button, and the reader is left unsure anything happened.
  *
  * Same structural device as `.error` above — a thick accent left-border,
- * which is this palette's one "read this" mechanism (there is no success
- * colour and no danger colour; design's rule 1 keeps the yellow structural,
- * never a fill and never body text). What separates the two is weight, not
- * hue: an error is 600 because it demands action, a confirmation is normal
+ * which is this palette's one "read this" mechanism. The two now differ by
+ * hue as well as weight, where they used to differ only by weight: `.error`
+ * moved to `--color-error` when the deprecated `--color-accent-yellow`
+ * alias retired (see this file's header comment), and there is still no
+ * dedicated success colour to move `.saved` to, so it keeps the alias's
+ * live replacement, `--color-accent-gold` — the same "pay attention"
+ * indicator role the alias always held, never a fill and never body text.
+ * An error is 600 because it demands action; a confirmation is normal
  * because it only reports.
  */
 .saved {
   margin: 0;
   color: var(--color-text);
-  border-left: var(--border-thick) solid var(--color-accent-yellow);
+  border-left: var(--border-thick) solid var(--color-accent-gold);
   padding-left: var(--space-1);
 }
 
