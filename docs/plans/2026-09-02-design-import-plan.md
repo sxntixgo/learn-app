@@ -26,13 +26,18 @@ modules (6 455 lines), a semantic OKLCH token layer (`app/tokens.css`), light/da
 | 5 Workflow and admin (5 tasks) | **1 of 5** | branch `feat/phase-5-workflow-admin` |
 | 6 Verification matrix | not started | — |
 
-**⛔ Two gates are open and both need a human, not an agent:**
+**⛔ Gate 3 is still open and needs a human, not an agent** — read a real lesson on the
+actual iPad, both orientations, both themes. It was never met; Phases 3, 4 and 5 all reached
+`main` (or a green PR) without it.
 
-1. **Gate 3** — read a real lesson on the actual iPad, both orientations, both themes. It was
-   never met; Phases 3 and 4 were merged to `main` without it.
-2. **Two Phase 4 product decisions** shipped unratified — `hasRealProgress` hides a
-   not-started degree that PL9 draws, and a non-owner profile view cannot match PL9 at all.
-   Both are carried-forward items under Phase 4.
+**✅ Phase 4's two product decisions were ratified by the repo owner on 2026-09-07**:
+`hasRealProgress` hiding a not-started degree PL9 draws, and a non-owner profile view being
+unable to match PL9. Both stand as shipped; Gate 4/6 should not file either as a defect.
+
+**⚠️ One live tripwire**: badges have no `hasRealProgress` equivalent, so seeding any badge
+will put a "0 of N" section on every owner's profile and turn `profile-empty.spec.ts` red
+somewhere that looks unrelated. Left unfixed deliberately — see the Phase 4 carried-forward
+item.
 
 **Current green baseline (2026-09-07), superseding every figure written below:**
 `npx playwright test` **204 passed** · `npx vitest run` **109 files / 2025 tests** ·
@@ -813,11 +818,23 @@ _Parallel with Phase 3 once Gate 2 passes._
       at risk are `profile-empty.spec.ts` (its whole subject is an account with nothing in
       it) and `viewport.spec.ts` / `a11y.spec.ts`, which both view `E2E_VIEWPORT_HANDLE`'s
       own profile as owner.
-      **Acceptance:** whichever account receives a seeded degree, `profile-empty.spec.ts`'s
-      `avatarUser` and `viewportUser` still show zero Degrees content unless deliberately
-      given one.
+      **DEGREES ARE NOW GUARDED; BADGES ARE NOT.** `degreesSectionHasContent` filters on
+      `hasRealProgress` (`earned || percent > 0`), so a seeded degree no longer surfaces on
+      an untouched account. `badgesSectionHasContent` has no equivalent — it is a bare
+      `ownerBadges.length > 0`, and `/me/badges` enumerates every instance-wide badge
+      definition against the caller exactly as `/me/degrees` does.
+      **So the first person to seed a badge will grow a "0 of N" Badges section on EVERY
+      owner's profile**, including an account with nothing, and `profile-empty.spec.ts` will
+      go red somewhere that looks unrelated to what they changed. It is latent only because
+      `badges` is empty in `learn_test` (verified 0 rows, 2026-09-07).
+      **Deliberately left unfixed, 2026-09-07, repo owner's call.** The symmetric guard would
+      hide the locked-badge presentation PL9 explicitly draws — the same artboard conflict
+      `hasRealProgress` already carries — so the tripwire is recorded rather than traded for
+      a second one. The clean fix is scoping `/me/badges` and `/me/degrees` to the viewer in
+      the API, after which neither section needs a UI guard.
+      **Acceptance:** whoever seeds a badge either adds the guard, or scopes the endpoints.
       **Model:** `sonnet`
-- [ ] **A non-owner viewer cannot match PL9, permanently and by design.** A stranger never
+- [x] **A non-owner viewer cannot match PL9, permanently and by design.** A stranger never
       sees a badge total ("3 OF 9") or a degree's prerequisites, because the public contract
       does not carry them for anyone but the owner — `ProfileBadge` is earned-only
       (`api/src/profile/load.ts`: "a profile shows what you have, not what you are missing")
@@ -826,10 +843,10 @@ _Parallel with Phase 3 once Gate 2 passes._
       `/me/*` endpoints and gave every other viewer the public fallback, rather than
       inventing an endpoint. **Gate 4/6 must know this before comparing a non-owner render
       against the artboard.**
-      **Acceptance:** none unless a human decides the public contract should change — that
-      is a new task, not a bug.
-      **Model:** needs a human.
-- [ ] **`hasRealProgress` is narrower than the artboard, and was chosen to resolve a test
+      **✅ RATIFIED by the repo owner, 2026-09-07.** The public contract stands; a non-owner
+      render is expected to differ from PL9, and Gate 4/6 should not file it as a defect.
+      **Model:** n/a — settled.
+- [x] **`hasRealProgress` is narrower than the artboard, and was chosen to resolve a test
       collision.** Phase 4 closed the seeded-degree collision in
       `web/app/u/[handle]/DegreesSection.tsx`: a degree counts as owner content only once
       there is something real toward it (earned, or `percent > 0`). That keeps
@@ -839,11 +856,11 @@ _Parallel with Phase 3 once Gate 2 passes._
       degree — the owner is enrolled in a required course and has finished nothing. Telling
       "0% and never touched" apart from "0% but actually pursuing it" needs enrolment
       awareness the endpoint does not have today. Nothing in the suite proves that case
-      either way. **This is a product decision made to satisfy fixtures and a human should
-      confirm it at Gate 4**, not a settled question.
-      **Acceptance:** a human confirms the rule, or `listDegreeProgress` gains the scoping
-      that would let the artboard's not-started card render honestly.
-      **Model:** needs a human.
+      either way.
+      **✅ RATIFIED by the repo owner, 2026-09-07.** The rule stands as shipped. Reopen only
+      if `listDegreeProgress` gains viewer scoping, which would let PL9's not-started card
+      render honestly and make the guard unnecessary.
+      **Model:** n/a — settled.
 - [x] **`/search`** — `search.module.css` (172), results and empty state.
       **Acceptance:** `search.spec.ts` green; the result list matches the artboard at four
       widths.
