@@ -1,6 +1,14 @@
 /*
- * Degrees on `/me` (design §9.2: "progress toward unearned degrees is
- * visible").
+ * Degrees on the profile's own owner (design §9.2: "progress toward unearned
+ * degrees is visible").
+ *
+ * OWNER ONLY, same reasoning as BadgeShelf.tsx beside it: the per-requirement
+ * breakdown (`degree.required`, `.electives`, `.satisfiable`) comes from
+ * `/api/v1/me/degrees`, which only ever answers for the signed-in actor.
+ * `page.tsx` renders this precisely when `profile.viewer === 'owner'`; every
+ * other viewer sees the public `ProfileDegree` list instead — earned and
+ * percent only, with no prerequisite detail, because `serialize.ts`
+ * deliberately does not publish which specific courses are missing.
  *
  * Three states per requirement, each with a PREFIX CHARACTER as well as a
  * border style — done, still to do, and not imported on this instance. The
@@ -10,8 +18,8 @@
  * on this instance instead of being shown a requirement they cannot start.
  */
 
-import type { DegreeProgress, DegreeRequirement } from '../../src/lib/api';
-import { describeDegreeProgress, formatAwardedAt } from '../../src/lib/badges';
+import type { DegreeProgress, DegreeRequirement } from '../../../src/lib/api';
+import { describeDegreeProgress, formatAwardedAt } from '../../../src/lib/badges';
 import styles from './badges.module.css';
 
 export interface DegreeListProps {

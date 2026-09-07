@@ -139,8 +139,13 @@
   font-size: 0.9375rem;
 }
 
-.badgeList,
-.degreeList,
+/*
+ * Badges and degrees no longer style themselves here — BadgesSection.tsx and
+ * DegreesSection.tsx render into badges.module.css's earned/locked card
+ * language instead (Phase 4 of docs/plans/2026-09-02-design-import-plan.md),
+ * so the ad hoc `.badge*`/`.degree*` rules that used to live in this file
+ * are gone rather than left as dead CSS beside their replacement.
+ */
 .courseList,
 .feed {
   list-style: none;
@@ -151,8 +156,6 @@
   gap: var(--space-1);
 }
 
-.badge,
-.degree,
 .course,
 .event {
   display: flex;
@@ -165,38 +168,14 @@
   background: var(--color-surface-raised);
 }
 
-.badgeTitle,
-.degreeTitle,
 .eventType {
   font-weight: 600;
 }
 
-.badgeDescription,
-.badgeDate,
-.degreeState,
 .courseCount,
 .eventDate {
   color: var(--color-text-secondary);
   font-size: 0.875rem;
-}
-
-.degreePercent {
-  font-variant-numeric: tabular-nums;
-  font-size: 0.875rem;
-}
-
-/* The bar is a second, redundant encoding of the number next to it — never
-   the only one (design §10's "a color-only scale is unreadable for a
-   significant number of people"). */
-.degreeBar {
-  flex-basis: 100%;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: linear-gradient(
-    to right,
-    var(--color-heat-4) 0 var(--degree-percent, 0%),
-    var(--color-heat-0) var(--degree-percent, 0%) 100%
-  );
 }
 
 .streaks {

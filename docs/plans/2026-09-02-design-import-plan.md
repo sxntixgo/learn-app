@@ -246,9 +246,11 @@ place to be wrong._
       the new one. Clean up per-module as Phases 2–5 touch each file.
       **Acceptance:** `grep -rl "Libre Franklin" web/app --include=*.css` is empty by Gate 6.
       **Model:** `haiku`
-- [ ] **`--color-accent-yellow`, the banner/footer tokens and `--color-heat-5` are deprecated
-      aliases**, kept so no CSS module strands a `var()`. Each retires as its consumers
-      migrate: yellow has 15, banner 4, footer 1, heat-5 1.
+- [ ] **`--color-accent-yellow`, the banner/footer tokens and ~~`--color-heat-5`~~ are
+      deprecated aliases**, kept so no CSS module strands a `var()`. Each retires as its
+      consumers migrate: yellow has 15, banner 4, footer 1. **`--color-heat-5` is retired
+      (2026-09-06)** — the heatmap was its one consumer, and Phase 4 migrated it; the ramp is
+      five steps, `intensityLevel` 0..4.
       **Acceptance:** by Gate 6 `tokens.css` declares no alias, and the dangling-`var()`
       check still passes.
       **Model:** `haiku`
@@ -703,8 +705,8 @@ that mutation because it covers the unconditional `html[data-theme='dark']` rule
 guard does not affect — both assertions are needed.
 
 **Phase 1 debt retired along the way**, opportunistically, as each phase touched a file:
-`'Libre Franklin'` fallbacks **17 → 11** modules, `var(--color-accent-yellow)` consumers
-**down to 12**.
+`'Libre Franklin'` fallbacks **17 → 10** modules (Phase 4's `/search` took the last three),
+`var(--color-accent-yellow)` consumers **down to 12**, and `--color-heat-5` fully retired.
 
 **Two environment faults cost real time and are not code defects.** Postgres was killed
 mid-task twice (the symptom is ~41 vitest files failing with `ECONNREFUSED`, which reads as
@@ -758,7 +760,7 @@ _Parallel with Phase 3 once Gate 2 passes._
 > states) under the profile header. Nothing about `/me` is a straight restyle, which is why
 > there is no `/me` task.
 
-- [ ] **Seed a degree, and pick up Home's degree card in a browser.** Degree progress is the
+- [x] **Seed a degree, and pick up Home's degree card in a browser.** Degree progress is the
       one M1 block with no browser-level coverage, and the reason is a fixture collision this
       phase owns: `listDegreeProgress` (`api/src/progression/views.ts`) joins **every** row of
       `degrees` against the viewer, so seeding one puts a Degrees section on every seeded
@@ -770,7 +772,7 @@ _Parallel with Phase 3 once Gate 2 passes._
       **Acceptance:** a browser spec renders the degree card at both tiers, and
       `profile-empty.spec.ts` still passes.
       **Model:** `sonnet`
-- [ ] **`/u/[handle]` absorbs the heatmap and badges** — `profile.module.css` (221),
+- [x] **`/u/[handle]` absorbs the heatmap and badges** — `profile.module.css` (221),
       `heatmap.module.css` (307), `badges.module.css` (229), `Identicon`/`Avatar`, plus the
       Degrees panel ("1 IN PROGRESS", with a not-started degree and its prerequisites) and
       the visibility explainer line. The heatmap's visible window is already width-derived
@@ -782,12 +784,76 @@ _Parallel with Phase 3 once Gate 2 passes._
       heat ramp reads as five distinct steps in both themes; locked badges are visibly
       distinct from earned ones.
       **Model:** `sonnet`
-- [ ] **`/search`** — `search.module.css` (172), results and empty state.
+- [ ] **Owner-enrichment on the profile shares the degree fixture's blast radius.**
+      `/me/badges` and `/me/degrees` enumerate every instance-wide definition against the
+      caller, so seeding **any** badge or degree makes it render as locked / in-progress on
+      **every** owner's own profile view — not only the seeded account's. `badges` and
+      `degrees` are both empty in `learn_test` today, so nothing surfaces yet. The screens
+      at risk are `profile-empty.spec.ts` (its whole subject is an account with nothing in
+      it) and `viewport.spec.ts` / `a11y.spec.ts`, which both view `E2E_VIEWPORT_HANDLE`'s
+      own profile as owner.
+      **Acceptance:** whichever account receives a seeded degree, `profile-empty.spec.ts`'s
+      `avatarUser` and `viewportUser` still show zero Degrees content unless deliberately
+      given one.
+      **Model:** `sonnet`
+- [ ] **A non-owner viewer cannot match PL9, permanently and by design.** A stranger never
+      sees a badge total ("3 OF 9") or a degree's prerequisites, because the public contract
+      does not carry them for anyone but the owner — `ProfileBadge` is earned-only
+      (`api/src/profile/load.ts`: "a profile shows what you have, not what you are missing")
+      and `ProfileDegree` omits curriculum detail (`serialize.ts`). Both are deliberate,
+      documented API decisions, so Phase 4 rendered the owner's own view from the existing
+      `/me/*` endpoints and gave every other viewer the public fallback, rather than
+      inventing an endpoint. **Gate 4/6 must know this before comparing a non-owner render
+      against the artboard.**
+      **Acceptance:** none unless a human decides the public contract should change — that
+      is a new task, not a bug.
+      **Model:** needs a human.
+- [ ] **`hasRealProgress` is narrower than the artboard, and was chosen to resolve a test
+      collision.** Phase 4 closed the seeded-degree collision in
+      `web/app/u/[handle]/DegreesSection.tsx`: a degree counts as owner content only once
+      there is something real toward it (earned, or `percent > 0`). That keeps
+      `profile-empty.spec.ts`, `viewport.spec.ts` and `a11y.spec.ts` green without scoping
+      `listDegreeProgress`. **But PL9/P9 draws "a not-started degree and its prerequisites",
+      which this rule hides**, and it equally hides a genuinely not-started-but-relevant
+      degree — the owner is enrolled in a required course and has finished nothing. Telling
+      "0% and never touched" apart from "0% but actually pursuing it" needs enrolment
+      awareness the endpoint does not have today. Nothing in the suite proves that case
+      either way. **This is a product decision made to satisfy fixtures and a human should
+      confirm it at Gate 4**, not a settled question.
+      **Acceptance:** a human confirms the rule, or `listDegreeProgress` gains the scoping
+      that would let the artboard's not-started card render honestly.
+      **Model:** needs a human.
+- [x] **`/search`** — `search.module.css` (172), results and empty state.
       **Acceptance:** `search.spec.ts` green; the result list matches the artboard at four
       widths.
       **Model:** `sonnet`
 
 ---
+
+### Phase 4 outcome (2026-09-06)
+
+**Complete, 3 of 3.** `npx vitest run` **109 files / 2025 tests** · `npx playwright test`
+**192 passed, 0 failed** · lint · typecheck · `next build` green · `web/test-results/`
+absent. Verified on a dropped-and-remigrated database, with a second consecutive seed run,
+because that is the shape that turned CI red in Phase 3.
+
+| Task | Model | Commit |
+| --- | --- | --- |
+| `/u/[handle]` absorbs heatmap and badges | `sonnet` | `feat(profile)` |
+| Seed a degree, assert Home's degree card | `sonnet` | `test(degrees)` |
+| `/search` | `sonnet` | `feat(search)` |
+
+**⛔ Two product decisions in this phase need a human, and are NOT settled by it being
+green.** Both are listed as carried-forward items above: `hasRealProgress` hides a
+not-started degree the artboard explicitly draws, and a non-owner profile view cannot match
+PL9 at all. Neither is a bug; both were judged, documented, and left visible rather than
+absorbed silently.
+
+**Two judgement calls the artboard spec does not actually make**, each recorded in the file
+that implements it: Catalog's filter field (Phase 3) and Search's wide tier. §4 lists Search
+only as "PL7 wide / P8 narrow — Search — results" and §6 details only Home and the lesson
+reader, so the single 640px column at 1024px+ — Course's posture, not Catalog's grid — is a
+choice, not a transcription. The 640px itself is spec-backed (§5.4).
 
 ## Phase 5 — Workflow and administration screens
 

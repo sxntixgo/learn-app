@@ -1,7 +1,12 @@
 /*
- * Contribution heatmap (design §10, §14).
+ * Contribution heatmap (design §10, §14) — now on the profile
+ * (docs/plans/2026-09-02-design-import-plan.md, Phase 4: "/u/[handle]
+ * absorbs the heatmap and badges"). This file used to live at
+ * app/me/heatmap.module.css; the container geometry it depends on is
+ * profile.module.css's `.page`/`.section`, not the old dashboard's `.activity`
+ * card — see src/lib/heatmap.ts's ACTIVITY_CARD_CHROME_PX comment.
  *
- * GEOMETRY IS A CONTRACT. The four custom properties below — and the two
+ * GEOMETRY IS A CONTRACT. The four custom properties below — and the THREE
  * breakpoints they change at — must stay identical to HEATMAP_WINDOW_STEPS in
  * `src/lib/heatmap.ts`. `src/lib/heatmap.test.ts` parses this file and fails if
  * they drift, and also re-checks that each window still fits its viewport.
@@ -11,8 +16,8 @@
  * remaining weeks are reached by scrolling; all of them are already in the
  * DOM, so scrolling back is instant and needs no second request.
  *
- * Colours come from the --color-heat-* ramp in app/tokens.css (one hue, five
- * steps, plus a neutral empty state). Nothing here hardcodes a colour.
+ * Colours come from the --color-heat-* ramp in app/tokens.css — FIVE steps
+ * (0..4), the empty state included. Nothing here hardcodes a colour.
  */
 
 .figure {
@@ -186,11 +191,6 @@
   border-color: transparent;
 }
 
-.cell[data-level='5'] .swatch {
-  background: var(--color-heat-5);
-  border-color: transparent;
-}
-
 /* Today is marked structurally (a ring), never by colour alone. */
 .cell[data-today='true'] .swatch {
   outline: 1px dashed var(--color-text-secondary);
@@ -266,11 +266,6 @@
   border-color: transparent;
 }
 
-.legendSwatch[data-level='5'] {
-  background: var(--color-heat-5);
-  border-color: transparent;
-}
-
 .empty {
   color: var(--color-text-secondary);
 }
@@ -282,6 +277,22 @@
 @media (min-width: 834px) {
   .scroller {
     --hm-window-weeks: 26;
+    --hm-cell: 14px;
+    --hm-gap: 3px;
+    --hm-label: 36px;
+  }
+}
+
+/* iPad landscape: the wide tier's own figure — "LAST 48 WEEKS" is what
+   PL9/P9 actually draws (artboard-spec §4), not a fixed constant; it is
+   what 48 weeks at this cell size happens to need. 1194, not the shell's
+   1024: at 1024 the rail has just taken 224px and 48 weeks needs ~852px
+   against the 710px available there — it can only start where it actually
+   fits, same reasoning as 834 and 1360 below. 48 * (14 + 3) + 36 = 852
+   against 880 available (see heatmap.test.ts's MEASURED_CONTAINER_PX). */
+@media (min-width: 1194px) {
+  .scroller {
+    --hm-window-weeks: 48;
     --hm-cell: 14px;
     --hm-gap: 3px;
     --hm-label: 36px;

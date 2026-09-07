@@ -1,5 +1,7 @@
 /*
- * Badge shelf and degree list on `/me`.
+ * Badge shelf and degree list on the profile (PL9/P9) — moved here from the
+ * old `/me` dashboard in Phase 4 of
+ * docs/plans/2026-09-02-design-import-plan.md.
  *
  * EARNED vs LOCKED IS STRUCTURAL, not chromatic (design §14): border-style
  * (solid/dashed), the seal glyph (filled disc / open ring), a visible status
@@ -11,6 +13,19 @@
  * until 30rem, and every interactive target here is a link in the degree
  * list, sized to 44px through its own padding.
  */
+
+/* The eyebrow tally — "3 OF 9", "1 IN PROGRESS" (BadgesSection.tsx,
+   DegreesSection.tsx) — same mono/uppercase treatment as the heatmap's own
+   caption (heatmap.module.css's `.caption`), so the profile's three eyebrows
+   read as one family. */
+.tally {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-text-secondary);
+  margin: 0 0 0.5rem;
+}
 
 .grid {
   list-style: none;

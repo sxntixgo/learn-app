@@ -3,11 +3,14 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { fetchProfile } from '../../../src/lib/api';
-import type { Profile } from '../../../src/lib/api';
+import { fetchMyBadges, fetchMyDegrees, fetchProfile } from '../../../src/lib/api';
+import type { BadgeProgress, DegreeProgress, Profile } from '../../../src/lib/api';
+import { AuthRequiredError } from '../../../src/lib/api-errors';
 import Avatar from '../../_shell/Avatar';
-import { anySectionHasContent, sectionHasContent } from '../../../src/lib/profile-sections';
-import Heatmap from '../../me/Heatmap';
+import { sectionHasContent } from '../../../src/lib/profile-sections';
+import BadgesSection, { badgesSectionHasContent } from './BadgesSection';
+import DegreesSection, { degreesSectionHasContent } from './DegreesSection';
+import Heatmap from './Heatmap';
 import styles from './profile.module.css';
 
 /*
@@ -19,7 +22,7 @@ import styles from './profile.module.css';
  * no client-side filtering anywhere in this tree, because a payload the
  * browser received is a payload the reader can read (§11).
  *
- * Two viewer-dependent details are worth stating:
+ * Three viewer-dependent details are worth stating:
  *
  *  - `noindex` is per student and defaults to on. It becomes the page's
  *    robots meta below, not a suggestion in a comment.
@@ -27,6 +30,16 @@ import styles from './profile.module.css';
  *    which it does not do for an anonymous reader (§12: lesson content is
  *    always behind login). So the anonymous page cannot link into content
  *    even if this component forgot — but it does not forget either.
+ *  - Badges and degrees are richer for the OWNER than for anyone else. PL9/
+ *    P9 ("3 OF 9" with locked tiles; "1 IN PROGRESS" with a not-started
+ *    degree's prerequisites) is drawn from the owner's own view — this file
+ *    fetches `/api/v1/me/badges` and `/api/v1/me/degrees` (already existing,
+ *    already tested; no new API surface) exactly when `profile.viewer ===
+ *    'owner'`, and BadgesSection/DegreesSection fall back to the public,
+ *    earned-only payload for every other viewer. See their file headers for
+ *    why the public payload cannot show a locked badge or a prerequisite at
+ *    all — it is a real, deliberate gap against the artboard for a
+ *    non-owner viewer, not an oversight.
  */
 
 /**
@@ -114,6 +127,23 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'UTC' });
 }
 
+/**
+ * Runs an owner-only loader and turns "not signed in as this account" into
+ * `null` instead of a crash. Only ever reached when `profile.viewer ===
+ * 'owner'`, so an `AuthRequiredError` here would mean the session expired
+ * between the profile fetch and this one — rare, and the safe fallback is
+ * the public payload's earned-only view, not a broken page. Same pattern as
+ * `orNull` in app/me/page.tsx.
+ */
+async function ownerOnly<T>(load: () => Promise<T>): Promise<T | null> {
+  try {
+    return await load();
+  } catch (err) {
+    if (err instanceof AuthRequiredError) return null;
+    throw err;
+  }
+}
+
 export default async function ProfilePage({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = await params;
   const profile = await loadProfile(handle);
@@ -121,14 +151,38 @@ export default async function ProfilePage({ params }: { params: Promise<{ handle
 
   const { sections } = profile;
   const name = displayNameOf(profile);
+
+  const [ownerBadges, ownerDegrees]: [BadgeProgress[] | null, DegreeProgress[] | null] =
+    profile.viewer === 'owner'
+      ? await Promise.all([ownerOnly(fetchMyBadges), ownerOnly(fetchMyDegrees)])
+      : [null, null];
+
+  const badgesContent = badgesSectionHasContent({ ownerBadges, publicBadges: sections.badges });
+  const degreesContent = degreesSectionHasContent({ ownerDegrees, publicDegrees: sections.degrees });
+  /*
+   * `Profile` carries no top-level timezone — only `activity_heatmap` does
+   * (design §15). That is the best signal available regardless of viewer;
+   * a viewer for whom that section is hidden gets UTC, same as `formatDate`
+   * below already does for `joinedAt`.
+   */
+  const timezone = sections.activity_heatmap?.timezone ?? 'UTC';
+
   /*
    * "Nothing to show" now means no section with CONTENT, not no section
    * shared. A present-but-empty section renders nothing at all — a new
    * account used to show four headings in a row, each apologising for having
    * nothing under it, which says nothing about the person and pushes
-   * whatever they do have below the fold.
+   * whatever they do have below the fold. Badges and degrees are asked
+   * through their own owner-aware helpers above rather than
+   * `anySectionHasContent`, since that function only ever sees the public,
+   * earned-only shape.
    */
-  const empty = !anySectionHasContent(sections);
+  const empty =
+    !badgesContent &&
+    !degreesContent &&
+    !sectionHasContent(sections, 'courses') &&
+    !sectionHasContent(sections, 'activity_feed') &&
+    !sectionHasContent(sections, 'activity_heatmap');
 
   return (
     <main className={styles.page}>
@@ -160,50 +214,21 @@ export default async function ProfilePage({ params }: { params: Promise<{ handle
         </p>
       ) : null}
 
-      {sectionHasContent(sections, 'badges') ? (
+      {badgesContent ? (
         <section className={styles.section} aria-labelledby="profile-badges">
           <h2 className={styles.sectionTitle} id="profile-badges">
             Badges
           </h2>
-          <ul className={styles.badgeList}>
-            {sections.badges?.map((badge) => (
-              <li className={styles.badge} key={badge.slug}>
-                <span className={styles.badgeTitle}>{badge.title}</span>
-                {badge.description ? <span className={styles.badgeDescription}>{badge.description}</span> : null}
-                {badge.awardedAt ? (
-                  <span className={styles.badgeDate}>Earned {formatDate(badge.awardedAt)}</span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
+          <BadgesSection ownerBadges={ownerBadges} publicBadges={sections.badges} timezone={timezone} />
         </section>
       ) : null}
 
-      {sectionHasContent(sections, 'degrees') ? (
+      {degreesContent ? (
         <section className={styles.section} aria-labelledby="profile-degrees">
           <h2 className={styles.sectionTitle} id="profile-degrees">
             Degrees
           </h2>
-          <ul className={styles.degreeList}>
-            {sections.degrees?.map((degree) => (
-              <li className={styles.degree} key={degree.slug}>
-                <span className={styles.degreeTitle}>{degree.title}</span>
-                <span className={styles.degreeState}>
-                  {degree.earned ? `Earned${degree.awardedAt ? ` ${formatDate(degree.awardedAt)}` : ''}` : 'In progress'}
-                </span>
-                {/* The number is written out, not left to the bar: a
-                    colour-only progress indicator is unreadable for a
-                    significant number of people (design §10/§14). */}
-                <span className={styles.degreePercent}>{degree.percent}%</span>
-                <span
-                  className={styles.degreeBar}
-                  role="img"
-                  aria-label={`${degree.percent}% complete`}
-                  style={{ ['--degree-percent' as string]: `${degree.percent}%` }}
-                />
-              </li>
-            ))}
-          </ul>
+          <DegreesSection ownerDegrees={ownerDegrees} publicDegrees={sections.degrees} timezone={timezone} />
         </section>
       ) : null}
 

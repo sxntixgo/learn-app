@@ -207,6 +207,33 @@ export const E2E_HOME_HANDLE = 'e2e-home';
 export const E2E_HOME_PASSWORD = 'a-long-enough-home-password';
 
 /**
+ * Phase 4 (design import): the one degree the suite seeds, naming
+ * E2E_COURSE_SLUG as its sole requirement and no electives.
+ *
+ * WHY THIS COURSE. `listDegreeProgress` (api/src/progression/views.ts)
+ * joins EVERY row of `degrees` against whichever user asks — degrees are
+ * instance-wide curriculum objects, not enrolments, so there is no per-user
+ * scoping to lean on. Naming E2E_COURSE_SLUG means `homeUser` — already
+ * enrolled in it, already dedicated, already documented above as having
+ * finished nothing — gets a real, honest "0 of 1 courses complete" for
+ * home.spec.ts's degree-card assertion, without a second course fixture.
+ *
+ * THE BLAST RADIUS THIS FIXTURE DOES NOT SOLVE ON ITS OWN: naming a course
+ * does not stop `/me/degrees` from answering non-empty for every OTHER
+ * account too — `avatarUser`, `viewportUser`, anyone — since the query
+ * above has no enrolment filter at all. The owner-view profile
+ * (web/app/u/[handle]/page.tsx) calls that same endpoint for whichever
+ * account is looking at its own profile, so left unfiltered this would put
+ * a "0% complete" Degrees section on profile-empty.spec.ts's `avatarUser`
+ * and viewport.spec.ts / a11y.spec.ts's `viewportUser` — exactly the
+ * collision this phase owns. See DegreesSection.tsx's `hasRealProgress` for
+ * the fix: a degree only counts as OWNER content once there is something
+ * real to show toward it.
+ */
+export const E2E_DEGREE_SLUG = 'e2e-degree';
+export const E2E_DEGREE_TITLE = 'E2E Degree';
+
+/**
  * Phase 15 task 4: a second, dedicated platform invite, distinct from
  * `invite` (task 2's, single-use and consumed by core-journeys.spec.ts).
  * The accessibility pass only needs to LOAD /invite/[token] and axe-scan
@@ -466,6 +493,29 @@ async function ensureCourseModuleLesson(
   );
 
   return { courseId, courseSlug: course.rows[0]!.slug, lessonSlug: lesson.rows[0]!.slug };
+}
+
+/**
+ * The one degree the suite seeds — see E2E_DEGREE_SLUG's own comment for
+ * why it names `courseSlug` and why that alone does not contain the blast
+ * radius.
+ *
+ * A plain insert, not an upsert: `clearAwardableState` truncates `degrees`
+ * (cascading to `user_degrees`) at the top of every `seedE2eFixtures` run,
+ * so the table is always empty by the time this runs and there is nothing
+ * to conflict with.
+ */
+async function ensureDegree(client: pg.PoolClient, courseSlug: string): Promise<void> {
+  await client.query(
+    `insert into degrees (slug, title, description, required_slugs, electives_choose, electives_from)
+     values ($1, $2, $3, $4, 0, '{}')`,
+    [
+      E2E_DEGREE_SLUG,
+      E2E_DEGREE_TITLE,
+      'Seeded fixture data for the Playwright harness (Home degree card).',
+      [courseSlug],
+    ],
+  );
 }
 
 /**
@@ -922,6 +972,7 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
     await clearAwardableState(client);
     await clearAccumulatedAccounts(client);
     const { courseId, courseSlug, lessonSlug } = await ensureCourseModuleLesson(client);
+    await ensureDegree(client, courseSlug);
     const issuerId = await ensureIssuer(client);
     const invite = await issueFreshPlatformInvite(client, issuerId, E2E_INVITE_EMAIL);
     const a11yInvite = await issueFreshPlatformInvite(client, issuerId, E2E_A11Y_INVITE_EMAIL);

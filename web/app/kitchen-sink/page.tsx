@@ -294,11 +294,6 @@ export default function KitchenSink() {
           dataTestid="--color-accent-yellow"
         />
         <ColorSwatch
-          name="--color-heat-5"
-          cssVar="--color-heat-5"
-          dataTestid="--color-heat-5"
-        />
-        <ColorSwatch
           name="--color-banner-bg"
           cssVar="--color-banner-bg"
           dataTestid="--color-banner-bg"
