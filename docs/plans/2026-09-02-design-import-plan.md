@@ -937,7 +937,7 @@ _Mostly tables and forms; the tier question is “what does a wide table do at 3
       **Acceptance:** `grep -rE 'min-width: (768px|48rem|1200px)' web/app --include=*.css` is
       empty by Gate 6, or each survivor is justified in place.
       **Model:** `sonnet`
-- [ ] **Admin imports / people / audit** — `imports.module.css` (365), `people.module.css`
+- [x] **Admin imports / people / audit** — `imports.module.css` (365), `people.module.css`
       (207), `audit.module.css` (139), `admin-nav.module.css`
       **Acceptance:** each admin table is readable at 375 without page-level horizontal
       scroll; the live import stream still renders.
