@@ -1015,14 +1015,14 @@ full-bleed or off-centre box.
 
 _The phase that decides whether any of the above is actually true._
 
-- [ ] **Extend `e2e/specs/viewport.spec.ts`** from `{375, 834, 1440}` to
+- [x] **Extend `e2e/specs/viewport.spec.ts`** from `{375, 834, 1440}` to
       `{375, 834, 1194, 1440}`. Keep the file's one-worker serial config and its single
       `beforeAll` sign-in reused via `storageState` — the file's header records that five
       concurrent Argon2id logins reproduced a flake in _another_ spec twice.
       **Acceptance:** the suite is green twice in a row, and `web/test-results/` is absent
       (Playwright must be run from the repo root, never from inside `web/`).
       **Model:** `sonnet`
-- [ ] **Add the theme axis** — every viewport assertion runs under `data-theme='light'` and
+- [x] **Add the theme axis** — every viewport assertion runs under `data-theme='light'` and
       `'dark'`.
       **Acceptance:** a deliberately theme-broken rule (a colour hardcoded into a media
       query) makes it fail.
