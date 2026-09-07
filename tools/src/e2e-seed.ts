@@ -965,12 +965,35 @@ async function clearAccumulatedAccounts(client: pg.PoolClient): Promise<void> {
   await client.query(`delete from users where id <> $1`, [DEV_ACTOR_ID]);
 }
 
+/**
+ * Removes every invitation, so `/invites` starts each run at the three this
+ * seed issues rather than at every one any run ever issued.
+ *
+ * THE SAME FAILURE MODE AS `clearAccumulatedAccounts`, ONE TABLE OVER, AND IT
+ * SURVIVED THAT FIX. That function's own comment notes `invites.issued_by`
+ * goes null when an account goes — which is exactly why deleting accounts
+ * never removed the invitations: the rows outlive their issuer, orphaned but
+ * still rendered. 336 of them had piled up by the time this was written, and
+ * `/invites` renders all of them, so `a11y.spec.ts`'s axe scan of that page
+ * walks every row. It had reached 31s against a 30s timeout — failing, then
+ * passing in isolation, and looking for all the world like a flake. It was
+ * measuring a database that kept getting bigger, the same way `/admin/people`
+ * was.
+ *
+ * Ordered before the `issueFreshPlatformInvite` calls below, so the three the
+ * harness actually needs are re-created immediately after the wipe.
+ */
+async function clearAccumulatedInvites(client: pg.PoolClient): Promise<void> {
+  await client.query('delete from invites');
+}
+
 /** Creates/refreshes every fixture the Playwright harness needs. Safe to call repeatedly. */
 export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
   const client = await pool.connect();
   try {
     await clearAwardableState(client);
     await clearAccumulatedAccounts(client);
+    await clearAccumulatedInvites(client);
     const { courseId, courseSlug, lessonSlug } = await ensureCourseModuleLesson(client);
     await ensureDegree(client, courseSlug);
     const issuerId = await ensureIssuer(client);

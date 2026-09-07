@@ -921,8 +921,21 @@ _Mostly tables and forms; the tier question is “what does a wide table do at 3
       **Acceptance:** no spec iterates `/invites` rows unbounded; page-level guarantees are
       asserted at page level.
       **Model:** `sonnet`
-- [ ] **Settings profile + account** — `settings.module.css` (296), `account.module.css` (270)
+- [x] **Settings profile + account** — `settings.module.css` (296), `account.module.css` (270)
       **Acceptance:** `account-export-deletion.spec.ts` and `password.spec.ts` green.
+      **Model:** `sonnet`
+- [ ] **Three off-system breakpoints survive in `web/app/u/[handle]/profile.module.css`,
+      which is already merged to `main`.** `@media (min-width: 768px)`, `@media (min-width:
+      48rem)` (the same 768 in disguise, which is why a grep for one misses the other) and a
+      stray `@media (min-width: 1200px)`. The documented tier boundary is **1024px** and the
+      density steps are **834 / 1440**; none of these is either. Phase 4's profile task
+      should have caught them and did not. **Deliberately not fixed in Phase 5**: moving
+      768 → 1024 changes what the 768–1023 band renders, there is no artboard covering that
+      band, and the file is merged code — that is a decision, not a typo fix.
+      `web/app/admin/imports/imports.module.css` has the same 768px breakpoint and is Phase
+      5's admin task, which can fix its own file.
+      **Acceptance:** `grep -rE 'min-width: (768px|48rem|1200px)' web/app --include=*.css` is
+      empty by Gate 6, or each survivor is justified in place.
       **Model:** `sonnet`
 - [ ] **Admin imports / people / audit** — `imports.module.css` (365), `people.module.css`
       (207), `audit.module.css` (139), `admin-nav.module.css`
