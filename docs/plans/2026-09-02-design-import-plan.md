@@ -266,17 +266,27 @@ place to be wrong._
 
 ### Newly discovered in Phase 1 — carried forward
 
-- [ ] **17 CSS modules still name `'Libre Franklin'` in their fallback stacks.** Harmless
+- [x] **17 CSS modules still name `'Libre Franklin'` in their fallback stacks.** Harmless
       while the font loads (`var(--font-sans)` resolves first), but if it ever fails these
       components fall back to the OLD design's family while everything else falls back to
-      the new one. Clean up per-module as Phases 2–5 touch each file.
-      **Acceptance:** `grep -rl "Libre Franklin" web/app --include=*.css` is empty by Gate 6.
-      **Model:** `haiku`
-- [ ] **`--color-accent-yellow`, the banner/footer tokens and ~~`--color-heat-5`~~ are
+      the new one.
+      **✅ DONE 2026-09-08.** Retired file by file as each phase touched one; the last five
+      (in `auth-control.module.css` and `annotatable-code.module.css`) went in the cleanup
+      pass. `grep -rn "font-family:.*Libre Franklin" web/app --include=*.css` is empty — the
+      only matches left anywhere are comments explaining the migration.
+      **Model:** n/a — done.
+- [ ] **~~`--color-accent-yellow`~~, the banner/footer tokens and ~~`--color-heat-5`~~ are
       deprecated aliases**, kept so no CSS module strands a `var()`. Each retires as its
-      consumers migrate: yellow has 15, banner 4, footer 1. **`--color-heat-5` is retired
-      (2026-09-06)** — the heatmap was its one consumer, and Phase 4 migrated it; the ramp is
-      five steps, `intensityLevel` 0..4.
+      consumers migrate. **`--color-heat-5` retired 2026-09-06** — the heatmap was its one
+      consumer; the ramp is five steps, `intensityLevel` 0..4.
+      **`--color-accent-yellow` retired 2026-09-08** — its last three consumers were split by
+      meaning like every one before them (`.progressError`'s rule to `--color-error`; the
+      selected-line gutter and the orphaned-annotation card to `--color-accent-gold`), then
+      the declaration went from all three blocks of `tokens.css`, along with its kitchen-sink
+      swatch and its entries in `palette.test.ts`'s alias map **and role table** — that last
+      part is why this is not purely mechanical: the role table drives the contrast
+      assertions, and removing a token without its entry fails four of them.
+      **Still open: the banner and footer aliases**, 24 usages between them.
       **Acceptance:** by Gate 6 `tokens.css` declares no alias, and the dangling-`var()`
       check still passes.
       **Model:** `haiku`
