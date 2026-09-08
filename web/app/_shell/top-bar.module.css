@@ -42,8 +42,8 @@
   gap: 0.75rem;
   flex-wrap: wrap;
   padding: 0.6rem 1rem;
-  background: var(--color-banner-bg);
-  border-bottom: 1px solid var(--color-banner-divider);
+  background: var(--color-rail-bg);
+  border-bottom: 1px solid var(--color-rail-text);
 }
 
 .brand {
@@ -51,7 +51,7 @@
   font-weight: 800;
   letter-spacing: -0.03em;
   font-size: 1.05rem;
-  color: var(--color-banner-text);
+  color: var(--color-rail-text);
   text-decoration: none;
   min-height: 44px;
   display: flex;
@@ -74,11 +74,11 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
-  background: var(--color-banner-text);
+  background: var(--color-rail-text);
 }
 
 .markCell {
-  background: var(--color-banner-bg);
+  background: var(--color-rail-bg);
 }
 
 .markCell:nth-child(2),

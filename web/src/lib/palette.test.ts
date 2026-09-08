@@ -131,9 +131,6 @@ const NOT_MEASURABLE = ['--color-logo-tile'];
  * start shipping a colour nobody chose for it.
  */
 const ALIASES: Record<string, string> = {
-  '--color-banner-bg': '--color-rail-bg',
-  '--color-banner-text': '--color-rail-text',
-  '--color-banner-divider': '--color-rail-text',
 };
 
 /**
@@ -197,7 +194,6 @@ function rolesFor(scheme: Scheme): Record<string, Role> {
     '--color-surface-card': { kind: 'ground' },
     '--color-rail-bg': { kind: 'ground' },
     '--color-tag-bg': { kind: 'ground' },
-    '--color-banner-bg': { kind: 'ground' },
     '--color-footer-bg': { kind: 'ground' },
 
     // Text.
@@ -210,7 +206,6 @@ function rolesFor(scheme: Scheme): Record<string, Role> {
     '--color-rail-text': { kind: 'text', grounds: ['--color-rail-bg'] },
     '--color-tag-text': { kind: 'text', grounds: ['--color-tag-bg'] },
     '--color-text-on-accent': { kind: 'text', grounds: accentFills },
-    '--color-banner-text': { kind: 'text', grounds: ['--color-banner-bg'] },
     '--color-footer-text': { kind: 'text', grounds: ['--color-footer-bg'] },
 
     // Non-text UI.
@@ -230,7 +225,6 @@ function rolesFor(scheme: Scheme): Record<string, Role> {
     // Hairlines.
     '--color-border-hairline': { kind: 'hairline', grounds: ['--color-page', '--color-surface-raised'] },
     '--color-heat-cell-edge': { kind: 'hairline', grounds: ['--color-heat-0'] },
-    '--color-banner-divider': { kind: 'hairline', grounds: ['--color-banner-bg'] },
   };
 }
 
@@ -267,11 +261,25 @@ describe('the token file parses at all', () => {
 
 describe('deprecated aliases still point at what they claim to', () => {
   /**
-   * These names survive only until their consumers migrate (Phases 2-5 of
-   * docs/plans/2026-09-02-design-import-plan.md). Until then they ship, so
-   * they are held to their target's value — an alias that drifts is a colour
-   * nobody chose, appearing in components nobody has looked at lately.
+   * These names survive only until their consumers migrate. Until then they
+   * ship, so they are held to their target's value — an alias that drifts is
+   * a colour nobody chose, appearing in components nobody has looked at
+   * lately.
+   *
+   * ALIASES IS EMPTY AS OF 2026-09-08 and this block is expected to generate
+   * no cases: `--color-heat-5`, `--color-accent-yellow` and the three
+   * `--color-banner-*` names have all been retired, declaration and all. The
+   * structure stays because the next rename will want it, and the assertion
+   * below keeps the block from being a silently empty describe — vitest fails
+   * a file whose describe produces nothing, which is how this was noticed.
    */
+  it('has an alias map that is empty or fully populated, never half-parsed', () => {
+    for (const [alias, target] of Object.entries(ALIASES)) {
+      expect(alias.startsWith('--'), `${alias} is not a token name`).toBe(true);
+      expect(target.startsWith('--'), `${target} is not a token name`).toBe(true);
+    }
+  });
+
   for (const scheme of BOTH_SCHEMES) {
     for (const [alias, target] of Object.entries(ALIASES)) {
       it(`${scheme}: ${alias} === ${target}`, () => {

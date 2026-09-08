@@ -65,9 +65,17 @@ describe('the kitchen-sink page covers every token', () => {
 
   // Vacuity guard, same purpose as palette.test.ts's parse check: if either
   // regex stops matching, every assertion below passes by finding nothing.
+  //
+  // The floor is deliberately well below the real count rather than just
+  // under it. It exists to catch a regex that matches NOTHING, not to pin the
+  // palette's size — and a floor set just under the current total has to be
+  // edited every time a deprecated alias retires, which is a change with no
+  // information in it. It was 50 and tripped at 49 when --color-accent-yellow
+  // and the three --color-banner-* aliases went; that was the guard being
+  // brittle, not a real finding.
   it('finds a realistic number of tokens on both sides', () => {
-    expect(declared.size).toBeGreaterThan(50);
-    expect(onPage.size).toBeGreaterThan(50);
+    expect(declared.size).toBeGreaterThan(40);
+    expect(onPage.size).toBeGreaterThan(40);
   });
 
   it('shows every token declared in tokens.css', () => {
