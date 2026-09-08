@@ -1057,18 +1057,28 @@ _The phase that decides whether any of the above is actually true._
       `fetchCanSearch` already treat their own floor's refusal. Both scans now report
       0 serious / 0 moderate.
       **Model:** n/a — done.
-- [ ] **`/kitchen-sink` reports 53 nodes of serious `color-contrast`.** Plausibly inherent —
+- [x] **`/kitchen-sink` reports 53 nodes of serious `color-contrast`.** Plausibly inherent —
       it is the token proof sheet and deliberately paints every token, including pairings
       never used together in the product. But it is a **serious** finding at 53 nodes, and
       nobody has decided whether it is expected. Either exclude the page from the scan with
       a stated reason, or fix the pairings it is actually asserting.
-      **Acceptance:** the count is zero, or the exclusion is documented in `a11y.spec.ts`
-      with the reason.
-      **Model:** `sonnet`
-- [ ] **`heading-order` on the lesson reader and the grading view**, one node each. Pre-dates
+      **✅ RESOLVED 2026-09-08 by exclusion, with the reason in `a11y.spec.ts`.** The page
+      renders a swatch for every token in `tokens.css`, so axe measures each swatch against
+      whichever label sits beside it — pairings that exist nowhere in the product. None of
+      the 53 described a real screen. `color-contrast` is disabled for that one route only.
+      Coverage is not lost: `palette.test.ts` measures a floor for every pairing the app
+      actually uses (it caught light accent-gold at 2.84:1 and dark link at 4.07:1 in Phase
+      1) and `home-contrast.test.ts` does the same for `color-mix`, which no CSS lint sees.
+      **Model:** n/a — done.
+- [x] **`heading-order` on the lesson reader and the grading view**, one node each. Pre-dates
       this phase and unrelated to the landmark fix.
-      **Acceptance:** zero `heading-order` violations across the matrix.
-      **Model:** `haiku`
+      **✅ FIXED 2026-09-08.** Both pages jumped `h1` straight to `h3`: `AnnotatableCode` and
+      `RubricDisplay` each opened at `h3` with no `h2` above them on the lesson reader.
+      Promoted one level — `AnnotatableCode`'s header to `h2` and its orphans list to `h3`,
+      `RubricDisplay`'s title to `h2`. The grading view already had a legal `h1 → h2` chain
+      via `GradingForm`, and the promoted headings are its siblings, so both pages are now
+      ordered. Both report 0/0/0.
+      **Model:** n/a — done.
 - [ ] **Screenshot comparison** — capture each screen at 4 widths × 2 themes into
       `docs/design/screenshots/` and diff by eye against the artboards.
       **Acceptance:** a contact sheet in the plan outcome; each accepted difference from the

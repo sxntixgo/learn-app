@@ -493,10 +493,10 @@ export default function AnnotatableCode({
       data-mode={effectiveMode}
     >
       <header className={styles.header}>
-        <h3 className={styles.headerTitle} id={headerId}>
+        <h2 className={styles.headerTitle} id={headerId}>
           {mode === 'annotate' ? 'Code to annotate' : mode === 'grade' ? 'Code under review' : 'Code'}
           {lang ? <span className={styles.langChip}>{lang}</span> : null}
-        </h3>
+        </h2>
         {interactive ? (
           <p className={styles.headerHint}>
             {readOnly
@@ -779,9 +779,9 @@ export default function AnnotatableCode({
          * rather than dropped or re-pointed at a line it was not about.
          */
         <section className={styles.orphans} aria-label="Annotations that no longer match this code">
-          <h4 className={styles.orphansTitle}>
+          <h3 className={styles.orphansTitle}>
             {orphanedTopLevel.length} annotation{orphanedTopLevel.length === 1 ? '' : 's'} no longer match this code
-          </h4>
+          </h3>
           {orphanedTopLevel.map((annotation) => (
             <article key={annotation.id} className={styles.card} data-origin={annotation.origin}>
               <p className={styles.cardMeta}>

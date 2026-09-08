@@ -223,7 +223,27 @@ for (const route of ROUTES) {
         await expect(page.getByText(route.expectVisible).first()).toBeVisible();
       }
 
-      const results = await new AxeBuilder({ page }).analyze();
+      /*
+       * `color-contrast` is disabled for /kitchen-sink ONLY, and only there.
+       *
+       * That page is the token proof sheet: it renders a swatch for EVERY
+       * token in tokens.css, so axe measures each swatch against whatever
+       * label sits next to it — pairings that exist nowhere in the product
+       * and are not meant to. It reported 53 nodes of serious
+       * `color-contrast` on that basis, none of which describes a real
+       * screen.
+       *
+       * The contrast guarantees that DO matter are measured, not skipped:
+       * `web/src/lib/palette.test.ts` asserts a floor for every pairing the
+       * app actually uses (it is what caught light accent-gold at 2.84:1 and
+       * dark link at 4.07:1 in Phase 1), and `home-contrast.test.ts` does the
+       * same for `color-mix` values, which no CSS lint can see. Suppressing
+       * the rule here removes noise from a page nobody reads as UI; it does
+       * not remove coverage.
+       */
+      const builder = new AxeBuilder({ page });
+      if (route.path === '/kitchen-sink') builder.disableRules(['color-contrast']);
+      const results = await builder.analyze();
       logViolations(route.name, results);
 
       const critical = results.violations.filter((v) => v.impact === 'critical');
