@@ -268,7 +268,11 @@ button.gutter {
  * aria-pressed.
  */
 .block .lineRow[data-selected] .gutter {
-  border-left-color: var(--color-accent-yellow);
+  /* --color-accent-gold, the live replacement for the deprecated
+     --color-accent-yellow alias. Same value, same structural role: an
+     indicator edge, never a fill. The §14.2 caveat above still applies and is
+     why colour is never the only signal here. */
+  border-left-color: var(--color-accent-gold);
   color: var(--color-text);
   font-weight: 700;
 }
@@ -441,7 +445,7 @@ button.gutter {
 .block .composerLabel {
   display: block;
   margin-bottom: var(--space-1);
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-size: 0.8rem;
   font-weight: 500;
   color: var(--color-text-secondary);
@@ -540,7 +544,7 @@ button.gutter {
   border-radius: var(--radius-md);
   background: var(--color-page);
   color: var(--color-text);
-  font-family: var(--font-sans), 'Libre Franklin', sans-serif;
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   font-size: 0.85rem;
   line-height: 1.2;
@@ -606,7 +610,10 @@ button.gutter {
 
 .block .orphans .card {
   position: static;
-  border-left-color: var(--color-accent-yellow);
+  /* --color-accent-gold, not the deprecated alias. An orphaned annotation is
+     flagged for attention, not reported as an error — the same distinction
+     the admin badge and the delete-button border drew. */
+  border-left-color: var(--color-accent-gold);
 }
 
 /*

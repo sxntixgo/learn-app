@@ -279,13 +279,16 @@
 }
 
 /*
- * The one yellow accent used as a 2px rule (palette rule 1's own pattern —
- * the about-box left edge), not a new colour and not a fill.
+ * A 2px rule, palette rule 1's own pattern (the about-box left edge) — not a
+ * fill. `--color-error`, not the deprecated `--color-accent-yellow` alias:
+ * this marks a failed progress write, which is an error, the same reading
+ * grading-view, invites, settings and login each arrived at for their own
+ * failure states.
  */
 .progressError {
   margin: 0;
   padding-left: 0.6rem;
-  border-left: 2px solid var(--color-accent-yellow);
+  border-left: 2px solid var(--color-error);
   font-size: 0.85rem;
   color: var(--color-text-secondary);
 }

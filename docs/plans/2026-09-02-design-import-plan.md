@@ -266,17 +266,27 @@ place to be wrong._
 
 ### Newly discovered in Phase 1 — carried forward
 
-- [ ] **17 CSS modules still name `'Libre Franklin'` in their fallback stacks.** Harmless
+- [x] **17 CSS modules still name `'Libre Franklin'` in their fallback stacks.** Harmless
       while the font loads (`var(--font-sans)` resolves first), but if it ever fails these
       components fall back to the OLD design's family while everything else falls back to
-      the new one. Clean up per-module as Phases 2–5 touch each file.
-      **Acceptance:** `grep -rl "Libre Franklin" web/app --include=*.css` is empty by Gate 6.
-      **Model:** `haiku`
-- [ ] **`--color-accent-yellow`, the banner/footer tokens and ~~`--color-heat-5`~~ are
+      the new one.
+      **✅ DONE 2026-09-08.** Retired file by file as each phase touched one; the last five
+      (in `auth-control.module.css` and `annotatable-code.module.css`) went in the cleanup
+      pass. `grep -rn "font-family:.*Libre Franklin" web/app --include=*.css` is empty — the
+      only matches left anywhere are comments explaining the migration.
+      **Model:** n/a — done.
+- [ ] **~~`--color-accent-yellow`~~, the banner/footer tokens and ~~`--color-heat-5`~~ are
       deprecated aliases**, kept so no CSS module strands a `var()`. Each retires as its
-      consumers migrate: yellow has 15, banner 4, footer 1. **`--color-heat-5` is retired
-      (2026-09-06)** — the heatmap was its one consumer, and Phase 4 migrated it; the ramp is
-      five steps, `intensityLevel` 0..4.
+      consumers migrate. **`--color-heat-5` retired 2026-09-06** — the heatmap was its one
+      consumer; the ramp is five steps, `intensityLevel` 0..4.
+      **`--color-accent-yellow` retired 2026-09-08** — its last three consumers were split by
+      meaning like every one before them (`.progressError`'s rule to `--color-error`; the
+      selected-line gutter and the orphaned-annotation card to `--color-accent-gold`), then
+      the declaration went from all three blocks of `tokens.css`, along with its kitchen-sink
+      swatch and its entries in `palette.test.ts`'s alias map **and role table** — that last
+      part is why this is not purely mechanical: the role table drives the contrast
+      assertions, and removing a token without its entry fails four of them.
+      **Still open: the banner and footer aliases**, 24 usages between them.
       **Acceptance:** by Gate 6 `tokens.css` declares no alias, and the dangling-`var()`
       check still passes.
       **Model:** `haiku`
@@ -810,7 +820,7 @@ _Parallel with Phase 3 once Gate 2 passes._
       heat ramp reads as five distinct steps in both themes; locked badges are visibly
       distinct from earned ones.
       **Model:** `sonnet`
-- [ ] **Owner-enrichment on the profile shares the degree fixture's blast radius.**
+- [x] **Owner-enrichment on the profile shares the degree fixture's blast radius.**
       `/me/badges` and `/me/degrees` enumerate every instance-wide definition against the
       caller, so seeding **any** badge or degree makes it render as locked / in-progress on
       **every** owner's own profile view — not only the seeded account's. `badges` and
@@ -832,8 +842,18 @@ _Parallel with Phase 3 once Gate 2 passes._
       `hasRealProgress` already carries — so the tripwire is recorded rather than traded for
       a second one. The clean fix is scoping `/me/badges` and `/me/degrees` to the viewer in
       the API, after which neither section needs a UI guard.
-      **Acceptance:** whoever seeds a badge either adds the guard, or scopes the endpoints.
-      **Model:** `sonnet`
+      **✅ GUARDED 2026-09-08.** `badgesSectionHasContent` now tests `.some(b => b.earned)`
+      rather than `.length`. Unlike the degrees guard this hides nothing the artboard draws:
+      it decides only whether the SECTION appears, and once it does `BadgeShelf` still
+      renders locked badges beside earned ones with PL9's "3 of 9" tally intact. The public
+      branch needs no equivalent — `ProfileBadge` is earned-only by design.
+      **A browser test cannot hold this down**: `clearAwardableState` truncates `badges` at
+      the top of every seed, so a badge inserted before a Playwright run is gone before the
+      first page loads — verified the hard way, two runs "passed" against a badge the
+      harness had already deleted. Pinned in `web/src/lib/badges-section-guard.test.ts`
+      instead, where the precondition is a literal, and checked by mutation: reverting to
+      `.length` fails it with `expected true to be false`.
+      **Model:** n/a — done.
 - [x] **A non-owner viewer cannot match PL9, permanently and by design.** A stranger never
       sees a badge total ("3 OF 9") or a degree's prerequisites, because the public contract
       does not carry them for anyone but the owner — `ProfileBadge` is earned-only
@@ -1079,14 +1099,24 @@ _The phase that decides whether any of the above is actually true._
       via `GradingForm`, and the promoted headings are its siblings, so both pages are now
       ordered. Both report 0/0/0.
       **Model:** n/a — done.
-- [ ] **`e2e/` has no static typecheck coverage at all.** It is not in the root
+- [x] **`e2e/` has no static typecheck coverage at all.** It is not in the root
       `tsconfig.json` references, has no `tsconfig.json` of its own, and `next build` only
       covers `web/`. A type error in a spec is caught only by eslint's non-type-aware pass or
       by a test actually failing at runtime. Found while trying to verify the a11y matrix's
       own edits — there was no configuration to check them against.
-      **Acceptance:** a `tsc --noEmit` that resolves `@playwright/test` and
-      `@axe-core/playwright` types, runnable in CI.
-      **Model:** `haiku`
+      **✅ FIXED 2026-09-08.** `e2e/tsconfig.json` is a standalone `--noEmit` project (not
+      `composite`, not a root reference — the specs import across project boundaries, and a
+      composite project may only read what its references emit, which would drag `web/` into
+      the build graph to lint test files). It uses `module: esnext` +
+      `moduleResolution: bundler` to match what Playwright's loader actually does; under the
+      base config's `nodenext`, `@axe-core/playwright`'s single CJS-flavoured `index.d.ts`
+      made `new AxeBuilder(...)` read as a namespace with no construct signature — a
+      resolution mismatch that had already wasted one agent's time. `npm run typecheck` now
+      runs it after the build graph, and `npm run typecheck:e2e` runs it alone.
+      **It found 7 real errors on first run**, all fixed here: a value-import of a type under
+      `verbatimModuleSyntax`, and six `noUncheckedIndexedAccess` gaps — regex capture groups
+      and a response header used without narrowing.
+      **Model:** n/a — done.
 - [x] **Screenshot comparison** — capture each screen at 4 widths × 2 themes into
       `docs/design/screenshots/` and diff by eye against the artboards.
       **✅ CAPTURED 2026-09-08 — the comparison itself is still Gate 6's, and still a

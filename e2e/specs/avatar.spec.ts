@@ -143,7 +143,11 @@ test.describe('uploading a profile picture', () => {
       expect(first.headers()['content-type']).toBe('image/webp');
       expect(first.headers()['x-content-type-options']).toBe('nosniff');
 
-      const etag = first.headers()['etag'];
+      // `headers()` is an index signature, so this is `string | undefined`
+      // until asserted. The toMatch below would fail on undefined anyway; this
+      // just lets the type system agree, so the value can be sent back as a
+      // request header.
+      const etag = first.headers()['etag'] ?? '';
       expect(etag).toMatch(/^"[0-9a-f]{64}"$/);
 
       const second = await page.request.get(`/avatars/${fixtures.avatarUser.handle}`, {

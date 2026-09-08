@@ -42,9 +42,36 @@ export interface BadgesSectionProps {
 
 type BadgesSource = Pick<BadgesSectionProps, 'ownerBadges' | 'publicBadges'>;
 
-/** Whether there is anything at all to show — the same question for either data source. */
+/**
+ * Whether there is anything at all to show — the same question for either data
+ * source, but NOT the same test.
+ *
+ * `/api/v1/me/badges` enumerates every badge definition on the instance
+ * against the caller, earned or not — there is no per-user scoping in that
+ * query, because a badge is instance-wide curriculum, not a possession. So
+ * `ownerBadges.length` is "how many badges exist here", never "how many this
+ * account has", and testing it would put a "0 of 9" section on EVERY owner's
+ * profile the moment anyone seeds a badge — including an account with nothing
+ * in it, which is exactly what `profile-empty.spec.ts` exists to catch. The
+ * degrees half of this page hit precisely that and is guarded by
+ * `hasRealProgress`; this is the same guard, one section over.
+ *
+ * Unlike degrees, nothing is hidden by it. This decides only whether the
+ * SECTION appears; once it does, `BadgeShelf` still renders the locked badges
+ * alongside the earned ones, and the tally is still "3 of 9" — PL9/P9's own
+ * eyebrow. An owner with at least one badge sees everything the artboard
+ * draws. An owner with none sees no section, which is what an empty profile
+ * means.
+ *
+ * The public branch needs no equivalent: `ProfileBadge` is earned-only by
+ * design (`api/src/profile/load.ts` — "a profile shows what you have, not
+ * what you are missing"), so a non-empty list there already means real
+ * badges.
+ */
 export function badgesSectionHasContent({ ownerBadges, publicBadges }: BadgesSource): boolean {
-  return ownerBadges !== null ? ownerBadges.length > 0 : (publicBadges?.length ?? 0) > 0;
+  return ownerBadges !== null
+    ? ownerBadges.some((badge) => badge.earned)
+    : (publicBadges?.length ?? 0) > 0;
 }
 
 export default function BadgesSection({ ownerBadges, publicBadges, timezone }: BadgesSectionProps) {

@@ -15,7 +15,7 @@
  * - Explicitly excluded: /invite/[token] (burns token on first visit), others noted below
  */
 
-import { test, Page } from '@playwright/test';
+import { test, type Page } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
