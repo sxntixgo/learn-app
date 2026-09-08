@@ -1087,11 +1087,18 @@ _The phase that decides whether any of the above is actually true._
       **Acceptance:** a `tsc --noEmit` that resolves `@playwright/test` and
       `@axe-core/playwright` types, runnable in CI.
       **Model:** `haiku`
-- [ ] **Screenshot comparison** — capture each screen at 4 widths × 2 themes into
+- [x] **Screenshot comparison** — capture each screen at 4 widths × 2 themes into
       `docs/design/screenshots/` and diff by eye against the artboards.
-      **Acceptance:** a contact sheet in the plan outcome; each accepted difference from the
-      artboard written down with a reason.
-      **Model:** `haiku`
+      **✅ CAPTURED 2026-09-08 — the comparison itself is still Gate 6's, and still a
+      human's.** 60 PNGs in `docs/design/screenshots/` (3.1MB): the six artboard-backed
+      routes at the full 4 widths × 2 themes, plus a narrow/wide sample of three routes that
+      have no artboard to compare against. Contact sheet:
+      [`../design/screenshot-contact-sheet.html`](../design/screenshot-contact-sheet.html).
+      It opens with the six **known and accepted differences** so a reviewer does not
+      re-discover them as defects. Capture is `.skip()`ed in the normal suite and run on
+      demand (`npx playwright test capture-screenshots`) — it adds ~120s and would otherwise
+      churn 60 binaries every run. **No agent compared anything visually; none can.**
+      **Model:** n/a — captured.
 - [ ] **Full green build** — `npm run lint && npm run test && cd web && npx next build`.
       **`npm run typecheck` does not cover `web/`** — Next generates its own tsconfig outside
       the root project's references, so `next build` is the only thing that type-checks the
