@@ -263,9 +263,6 @@
    * Aliased to --color-rail-text as the nearest available token; Phase 2
    * is where this gets a real component-level treatment.
    */
-  --color-banner-bg: oklch(0.407 0.064 199);
-  --color-banner-text: oklch(0.894 0.039 206);
-  --color-banner-divider: oklch(0.894 0.039 206);
 
   /*
    * DEPRECATED, status unconfirmed rather than renamed. No artboard
@@ -534,10 +531,6 @@
     --color-heat-4: oklch(0.269 0.04 200);
     --color-heat-cell-edge: oklch(0.35 0.008 245);
 
-    /* DEPRECATED — see the light block's banner comments. */
-    --color-banner-bg: oklch(0.269 0.04 200);
-    --color-banner-text: oklch(0.724 0.07 205);
-    --color-banner-divider: oklch(0.724 0.07 205);
 
     /* DEPRECATED, status unconfirmed — see the light block's footer comment. */
     --color-footer-bg: oklch(0.16 0.006 250);
@@ -598,9 +591,6 @@
   --color-heat-4: oklch(0.269 0.04 200);
   --color-heat-cell-edge: oklch(0.35 0.008 245);
 
-  --color-banner-bg: oklch(0.269 0.04 200);
-  --color-banner-text: oklch(0.724 0.07 205);
-  --color-banner-divider: oklch(0.724 0.07 205);
 
   --color-footer-bg: oklch(0.16 0.006 250);
   --color-footer-text: oklch(0.82 0.004 90);

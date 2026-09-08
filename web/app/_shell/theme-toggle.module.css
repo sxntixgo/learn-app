@@ -63,20 +63,20 @@
 /* The banner context (TopBar, signed out): the ground is teal, so the
    control needs the banner's own pairing, not the page/panel one above. */
 .group[data-tone='banner'] .button {
-  border-color: var(--color-banner-divider);
-  color: var(--color-banner-text);
+  border-color: var(--color-rail-text);
+  color: var(--color-rail-text);
 }
 
 .group[data-tone='banner'] .button:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--color-banner-text) 12%, transparent);
+  background: color-mix(in oklch, var(--color-rail-text) 12%, transparent);
 }
 
 .group[data-tone='banner'] .button:focus-visible {
-  outline-color: var(--color-banner-text);
+  outline-color: var(--color-rail-text);
 }
 
 .group[data-tone='banner'] .button[aria-pressed='true'] {
-  border-color: var(--color-banner-text);
+  border-color: var(--color-rail-text);
 }
 
 .button:disabled {

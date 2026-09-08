@@ -9,9 +9,9 @@
   align-items: center;
   min-height: 44px;
   padding: 0 0.75rem;
-  border: 1px solid var(--color-banner-divider);
+  border: 1px solid var(--color-rail-text);
   border-radius: var(--radius-md);
-  color: var(--color-banner-text);
+  color: var(--color-rail-text);
   text-decoration: none;
   font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
@@ -19,11 +19,11 @@
 }
 
 .signInLink:hover {
-  background: color-mix(in oklch, var(--color-banner-text) 12%, transparent);
+  background: color-mix(in oklch, var(--color-rail-text) 12%, transparent);
 }
 
 .signInLink:focus-visible {
-  outline: 2px solid var(--color-banner-text);
+  outline: 2px solid var(--color-rail-text);
   outline-offset: 2px;
 }
 
@@ -37,7 +37,7 @@
 .identity {
   font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-size: 0.85rem;
-  color: var(--color-banner-text);
+  color: var(--color-rail-text);
   max-width: 10rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -48,10 +48,10 @@
   min-height: 44px;
   min-width: 44px;
   padding: 0.35rem 0.75rem;
-  border: 1px solid var(--color-banner-divider);
+  border: 1px solid var(--color-rail-text);
   border-radius: var(--radius-md);
   background: transparent;
-  color: var(--color-banner-text);
+  color: var(--color-rail-text);
   font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   font-size: 0.85rem;
@@ -59,10 +59,10 @@
 }
 
 .signOutButton:hover {
-  background: color-mix(in oklch, var(--color-banner-text) 12%, transparent);
+  background: color-mix(in oklch, var(--color-rail-text) 12%, transparent);
 }
 
 .signOutButton:focus-visible {
-  outline: 2px solid var(--color-banner-text);
+  outline: 2px solid var(--color-rail-text);
   outline-offset: 2px;
 }

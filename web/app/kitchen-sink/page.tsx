@@ -289,21 +289,6 @@ export default function KitchenSink() {
         role="These names survive only until their consumers migrate (Phases 2-5). Do not reach for them in new code."
       >
         <ColorSwatch
-          name="--color-banner-bg"
-          cssVar="--color-banner-bg"
-          dataTestid="--color-banner-bg"
-        />
-        <ColorSwatch
-          name="--color-banner-text"
-          cssVar="--color-banner-text"
-          dataTestid="--color-banner-text"
-        />
-        <ColorSwatch
-          name="--color-banner-divider"
-          cssVar="--color-banner-divider"
-          dataTestid="--color-banner-divider"
-        />
-        <ColorSwatch
           name="--color-footer-bg"
           cssVar="--color-footer-bg"
           dataTestid="--color-footer-bg"

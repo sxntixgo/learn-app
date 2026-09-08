@@ -275,8 +275,8 @@ place to be wrong._
       pass. `grep -rn "font-family:.*Libre Franklin" web/app --include=*.css` is empty — the
       only matches left anywhere are comments explaining the migration.
       **Model:** n/a — done.
-- [ ] **~~`--color-accent-yellow`~~, the banner/footer tokens and ~~`--color-heat-5`~~ are
-      deprecated aliases**, kept so no CSS module strands a `var()`. Each retires as its
+- [x] **~~`--color-accent-yellow`~~, ~~the banner tokens~~, the footer tokens and
+      ~~`--color-heat-5`~~ are deprecated aliases**, kept so no CSS module strands a `var()`. Each retires as its
       consumers migrate. **`--color-heat-5` retired 2026-09-06** — the heatmap was its one
       consumer; the ramp is five steps, `intensityLevel` 0..4.
       **`--color-accent-yellow` retired 2026-09-08** — its last three consumers were split by
@@ -286,10 +286,20 @@ place to be wrong._
       swatch and its entries in `palette.test.ts`'s alias map **and role table** — that last
       part is why this is not purely mechanical: the role table drives the contrast
       assertions, and removing a token without its entry fails four of them.
-      **Still open: the banner and footer aliases**, 24 usages between them.
-      **Acceptance:** by Gate 6 `tokens.css` declares no alias, and the dangling-`var()`
-      check still passes.
-      **Model:** `haiku`
+      **The three `--color-banner-*` names are retired (2026-09-08)** — all 22 usages moved
+      to the `--color-rail-*` tokens they were already asserted equal to, so nothing changed
+      on screen, then the declarations, kitchen-sink swatches and `palette.test.ts` entries
+      went. `ALIASES` is now empty, which broke the file: vitest fails a `describe` that
+      generates no cases, so that block gained a guard and an explanation rather than being
+      deleted — the next rename will want the structure.
+      **`--color-footer-*` is NOT an alias and is deliberately left**: `--color-footer-bg`'s
+      own comment records it as an unconfirmed value with no palette-doc backing, to be
+      given a real value or deleted along with its one consumer
+      (`web/app/_shell/footer.module.css`). That is a design decision for whoever resolves
+      palette doc §6 item 1, not cleanup.
+      **Acceptance:** the footer pair is resolved, after which `tokens.css` declares no
+      alias.
+      **Model:** needs a design decision, then `haiku`.
 
 ### Phase 1 outcome (2026-09-02)
 

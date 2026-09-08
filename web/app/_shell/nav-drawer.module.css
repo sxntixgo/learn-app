@@ -24,16 +24,16 @@
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
-  color: var(--color-banner-text);
+  color: var(--color-rail-text);
   cursor: pointer;
 }
 
 .toggle:hover {
-  background: color-mix(in oklch, var(--color-banner-text) 12%, transparent);
+  background: color-mix(in oklch, var(--color-rail-text) 12%, transparent);
 }
 
 .toggle:focus-visible {
-  outline: var(--border-regular) solid var(--color-banner-text);
+  outline: var(--border-regular) solid var(--color-rail-text);
   outline-offset: 2px;
 }
 
