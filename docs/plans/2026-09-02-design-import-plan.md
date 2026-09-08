@@ -1027,7 +1027,7 @@ _The phase that decides whether any of the above is actually true._
       **Acceptance:** a deliberately theme-broken rule (a colour hardcoded into a media
       query) makes it fail.
       **Model:** `sonnet`
-- [ ] **Re-run `a11y.spec.ts` across the matrix.** Note its known blind spot: axe does not
+- [x] **Re-run `a11y.spec.ts` across the matrix.** Note its known blind spot: axe does not
       check border colours, which is exactly how the old yellow's 2.46:1 survived 69 passing
       assertions. Phase 1's palette test is what covers that, not this.
       **Acceptance:** zero violations at 4 widths × 2 themes.
@@ -1079,6 +1079,14 @@ _The phase that decides whether any of the above is actually true._
       via `GradingForm`, and the promoted headings are its siblings, so both pages are now
       ordered. Both report 0/0/0.
       **Model:** n/a — done.
+- [ ] **`e2e/` has no static typecheck coverage at all.** It is not in the root
+      `tsconfig.json` references, has no `tsconfig.json` of its own, and `next build` only
+      covers `web/`. A type error in a spec is caught only by eslint's non-type-aware pass or
+      by a test actually failing at runtime. Found while trying to verify the a11y matrix's
+      own edits — there was no configuration to check them against.
+      **Acceptance:** a `tsc --noEmit` that resolves `@playwright/test` and
+      `@axe-core/playwright` types, runnable in CI.
+      **Model:** `haiku`
 - [ ] **Screenshot comparison** — capture each screen at 4 widths × 2 themes into
       `docs/design/screenshots/` and diff by eye against the artboards.
       **Acceptance:** a contact sheet in the plan outcome; each accepted difference from the
