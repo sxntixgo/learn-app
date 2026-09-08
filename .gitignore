@@ -20,3 +20,9 @@ coverage/
 test-results/
 playwright-report/
 /e2e/.fixtures.json
+
+# macOS Finder metadata. Six of these were tracked — one per directory anyone had
+# opened in Finder — so they turned up as modified in `git status` on every
+# machine that touched the repo, and rode along in `git add -A`. They carry no
+# project information at all.
+.DS_Store

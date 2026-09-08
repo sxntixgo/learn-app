@@ -219,6 +219,31 @@ describe('admin badge routes', () => {
       expect(response.statusCode).toBe(409);
       await fastify.close();
     });
+
+    it('400s a course scope this instance has never imported', async () => {
+      // Unlike the importer, which tolerates a manifest naming another
+      // repo's course (design §8's cross-repo rule is about IMPORTS), an
+      // admin typing a slug into a form has simply made a mistake — and a
+      // badge silently created unscoped would be a global badge nobody
+      // asked for.
+      const fastify = await buildServer({ actor: admin });
+      const response = await fastify.inject({
+        method: 'POST',
+        url: '/api/v1/admin/badges',
+        payload: {
+          slug: `${PREFIX}-nocourse`,
+          title: 'Scoped To Nothing',
+          course: `${PREFIX}-not-imported`,
+          criteria: { type: 'streak_days', days: 3 },
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect((JSON.parse(response.payload) as { message: string }).message).toMatch(/No course with slug/);
+      const rows = await pool.query('select 1 from badges where slug = $1', [`${PREFIX}-nocourse`]);
+      expect(rows.rowCount).toBe(0);
+      await fastify.close();
+    });
   });
 
   describe('PATCH /api/v1/admin/badges/:badgeSlug', () => {
@@ -276,6 +301,83 @@ describe('admin badge routes', () => {
       expect(response.statusCode).toBe(404);
       await fastify.close();
     });
+
+    it('refuses a field of the wrong shape, and writes nothing when it does', async () => {
+      await insertBadge(`${PREFIX}-shapes`, 'admin');
+      const fastify = await buildServer({ actor: admin });
+
+      const cases: Array<{ what: string; payload: Record<string, unknown>; expect: RegExp }> = [
+        {
+          what: 'criteria outside the closed vocabulary',
+          payload: { criteria: { type: 'lessons_read', count: 3 } },
+          expect: /Invalid criteria/,
+        },
+        { what: 'a blank title', payload: { title: '   ' }, expect: /title must be a non-empty string/ },
+        {
+          what: 'a description that is neither a string nor null',
+          payload: { description: 7 },
+          expect: /description must be a string or null/,
+        },
+        {
+          what: 'a course that is not a slug at all',
+          payload: { course: 7 },
+          expect: /course must be a course slug or null/,
+        },
+        {
+          what: 'a course slug this instance does not have',
+          payload: { course: `${PREFIX}-not-imported` },
+          expect: /No course with slug/,
+        },
+      ];
+
+      for (const testCase of cases) {
+        const response = await fastify.inject({
+          method: 'PATCH',
+          url: `/api/v1/admin/badges/${PREFIX}-shapes`,
+          payload: testCase.payload,
+        });
+        expect(response.statusCode, testCase.what).toBe(400);
+        expect((JSON.parse(response.payload) as { message: string }).message, testCase.what).toMatch(testCase.expect);
+      }
+
+      // The badge is exactly as it was seeded. Every refusal above happens
+      // before the UPDATE, and the UPDATE is one statement with a coalesce
+      // per column — so a refusal that leaked through would show up here as
+      // a badge that lost a field it never asked to change.
+      const { rows } = await pool.query<{
+        title: string;
+        description: string | null;
+        criteria: unknown;
+        course_id: string | null;
+      }>('select title, description, criteria, course_id from badges where slug = $1', [`${PREFIX}-shapes`]);
+      expect(rows[0]).toMatchObject({
+        title: `Badge ${PREFIX}-shapes`,
+        description: 'Seeded',
+        criteria: { type: 'lessons_completed', count: 2 },
+        course_id: null,
+      });
+
+      await fastify.close();
+    });
+
+    it('re-scopes a badge to a course that does exist', async () => {
+      // The mirror of the refusal above, and the reason it cannot simply be
+      // "any string is fine": a valid slug has to resolve to a real
+      // `course_id`, because that column is what every course-scoped badge
+      // query joins on.
+      await insertBadge(`${PREFIX}-rescope`, 'admin');
+      const fastify = await buildServer({ actor: admin });
+
+      const response = await fastify.inject({
+        method: 'PATCH',
+        url: `/api/v1/admin/badges/${PREFIX}-rescope`,
+        payload: { course: COURSE_SLUG },
+      });
+      expect(response.statusCode).toBe(200);
+      expect((JSON.parse(response.payload) as AdminBadgeBody).courseSlug).toBe(COURSE_SLUG);
+
+      await fastify.close();
+    });
   });
 
   describe('DELETE /api/v1/admin/badges/:badgeSlug', () => {
@@ -316,6 +418,16 @@ describe('admin badge routes', () => {
       const fastify = await buildServer({ actor: admin });
       const response = await fastify.inject({ method: 'DELETE', url: `/api/v1/admin/badges/${PREFIX}-gitdel` });
       expect(response.statusCode).toBe(409);
+      await fastify.close();
+    });
+
+    it('404s a slug that was never there', async () => {
+      // Distinct from the two 409s above: "no such badge" and "that badge
+      // may not be deleted" are different answers, and collapsing them
+      // would make a typo look like a policy refusal.
+      const fastify = await buildServer({ actor: admin });
+      const response = await fastify.inject({ method: 'DELETE', url: `/api/v1/admin/badges/${PREFIX}-ghost` });
+      expect(response.statusCode).toBe(404);
       await fastify.close();
     });
   });
@@ -373,6 +485,36 @@ describe('admin badge routes', () => {
       });
       expect(denied.statusCode).toBe(403);
       await asStudent.close();
+    });
+
+    it('422s a badge that would not validate, rather than emitting YAML that cannot be imported', async () => {
+      // Nothing in the authoring path can create this: the importer and the
+      // admin POST both validate against schemas/badge.schema.json first. A
+      // restored backup, a hand-edited row, or a criteria type retired from
+      // the schema can — and design §9.3's whole point in having an export
+      // is that the fragment can be pasted into a curriculum repo. An export
+      // that does not validate would fail on the next import of that repo,
+      // and the operator would only find out then.
+      await pool.query(
+        `insert into badges (slug, title, description, source, criteria)
+         values ($1, 'Half A Badge', null, 'git', $2::jsonb)`,
+        // `streak_days` requires `days`; jsonb happily stores it without.
+        [`${PREFIX}-unexportable`, JSON.stringify({ type: 'streak_days' })],
+      );
+
+      const fastify = await buildServer({ actor: admin });
+      const response = await fastify.inject({
+        method: 'GET',
+        url: `/api/v1/admin/badges/${PREFIX}-unexportable/export`,
+      });
+
+      expect(response.statusCode).toBe(422);
+      const message = (JSON.parse(response.payload) as { message: string }).message;
+      // The message has to name the badge and say what is wrong with it —
+      // an operator staring at a 422 with no detail cannot fix the row.
+      expect(message).toMatch(`${PREFIX}-unexportable`);
+      expect(message).toMatch(/badge\.schema\.json/);
+      await fastify.close();
     });
   });
 
