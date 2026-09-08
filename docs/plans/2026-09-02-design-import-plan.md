@@ -1099,12 +1099,56 @@ _The phase that decides whether any of the above is actually true._
       demand (`npx playwright test capture-screenshots`) — it adds ~120s and would otherwise
       churn 60 binaries every run. **No agent compared anything visually; none can.**
       **Model:** n/a — captured.
-- [ ] **Full green build** — `npm run lint && npm run test && cd web && npx next build`.
+- [x] **Full green build** — `npm run lint && npm run test && cd web && npx next build`.
       **`npm run typecheck` does not cover `web/`** — Next generates its own tsconfig outside
       the root project's references, so `next build` is the only thing that type-checks the
       web app.
       **Acceptance:** all three clean.
       **Model:** `haiku`
+
+### Phase 6 outcome (2026-09-08)
+
+**Complete, 6 of 6, plus four findings it surfaced.** `npm run lint` · `npm run test`
+(**109 files / 2025 tests**) · `npm run typecheck` · `cd web && npx next build` all green ·
+`npx playwright test` **261 passed, 2 skipped, 0 failed** · `web/test-results/` absent.
+
+| Task | Model | Commit |
+| --- | --- | --- |
+| Extend `viewport.spec.ts` to four widths | — | already satisfied by Phase 4's heatmap step |
+| Add the theme axis | `sonnet` | `test(viewport)` |
+| Three moderate landmark violations | `sonnet` | `fix(a11y)` |
+| Re-run `a11y.spec.ts` across the matrix | `sonnet` | `test(a11y)` |
+| Screenshot comparison | `haiku` | `docs(design)` |
+| Full green build | — | this commit |
+
+**The verification phase was worth more than the verification.** Building the matrix found
+three real defects that the single-width, single-theme suite had never been able to see:
+
+1. **`/invites` crashed for any teacher-only account.** Not an accessibility nit — a
+   teacher without the `student` role got a 403 from `fetchCourses()` (`course:list` is a
+   student power), the throw escaped `withAuthRedirect`, and the render died past the root
+   layout. axe noticed only because the resulting document had no `<title>` and no `lang`.
+2. **Every route had two nested `<main>` elements**, shell and page. Fixing it also
+   falsified three specs that had encoded the duplication as a `main main` locator, each
+   with a comment calling it a known finding — so the "obvious" fix would have looked green
+   while breaking three width tests.
+3. **`heading-order`** on the lesson reader and grading view: `h1` straight to `h3`.
+
+**What the matrix itself found: nothing.** All 54 scans report zero at every impact level.
+Worth stating plainly — the value is proof of a previously untested claim, not a discovery.
+
+**One exclusion, scoped and argued**: `color-contrast` is disabled for `/kitchen-sink` only.
+It is the token proof sheet, so axe measures swatch-against-label pairings that exist nowhere
+in the product — 53 nodes, none describing a real screen. Coverage is unaffected;
+`palette.test.ts` measures every pairing the app actually uses.
+
+**The matrix is sized to what each axis can find**, not to the cross product: theme gets all
+19 routes (colour keys off `data-theme`, never a width query), width gets a per-session-type
+sample, and `/me` runs the literal 4×2 so the acceptance has a direct witness. 152 naive
+scans became 34 added tests and ~51s.
+
+**Carried forward:** `e2e/` has no static typecheck coverage at all — not in the root
+tsconfig references, no tsconfig of its own, and `next build` covers only `web/`.
 
 > **⛔ Gate 6 — needs a human.** iPhone, iPad both orientations, and desktop, both themes,
 > on real hardware. Screenshots agreeing with artboards is necessary and not sufficient.
