@@ -77,8 +77,25 @@ const RUN_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const COURSE_SLUG = `submission-test-course-${RUN_ID}`;
 const SNAPSHOT_COURSE_SLUG = `snapshot-invariant-course-${RUN_ID}`;
 
+// Two more courses of their own, because both of the suites that use them
+// assert "and nothing was written" — which is only meaningful on a lesson no
+// earlier test has already left a submission on. `exercise_submissions` is
+// unique on (user_id, lesson_id), so sharing one would make the assertion
+// read a row somebody else created.
+const SHAPE_SLUG = `shape-refusal-course-${RUN_ID}`;
+const ROLLBACK_SLUG = `rollback-course-${RUN_ID}`;
+
 const EXERCISE_SLUG = 'exercises-ex01';
 const PLAIN_SLUG = 'exercises-plain';
+
+/**
+ * A NUL byte — the cheapest string Postgres will not store in a `text`
+ * column (SQLSTATE 22021). JSON carries it happily as a unicode escape, so
+ * it is a value that passes every check a route makes on the way in and is
+ * refused only by the database — which is what makes it the right probe for
+ * the `catch { ROLLBACK; throw }` arms.
+ */
+const NUL = String.fromCharCode(0);
 
 /** The code the student reviews, BEFORE the upstream edit. Line numbers matter. */
 const ORIGINAL_CODE = [
@@ -229,12 +246,27 @@ describe('exercise submissions', () => {
       ]),
     );
 
+    // One exercise each, for the two suites that assert a refused save wrote
+    // nothing: they need a (user_id, lesson_id) no other test has touched.
+    await importDir(
+      await writeCourseDir(path.join(tmpRoot, 'shape-course'), SHAPE_SLUG, [
+        { file: 'modules/exercises/ex01.md', body: exerciseMarkdown('Shape Refusals', ORIGINAL_CODE) },
+      ]),
+    );
+    await importDir(
+      await writeCourseDir(path.join(tmpRoot, 'rollback-course'), ROLLBACK_SLUG, [
+        { file: 'modules/exercises/ex01.md', body: exerciseMarkdown('Rollback', ORIGINAL_CODE) },
+      ]),
+    );
+
     // Imported courses land `hidden` (migration 0008) and these tests are
     // about submissions, not visibility — the lesson-read gate is exercised
     // in courses.test.ts.
-    await pool.query(`update courses set visibility = 'open' where slug in ($1, $2)`, [
+    await pool.query(`update courses set visibility = 'open' where slug in ($1, $2, $3, $4)`, [
       COURSE_SLUG,
       SNAPSHOT_COURSE_SLUG,
+      SHAPE_SLUG,
+      ROLLBACK_SLUG,
     ]);
 
     const user = await pool.query<{ id: string }>(
@@ -685,6 +717,147 @@ describe('exercise submissions', () => {
       expect(response.statusCode).toBe(409);
       await fastify.close();
     });
+
+    // -----------------------------------------------------------------------
+    // SHAPE VALIDATION, before any database work at all.
+    //
+    // `inputError` runs on the raw body and returns ONE message per problem;
+    // its whole reason for existing is that a malformed annotation must not
+    // reach `anchorError` (which reads the snapshot) or the INSERT (which
+    // would then be the thing that decides what "valid" means). The anchor
+    // test above covers the cases that need a snapshot to judge; these are
+    // the ones that are wrong on their face.
+    //
+    // Each case is asserted on its MESSAGE as well as its status, because
+    // "400" alone cannot tell a caller which of five annotations it got
+    // wrong — and the wrong index in that message is the failure a person
+    // debugging a save actually hits.
+    // -----------------------------------------------------------------------
+    it('refuses a body whose annotations are the wrong shape, naming the offending index', async () => {
+      const fastify = await buildServer({ actor: DEV_ACTOR });
+
+      const cases: Array<{ what: string; annotations: unknown; expect: RegExp }> = [
+        {
+          what: 'more annotations than a code review could plausibly carry',
+          // 501: one past MAX_ANNOTATIONS. A submission is a code review,
+          // not a data store, and the ceiling is what keeps one request from
+          // becoming 500 INSERTs.
+          annotations: Array.from({ length: 501 }, () => ({
+            blockIndex: 1,
+            startLine: 1,
+            endLine: 1,
+            body: 'Fine on its own.',
+          })),
+          expect: /at most 500 annotations/,
+        },
+        {
+          what: 'an element that is not an object',
+          annotations: [{ blockIndex: 1, startLine: 1, endLine: 1, body: 'Fine.' }, null],
+          expect: /annotations\[1\] must be an object/,
+        },
+        {
+          what: 'a blockIndex that is not a non-negative integer',
+          annotations: [{ blockIndex: -1, startLine: 1, endLine: 1, body: 'Negative block.' }],
+          expect: /annotations\[0\]\.blockIndex/,
+        },
+        {
+          what: 'a startLine below 1 — anchors are 1-indexed, not 0-indexed',
+          annotations: [{ blockIndex: 1, startLine: 0, endLine: 1, body: 'Zeroth line.' }],
+          expect: /annotations\[0\]\.startLine/,
+        },
+        {
+          what: 'an endLine that is not an integer',
+          annotations: [{ blockIndex: 1, startLine: 1, endLine: 2.5, body: 'Half a line.' }],
+          expect: /annotations\[0\]\.endLine/,
+        },
+        {
+          what: 'a body past the length ceiling',
+          annotations: [{ blockIndex: 1, startLine: 1, endLine: 1, body: 'x'.repeat(10_001) }],
+          expect: /exceeds 10000 characters/,
+        },
+        {
+          what: 'a track that is present but blank',
+          // Present-but-blank is refused rather than normalized to null: a
+          // caller that sent "" meant to send something.
+          annotations: [{ blockIndex: 1, startLine: 1, endLine: 1, body: 'Fine.', track: '   ' }],
+          expect: /annotations\[0\]\.track/,
+        },
+      ];
+
+      for (const testCase of cases) {
+        const response = await fastify.inject({
+          method: 'PUT',
+          url: submissionUrl(SHAPE_SLUG, EXERCISE_SLUG),
+          payload: { annotations: testCase.annotations },
+        });
+        expect(response.statusCode, testCase.what).toBe(400);
+        expect((JSON.parse(response.payload) as { message: string }).message, testCase.what).toMatch(testCase.expect);
+      }
+
+      // Not one of them created a submission row. This is the half that
+      // matters: `inputError` runs BEFORE the transaction opens, so a
+      // rejected first save must leave nothing behind for a later, valid
+      // save to inherit.
+      const refetched = await fastify.inject({ method: 'GET', url: submissionUrl(SHAPE_SLUG, EXERCISE_SLUG) });
+      expect(refetched.statusCode).toBe(404);
+
+      await fastify.close();
+    });
+
+    // A NUL byte is the cheapest way to make Postgres refuse a `text`
+    // parameter (SQLSTATE 22021, "invalid byte sequence for encoding UTF8")
+    // from inside the transaction rather than before it: it survives JSON,
+    // survives `inputError` (it is a non-empty string of legal length) and
+    // survives `anchorError` (it says nothing about anchors), so the first
+    // thing that objects is the INSERT in `replaceAnnotations`.
+    //
+    // That is exactly the situation the `catch { ROLLBACK; throw }` arm
+    // exists for, and the thing it protects is stated in the route: a
+    // rejected first save "leaves no half-started submission behind". Without
+    // the rollback the exercise_submissions row created moments earlier in
+    // the same transaction would still be committed by the pool's next
+    // COMMIT, and the student would own a submission with a snapshot they
+    // never chose.
+    it('rolls the whole draft save back when the database refuses a write mid-transaction', async () => {
+      const fastify = await buildServer({ actor: DEV_ACTOR });
+
+      const response = await fastify.inject({
+        method: 'PUT',
+        url: submissionUrl(ROLLBACK_SLUG, EXERCISE_SLUG),
+        payload: {
+          annotations: [{ blockIndex: 1, startLine: 1, endLine: 1, body: `Contains a NUL:${NUL}here.` }],
+        },
+      });
+      expect(response.statusCode).toBe(500);
+
+      // The submission that would have been created is not there — neither
+      // through the route nor in the table itself.
+      const refetched = await fastify.inject({ method: 'GET', url: submissionUrl(ROLLBACK_SLUG, EXERCISE_SLUG) });
+      expect(refetched.statusCode).toBe(404);
+
+      const rows = await pool.query<{ c: number }>(
+        `select count(*)::int as c
+           from exercise_submissions es
+           join lessons l on l.id = es.lesson_id
+           join courses c on c.id = l.course_id
+          where c.slug = $1 and es.user_id = $2`,
+        [ROLLBACK_SLUG, DEV_ACTOR.id],
+      );
+      expect(rows.rows[0]!.c).toBe(0);
+
+      // And the connection went back to the pool usable. Without the
+      // ROLLBACK it would be handed on still inside an aborted transaction,
+      // and the next request to draw it would fail with 25P02 for reasons
+      // that have nothing to do with what it asked for.
+      const afterwards = await fastify.inject({
+        method: 'PUT',
+        url: submissionUrl(ROLLBACK_SLUG, EXERCISE_SLUG),
+        payload: { annotations: [{ blockIndex: 1, startLine: 1, endLine: 1, body: 'A perfectly ordinary note.' }] },
+      });
+      expect(afterwards.statusCode).toBe(200);
+
+      await fastify.close();
+    });
   });
 
   // ===========================================================================
@@ -814,6 +987,16 @@ describe('exercise submissions', () => {
     const RUBRIC_SLUG = `rubric-course-${RUN_ID}`;
     const RUBRIC_EXERCISE_SLUG = 'exercises-ex01';
     const NO_RUBRIC_EXERCISE_SLUG = 'exercises-plain-ex';
+    /** A kind:"lesson" lesson in the SAME owned course, so `wrongKind` can be reached past the policy gate. */
+    const PROSE_LESSON_SLUG = 'exercises-prose';
+    /**
+     * A lesson written straight into the table, carrying a rubric block whose
+     * `criteria` is not a list. Nothing in the authoring path can produce it
+     * (schemas/blocks.schema.json would refuse it on import), which is
+     * precisely why `rubricCriteriaOf` is written defensively — and why the
+     * only way to test that defence is to put the shape there by hand.
+     */
+    const MALFORMED_RUBRIC_SLUG = 'malformed-rubric';
 
     let owner: Actor;
     let otherTeacher: Actor;
@@ -839,11 +1022,38 @@ describe('exercise submissions', () => {
               ),
             },
             { file: 'modules/exercises/plain-ex.md', body: exerciseMarkdown('No Rubric', ORIGINAL_CODE) },
+            { file: 'modules/exercises/prose.md', body: '---\ntitle: Prose Lesson\n---\n\nNothing to hand in.\n' },
           ],
           [{ id: 'cx', name: 'Complexity', hue: 'blue' }],
         ),
       );
       await pool.query(`update courses set visibility = 'open' where slug = $1`, [RUBRIC_SLUG]);
+
+      // The hand-written lesson described above. It reuses the imported
+      // course's own module so it is a live lesson by the same rule every
+      // other lesson-scoped route applies (`findLiveLesson`).
+      const rubricCourse = await pool.query<{ id: string }>('select id from courses where slug = $1', [RUBRIC_SLUG]);
+      const rubricModule = await pool.query<{ id: string }>(
+        'select id from modules where course_id = $1 order by position limit 1',
+        [rubricCourse.rows[0]!.id],
+      );
+      await pool.query(
+        `insert into lessons
+           (course_id, module_id, lesson_key, slug, title, kind, position, source_path, content_hash, blocks)
+         values ($1, $2, 'malformed-rubric', $3, 'Malformed Rubric', 'exercise', 90, 'malformed.md', $4, $5::jsonb)`,
+        [
+          rubricCourse.rows[0]!.id,
+          rubricModule.rows[0]!.id,
+          MALFORMED_RUBRIC_SLUG,
+          `malformed-${RUN_ID}`,
+          JSON.stringify([
+            { type: 'prose', html: '<p>Review this.</p>' },
+            { type: 'code', lang: 'python', source: ORIGINAL_CODE },
+            // `criteria` is a string, not a list of criteria.
+            { type: 'rubric', criteria: 'five points for effort' },
+          ]),
+        ],
+      );
 
       const ownerRow = await pool.query<{ id: string }>(
         `insert into users (display_name) values ('Rubric Owner') returning id`,
@@ -1243,6 +1453,368 @@ describe('exercise submissions', () => {
       const actions = calls.map((c) => c[1]);
       expect(actions).toContain('submission:grade');
       expect(actions).toContain('rubric:score');
+
+      await teacher.close();
+    });
+
+    // -------------------------------------------------------------------------
+    // SHAPE VALIDATION ON THE GRADE BODY.
+    //
+    // A grade call carries two independent lists and both are checked before
+    // the transaction opens. The refusals below are the ones a caller can
+    // reach without a snapshot: "this is not the shape of a score" and "this
+    // is not the shape of an annotation". The semantic ones — a criterion
+    // that is not declared, an anchor that does not land — need the
+    // submission and are covered separately.
+    // -------------------------------------------------------------------------
+    it('refuses a rubricScores list of the wrong shape, naming the offending index', async () => {
+      const { student, submission } = await freshSubmission();
+      const teacher = await buildServer({ actor: owner });
+
+      const cases: Array<{ what: string; rubricScores: unknown; expect: RegExp }> = [
+        { what: 'not a list at all', rubricScores: { criterion: 'x', points: 1 }, expect: /must be an array/ },
+        { what: 'an element that is not an object', rubricScores: ['Review tone'], expect: /rubricScores\[0\] must be an object/ },
+        {
+          what: 'a blank criterion name',
+          rubricScores: [{ criterion: '   ', points: 1 }],
+          expect: /rubricScores\[0\]\.criterion/,
+        },
+        {
+          what: 'points that are not a number',
+          rubricScores: [{ criterion: 'Review tone', points: '3' }],
+          expect: /rubricScores\[0\]\.points/,
+        },
+        {
+          what: 'negative points',
+          rubricScores: [{ criterion: 'Review tone', points: -1 }],
+          expect: /rubricScores\[0\]\.points/,
+        },
+      ];
+
+      for (const testCase of cases) {
+        const response = await teacher.inject({
+          method: 'POST',
+          url: gradeUrl(student.id),
+          payload: { rubricScores: testCase.rubricScores },
+        });
+        expect(response.statusCode, testCase.what).toBe(400);
+        expect((JSON.parse(response.payload) as { message: string }).message, testCase.what).toMatch(testCase.expect);
+      }
+
+      // A refused grade call is not a partial grade call: the submission is
+      // still awaiting review, not 'returned'.
+      const after = await pool.query<{ status: string }>('select status from exercise_submissions where id = $1', [
+        submission.id,
+      ]);
+      expect(after.rows[0]!.status).toBe('submitted');
+
+      await teacher.close();
+    });
+
+    it('refuses a grade annotation of the wrong shape — and a reply that tries to bring its own anchor', async () => {
+      const { student, submission } = await freshSubmission();
+      const teacher = await buildServer({ actor: owner });
+      const parentId = submission.annotations[0]!.id;
+
+      const cases: Array<{ what: string; annotations: unknown; expect: RegExp }> = [
+        { what: 'not a list at all', annotations: 'a note', expect: /must be an array/ },
+        {
+          what: 'more annotations than one grade call may add',
+          annotations: Array.from({ length: 501 }, () => ({ blockIndex: 1, startLine: 1, endLine: 1, body: 'Note.' })),
+          expect: /at most 500 annotations/,
+        },
+        { what: 'an element that is not an object', annotations: [null], expect: /annotations\[0\] must be an object/ },
+        {
+          what: 'a parentId that is not a usable string',
+          annotations: [{ parentId: 42, body: 'Reply.' }],
+          expect: /annotations\[0\]\.parentId/,
+        },
+        {
+          // The heart of Task B: an anchor sent alongside parentId is
+          // REFUSED, not quietly discarded. A caller that believed it chose
+          // where its reply landed must be told it did not.
+          what: 'a reply that also sends an anchor',
+          annotations: [{ parentId, blockIndex: 1, startLine: 1, endLine: 1, body: 'Reply with an anchor.' }],
+          expect: /derived/,
+        },
+        {
+          what: 'a top-level annotation with no blockIndex',
+          annotations: [{ startLine: 1, endLine: 1, body: 'Anchored nowhere.' }],
+          expect: /required on a top-level annotation/,
+        },
+        {
+          what: 'a startLine below 1',
+          annotations: [{ blockIndex: 1, startLine: 0, endLine: 1, body: 'Zeroth line.' }],
+          expect: /annotations\[0\]\.startLine/,
+        },
+        {
+          what: 'an endLine below 1',
+          annotations: [{ blockIndex: 1, startLine: 1, endLine: 0, body: 'Zeroth line.' }],
+          expect: /annotations\[0\]\.endLine/,
+        },
+        {
+          what: 'a range the caller got backwards',
+          annotations: [{ blockIndex: 1, startLine: 4, endLine: 2, body: 'Backwards.' }],
+          expect: /is before startLine/,
+        },
+        {
+          what: 'a blank body',
+          annotations: [{ blockIndex: 1, startLine: 1, endLine: 1, body: '   ' }],
+          expect: /annotations\[0\]\.body must be a non-empty string/,
+        },
+        {
+          what: 'a body past the length ceiling',
+          annotations: [{ blockIndex: 1, startLine: 1, endLine: 1, body: 'x'.repeat(10_001) }],
+          expect: /exceeds 10000 characters/,
+        },
+        {
+          what: 'a track that is present but blank',
+          annotations: [{ blockIndex: 1, startLine: 1, endLine: 1, body: 'Fine.', track: '' }],
+          expect: /annotations\[0\]\.track/,
+        },
+      ];
+
+      for (const testCase of cases) {
+        const response = await teacher.inject({
+          method: 'POST',
+          url: gradeUrl(student.id),
+          payload: { annotations: testCase.annotations },
+        });
+        expect(response.statusCode, testCase.what).toBe(400);
+        expect((JSON.parse(response.payload) as { message: string }).message, testCase.what).toMatch(testCase.expect);
+      }
+
+      // Not one of them added an annotation, and none of them returned the
+      // submission: shape validation runs before the transaction opens.
+      const stored = await pool.query<{ c: number }>(
+        'select count(*)::int as c from annotations where submission_id = $1',
+        [submission.id],
+      );
+      expect(stored.rows[0]!.c).toBe(1);
+      const after = await pool.query<{ status: string }>('select status from exercise_submissions where id = $1', [
+        submission.id,
+      ]);
+      expect(after.rows[0]!.status).toBe('submitted');
+
+      await teacher.close();
+    });
+
+    it('refuses the same criterion scored twice in one request', async () => {
+      const { student, submission } = await freshSubmission();
+      const teacher = await buildServer({ actor: owner });
+
+      // Both entries name a REAL criterion, so this is not the "unknown
+      // criterion" refusal wearing a different hat: the question is which of
+      // the two scores would have won, and the answer is that neither does.
+      const response = await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: {
+          rubricScores: [
+            { criterion: 'Review tone', points: 1 },
+            { criterion: 'Review tone', points: 3 },
+          ],
+        },
+      });
+      expect(response.statusCode).toBe(400);
+      expect((JSON.parse(response.payload) as { message: string }).message).toMatch(/scored twice/);
+
+      const scores = await pool.query<{ c: number }>(
+        'select count(*)::int as c from rubric_scores where submission_id = $1',
+        [submission.id],
+      );
+      expect(scores.rows[0]!.c).toBe(0);
+
+      await teacher.close();
+    });
+
+    it('asks for rubric:score separately, and refuses the whole call when only that half is denied', async () => {
+      const { student, submission } = await freshSubmission();
+      // MATRIX carries `submission:grade` and `rubric:score` as two cells so
+      // an instance can hand scoring to a TA without handing over grading.
+      // The route must therefore refuse on the narrower one alone — if it
+      // only ever asked `submission:grade`, that split would be decoration.
+      const teacher = await buildServer({
+        can: (_actor, action) => action !== 'rubric:score',
+        actor: owner,
+      });
+
+      const response = await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: {
+          rubricScores: [
+            { criterion: 'Spotted the shallow module', points: 4 },
+            { criterion: 'Review tone', points: 2 },
+          ],
+          annotations: [{ blockIndex: 1, startLine: 1, endLine: 1, body: 'Would have been feedback.' }],
+        },
+      });
+      expect(response.statusCode).toBe(403);
+
+      // The refusal took the annotations and the return with it: a grade
+      // call is one operation, not a best-effort partial one.
+      const after = await pool.query<{ status: string }>('select status from exercise_submissions where id = $1', [
+        submission.id,
+      ]);
+      expect(after.rows[0]!.status).toBe('submitted');
+      const scores = await pool.query<{ c: number }>(
+        'select count(*)::int as c from rubric_scores where submission_id = $1',
+        [submission.id],
+      );
+      expect(scores.rows[0]!.c).toBe(0);
+
+      await teacher.close();
+    });
+
+    it('refuses to grade a lesson that is not an exercise (§9.1: one rule per kind)', async () => {
+      const teacher = await buildServer({ actor: owner });
+      const student = await newStudent('Prose Lesson Student');
+
+      const response = await teacher.inject({
+        method: 'POST',
+        url: `/api/v1/courses/${RUBRIC_SLUG}/lessons/${PROSE_LESSON_SLUG}/submissions/${student.id}/grade`,
+        payload: {},
+      });
+      // 409, not 404: the lesson is right there, the caller is at the wrong
+      // endpoint for it — the same status progress.ts and quiz.ts use for
+      // the mirror-image mistake.
+      expect(response.statusCode).toBe(409);
+      expect((JSON.parse(response.payload) as { message: string }).message).toMatch(/kind "lesson"/);
+
+      await teacher.close();
+    });
+
+    it('404s the teacher’s read of a student who never started the exercise', async () => {
+      const teacher = await buildServer({ actor: owner });
+      const student = await newStudent('Teacher Read Nothing');
+
+      const response = await teacher.inject({ method: 'GET', url: teacherViewUrl(student.id) });
+      expect(response.statusCode).toBe(404);
+      // Named by lesson, not by student: the message must not become a
+      // report on whether that account exists.
+      expect((JSON.parse(response.payload) as { message: string }).message).toMatch(/No submission from this student/);
+
+      await teacher.close();
+    });
+
+    it('refuses a teacher annotation anchored outside the snapshot, and keeps the scores out too', async () => {
+      const { student, submission } = await freshSubmission();
+      const teacher = await buildServer({ actor: owner });
+
+      const response = await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: {
+          rubricScores: [
+            { criterion: 'Spotted the shallow module', points: 5 },
+            { criterion: 'Review tone', points: 3 },
+          ],
+          // The code block in this snapshot is five lines long.
+          annotations: [{ blockIndex: 1, startLine: 40, endLine: 41, body: 'A line the student never read.' }],
+        },
+      });
+      expect(response.statusCode).toBe(400);
+
+      // The anchor check runs INSIDE the transaction, after the submission
+      // is locked — so the thing being asserted here is the ROLLBACK: a
+      // teacher whose annotation was refused has not silently scored the
+      // rubric or returned the work.
+      const after = await pool.query<{ status: string }>('select status from exercise_submissions where id = $1', [
+        submission.id,
+      ]);
+      expect(after.rows[0]!.status).toBe('submitted');
+      const scores = await pool.query<{ c: number }>(
+        'select count(*)::int as c from rubric_scores where submission_id = $1',
+        [submission.id],
+      );
+      expect(scores.rows[0]!.c).toBe(0);
+
+      await teacher.close();
+    });
+
+    it('reads a rubric block it does not recognise as NO rubric, rather than failing the request', async () => {
+      // `snapshot` comes off jsonb as `unknown`, so `rubricCriteriaOf` is
+      // written to shrug at a shape it does not understand. The alternative
+      // — throwing — would turn one malformed block into a 500 on every
+      // attempt to grade that submission, with no way for a teacher to get
+      // past it.
+      const student = await newStudent('Malformed Rubric Student');
+      const studentServer = await buildServer({ actor: student });
+      await studentServer.inject({
+        method: 'POST',
+        url: `${submissionUrl(RUBRIC_SLUG, MALFORMED_RUBRIC_SLUG)}/submit`,
+      });
+      await studentServer.close();
+
+      const teacher = await buildServer({ actor: owner });
+      const gradeMalformedUrl = `/api/v1/courses/${RUBRIC_SLUG}/lessons/${MALFORMED_RUBRIC_SLUG}/submissions/${student.id}/grade`;
+
+      // Scoring against it is refused for the same reason an exercise with
+      // no rubric block at all refuses: there is nothing declared to score.
+      const scored = await teacher.inject({
+        method: 'POST',
+        url: gradeMalformedUrl,
+        payload: { rubricScores: [{ criterion: 'Effort', points: 1 }] },
+      });
+      expect(scored.statusCode).toBe(400);
+      expect((JSON.parse(scored.payload) as { message: string }).message).toMatch(/no rubric block/);
+
+      // ...and the submission is still gradeable by annotation and return.
+      const returned = await teacher.inject({ method: 'POST', url: gradeMalformedUrl, payload: {} });
+      expect(returned.statusCode).toBe(200);
+      expect((JSON.parse(returned.payload) as SubmissionBody).status).toBe('returned');
+
+      await teacher.close();
+    });
+
+    it('rolls a grade back whole when the database refuses a write mid-transaction', async () => {
+      const { student, submission } = await freshSubmission();
+      const teacher = await buildServer({ actor: owner });
+
+      // The rubric scores are written BEFORE the annotations, so a failure
+      // on the annotation insert is precisely the half-finished grade the
+      // rollback exists to prevent: scores stored, feedback lost, and the
+      // student's work still showing as awaiting review.
+      const response = await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: {
+          rubricScores: [
+            { criterion: 'Spotted the shallow module', points: 5 },
+            { criterion: 'Review tone', points: 3 },
+          ],
+          annotations: [{ blockIndex: 1, startLine: 1, endLine: 1, body: `Has a NUL:${NUL}in it.` }],
+        },
+      });
+      expect(response.statusCode).toBe(500);
+
+      const scores = await pool.query<{ c: number }>(
+        'select count(*)::int as c from rubric_scores where submission_id = $1',
+        [submission.id],
+      );
+      expect(scores.rows[0]!.c).toBe(0);
+      const after = await pool.query<{ status: string; returned_at: Date | null }>(
+        'select status, returned_at from exercise_submissions where id = $1',
+        [submission.id],
+      );
+      expect(after.rows[0]!.status).toBe('submitted');
+      expect(after.rows[0]!.returned_at).toBeNull();
+
+      // The connection came back to the pool usable, so the next grade
+      // succeeds rather than inheriting an aborted transaction.
+      const retried = await teacher.inject({
+        method: 'POST',
+        url: gradeUrl(student.id),
+        payload: {
+          rubricScores: [
+            { criterion: 'Spotted the shallow module', points: 5 },
+            { criterion: 'Review tone', points: 3 },
+          ],
+          annotations: [{ blockIndex: 1, startLine: 1, endLine: 1, body: 'Ordinary feedback this time.' }],
+        },
+      });
+      expect(retried.statusCode).toBe(200);
 
       await teacher.close();
     });

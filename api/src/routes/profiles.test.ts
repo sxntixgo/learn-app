@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { readdir, readFile } from 'node:fs/promises';
 import * as path from 'node:path';
@@ -59,6 +60,13 @@ const TEACHER_HANDLE = `p${RUN_ID}tea`;
 const COURSE_SLUG = `profile-course-${RUN_ID}`;
 const BADGE_SLUG = `profile-badge-${RUN_ID}`;
 const SUBJECT_EMAIL = `subject-${RUN_ID}@example.test`;
+
+/**
+ * A NUL byte — the one string Postgres will not put in a `text` column
+ * (SQLSTATE 22021). It passes every check this route makes on the way in, so
+ * it is the only way from outside to reach the handler's rollback arm.
+ */
+const NUL = String.fromCharCode(0);
 
 let subject: Actor;
 let visitor: Actor;
@@ -556,6 +564,179 @@ describe('profile routes', () => {
       try {
         const res = await app.inject({ method: 'PATCH', url: '/api/v1/me/profile', payload: { noindex: false } });
         expect(res.statusCode).toBe(403);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('clears the bio when the caller sends null, which is not the same request as omitting it', async () => {
+      const app = await serverFor(subject);
+      try {
+        const set = await app.inject({ method: 'PATCH', url: '/api/v1/me/profile', payload: { bio: 'Something.' } });
+        expect(set.json().bio).toBe('Something.');
+
+        // `bio: null` is an instruction; `{}` is silence. Migration 0014's
+        // header makes "no bio" a NULL rather than an empty string, and this
+        // is the only request shape that can ask for it explicitly.
+        const cleared = await app.inject({ method: 'PATCH', url: '/api/v1/me/profile', payload: { bio: null } });
+        expect(cleared.statusCode).toBe(200);
+        expect(cleared.json().bio).toBeNull();
+
+        const omitted = await app.inject({ method: 'PATCH', url: '/api/v1/me/profile', payload: { noindex: false } });
+        expect(omitted.json().bio).toBeNull();
+      } finally {
+        await app.close();
+      }
+
+      const { rows } = await pool.query<{ bio: string | null }>('select bio from users where id = $1', [subject.id]);
+      expect(rows[0]!.bio).toBeNull();
+    });
+
+    it('refuses a bio that is neither a string nor null, and a visibility that is not an object', async () => {
+      const app = await serverFor(subject);
+      try {
+        // Both are refused rather than coerced: a settings screen that
+        // appears to have saved something it did not is worse than one that
+        // says no. `visibility` is checked for object-ness first because
+        // `Object.entries` on an array would silently read indices as
+        // section names.
+        for (const payload of [{ bio: 42 }, { visibility: ['badges'] }, { visibility: 'public' }]) {
+          const res = await app.inject({ method: 'PATCH', url: '/api/v1/me/profile', payload });
+          expect(res.statusCode, JSON.stringify(payload)).toBe(400);
+        }
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('rolls back and reports 500 when the database refuses the write, leaving the old bio in place', async () => {
+      const app = await serverFor(subject);
+      try {
+        await app.inject({ method: 'PATCH', url: '/api/v1/me/profile', payload: { bio: 'Before the failure.' } });
+
+        // A NUL byte passes every check this route makes (it is a non-empty
+        // string well under the length limit) and is refused by Postgres
+        // itself, SQLSTATE 22021 — the one way from outside to reach the
+        // handler's `catch { rollback; throw }` arm.
+        const res = await app.inject({
+          method: 'PATCH',
+          url: '/api/v1/me/profile',
+          payload: { bio: `Has a NUL:${NUL}in it.` },
+        });
+        expect(res.statusCode).toBe(500);
+
+        // Nothing was committed, and the connection went back to the pool
+        // usable — without the rollback the next caller to draw it would
+        // fail with 25P02 for reasons that have nothing to do with them.
+        const after = await app.inject({ method: 'GET', url: '/api/v1/me/profile' });
+        expect(after.statusCode).toBe(200);
+        expect(after.json().bio).toBe('Before the failure.');
+      } finally {
+        await app.close();
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // A VALID SESSION WHOSE ACCOUNT IS GONE.
+    //
+    // The access token is stateless and outlives the row it names — deleting
+    // an account (or restoring a backup taken before it existed) leaves
+    // exactly this: a signed token for a user id `users` no longer has. Every
+    // branch of these two routes has to end somewhere other than a 500, and
+    // "404, the account is not there" is what they choose.
+    // -----------------------------------------------------------------------
+    describe('a session whose user row no longer exists', () => {
+      const vanished: Actor = { id: randomUUID(), roles: ['student'] };
+
+      it('404s the settings read rather than inventing an empty profile', async () => {
+        const app = await serverFor(vanished);
+        try {
+          const res = await app.inject({ method: 'GET', url: '/api/v1/me/profile' });
+          expect(res.statusCode).toBe(404);
+        } finally {
+          await app.close();
+        }
+      });
+
+      it('404s a settings write that names a column, having written nothing', async () => {
+        const app = await serverFor(vanished);
+        try {
+          const res = await app.inject({ method: 'PATCH', url: '/api/v1/me/profile', payload: { bio: 'Ghost.' } });
+          expect(res.statusCode).toBe(404);
+        } finally {
+          await app.close();
+        }
+
+        const { rows } = await pool.query('select 1 from users where id = $1', [vanished.id]);
+        expect(rows).toEqual([]);
+      });
+
+      it('404s a settings write that asks for nothing at all', async () => {
+        // An empty body skips the UPDATE entirely, so the missing row is not
+        // discovered until the read-back after COMMIT. That is a different
+        // code path from the one above and has its own way of going wrong:
+        // returning 200 with a body assembled out of nothing.
+        const app = await serverFor(vanished);
+        try {
+          const res = await app.inject({ method: 'PATCH', url: '/api/v1/me/profile', payload: {} });
+          expect(res.statusCode).toBe(404);
+        } finally {
+          await app.close();
+        }
+      });
+    });
+  });
+
+  // =========================================================================
+  // The public routes' own gates. Both `profile:public:read` and
+  // `profile:avatar:public:read` are in PUBLIC_ACTIONS, so under the real
+  // policy an anonymous caller passes them — which is exactly why the
+  // refusal path needs an injected `can()` to be exercised at all. If a
+  // future matrix change closed either action, these are the tests that say
+  // what the route does about it.
+  // =========================================================================
+  describe('the policy seam on the public routes', () => {
+    it('403s the profile page and the avatar when the policy denies', async () => {
+      const app = await buildServer({ actor: ANONYMOUS_ACTOR, can: () => false });
+      try {
+        expect((await app.inject({ method: 'GET', url: `/api/v1/profiles/${SUBJECT_HANDLE}` })).statusCode).toBe(403);
+        expect(
+          (await app.inject({ method: 'GET', url: `/api/v1/profiles/${SUBJECT_HANDLE}/avatar` })).statusCode,
+        ).toBe(403);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('404s a handle the pattern refuses, without reaching the database', async () => {
+      // Migration 0005's `users_handle_url_safe` in the route: a leading
+      // dash is not a handle any account can hold, so this must not become a
+      // query — and it must answer with the same NO_PROFILE body a real
+      // miss does, or the endpoint becomes an oracle for handle shape.
+      const app = await buildServer({ actor: ANONYMOUS_ACTOR });
+      try {
+        const res = await app.inject({ method: 'GET', url: '/api/v1/profiles/-not-a-handle/avatar' });
+        expect(res.statusCode).toBe(404);
+        expect(res.json().message).toBe('No such profile.');
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('rate-limits the avatar endpoint too, on the same counter as the page', async () => {
+      // Otherwise this route is the cheaper of the two handle oracles next
+      // to each other: same lookup, no limiter, unlimited enumeration.
+      const limiter = new LoginRateLimiter({ maxAttempts: 1, windowMs: 60_000, baseLockoutMs: 30_000 });
+      const app = await buildServer({ actor: ANONYMOUS_ACTOR, profileRateLimiter: limiter });
+      try {
+        const url = `/api/v1/profiles/${SUBJECT_HANDLE}/avatar`;
+        // The subject is on an identicon, so the first call is a 404 — and
+        // it still costs an attempt, exactly as the page route's own 404s do.
+        expect((await app.inject({ method: 'GET', url })).statusCode).toBe(404);
+
+        const limited = await app.inject({ method: 'GET', url });
+        expect(limited.statusCode).toBe(429);
+        expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
       } finally {
         await app.close();
       }

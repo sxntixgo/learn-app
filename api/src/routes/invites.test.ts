@@ -276,6 +276,63 @@ describe('invitation routes (design §12)', () => {
       expect(await budgetOf(teacher.id)).toBe(5);
     });
 
+    it('refuses a body with no email at all, distinctly from one that is not an address', async () => {
+      // Two different mistakes with two different messages: a client that
+      // forgot the field, and a person who mistyped one. Collapsing them
+      // would make an integration bug look like a user error.
+      await setBudget(teacher.id, 5);
+      const missing = await issueAs(teacher, { kind: 'platform' });
+      expect(missing.statusCode).toBe(400);
+      expect((JSON.parse(missing.payload) as { message: string }).message).toBe('email is required.');
+
+      const malformed = await issueAs(teacher, { kind: 'platform', email: 'not-an-email' });
+      expect((JSON.parse(malformed.payload) as { message: string }).message).toMatch(/not a valid email/);
+
+      expect(await budgetOf(teacher.id)).toBe(5);
+    });
+
+    it('honours an explicit expiresInDays, which is what makes a short-lived link possible', async () => {
+      await setBudget(teacher.id, 1);
+      const email = `${next()}@example.test`;
+      const issued = await issueAs(teacher, { kind: 'platform', email, expiresInDays: 3 });
+      expect(issued.statusCode).toBe(201);
+
+      const { rows } = await pool.query<{ days: number }>(
+        `select round(extract(epoch from (expires_at - now())) / 86400)::int as days
+           from invites where email = $1`,
+        [email],
+      );
+      // Three days, not the 14-day default — the default is what a request
+      // that says nothing gets, and the two must not be the same code path.
+      expect(rows[0]!.days).toBe(3);
+    });
+
+    it('lets the BUDGET DECREMENT refuse what the policy allowed — it is the real gate', async () => {
+      // The route asks can() with the budget it read a moment ago, then
+      // spends it with a conditional UPDATE. Between those two the number
+      // can change (another tab, another admin). This injects the race
+      // deliberately: a policy that says yes, over a budget of 0.
+      //
+      // If the route ever trusted its own earlier read instead of the
+      // decrement's result, a teacher with two browser tabs could mint two
+      // accounts on one unit of budget — and §12's budget would be
+      // decoration, exactly as this module's header says.
+      await setBudget(teacher.id, 0);
+      const fastify = await buildServer({ actor: teacher, can: () => true });
+      const response = await fastify.inject({
+        method: 'POST',
+        url: '/api/v1/invites',
+        payload: { kind: 'platform', email: `${next()}@example.test` },
+      });
+      await fastify.close();
+
+      expect(response.statusCode).toBe(403);
+      expect((JSON.parse(response.payload) as { message: string }).message).toMatch(/budget is exhausted/);
+      expect(await budgetOf(teacher.id)).toBe(0);
+      const { rowCount } = await pool.query('select 1 from invites where issued_by = $1', [teacher.id]);
+      expect(rowCount).toBe(0);
+    });
+
     it('writes invite.issued to the audit log', async () => {
       await setBudget(teacher.id, 1);
       const email = `${next()}@example.test`;
@@ -347,6 +404,35 @@ describe('invitation routes (design §12)', () => {
       expect(row.refunded).toBe(true);
       expect(await budgetOf(teacher.id)).toBe(1);
     });
+
+    it('reports an accepted invitation as accepted — status is derived, never stored', async () => {
+      // `statusOf` reads the three timestamps in order, so "accepted" has to
+      // win over everything else: an invite that was accepted and has since
+      // passed its expiry must not read as `expired`, or an admin looking at
+      // the list would think a link that was used is still outstanding.
+      await setBudget(teacher.id, 1);
+      const email = `${next()}@example.test`;
+      const issued = await issueAs(teacher, { kind: 'platform', email });
+      const token = (JSON.parse(issued.payload) as IssuedBody).token;
+      const inviteId = (JSON.parse(issued.payload) as IssuedBody).invite.id;
+
+      const anonymous = await buildServer({ actor: ANONYMOUS_ACTOR });
+      const accepted = await anonymous.inject({
+        method: 'POST',
+        url: '/api/v1/invites/accept',
+        payload: { token, handle: next(), password: 'a-perfectly-fine-password' },
+      });
+      await anonymous.close();
+      expect(accepted.statusCode).toBe(201);
+
+      const asAdmin = await buildServer({ actor: admin });
+      const list = await asAdmin.inject({ method: 'GET', url: '/api/v1/invites?limit=200' });
+      await asAdmin.close();
+
+      const row = (JSON.parse(list.payload) as InviteBody[]).find((i) => i.id === inviteId);
+      expect(row).toBeDefined();
+      expect(row!.status).toBe('accepted');
+    });
   });
 
   describe('POST /api/v1/invites/:id/revoke', () => {
@@ -388,6 +474,27 @@ describe('invitation routes (design §12)', () => {
       const allowed = await asAdmin.inject({ method: 'POST', url: `/api/v1/invites/${inviteId}/revoke` });
       await asAdmin.close();
       expect(allowed.statusCode).toBe(200);
+    });
+
+    it('refuses a student outright — revocation is not a learner power', async () => {
+      // 403 from can(), not the 409 a teacher gets for someone else's
+      // invite: the first says "not you, ever", the second says "not this
+      // one". A student reaching the 409 would mean the role check had been
+      // replaced by the ownership scoping.
+      await setBudget(teacher.id, 1);
+      const issued = await issueAs(teacher, { kind: 'platform', email: `${next()}@example.test` });
+      const inviteId = (JSON.parse(issued.payload) as IssuedBody).invite.id;
+
+      const asStudent = await buildServer({ actor: student });
+      const denied = await asStudent.inject({ method: 'POST', url: `/api/v1/invites/${inviteId}/revoke` });
+      await asStudent.close();
+      expect(denied.statusCode).toBe(403);
+
+      const { rows } = await pool.query<{ revoked_at: Date | null }>(
+        'select revoked_at from invites where id = $1',
+        [inviteId],
+      );
+      expect(rows[0]!.revoked_at).toBeNull();
     });
   });
 
@@ -740,6 +847,71 @@ describe('invitation routes (design §12)', () => {
       });
       await anonymous.close();
       expect(ok.statusCode).toBe(201);
+    });
+
+    it('validates the optional fields before touching the invitation, and leaves it usable', async () => {
+      // displayName and timezone are optional, so the temptation is to
+      // ignore what cannot be understood. Refusing instead is what keeps a
+      // person from finishing registration and finding their name blank or
+      // their heatmap in the wrong zone — and every one of these runs BEFORE
+      // acceptInvite, so a bad body cannot burn the link.
+      const issued = await issueCourseInvite();
+      const anonymous = await buildServer({ actor: ANONYMOUS_ACTOR });
+
+      const cases: Array<{ what: string; extra: Record<string, unknown>; expect: RegExp }> = [
+        { what: 'a displayName that is not a string', extra: { displayName: 42 }, expect: /displayName must be a string/ },
+        {
+          what: 'a displayName past the length ceiling',
+          extra: { displayName: 'x'.repeat(81) },
+          expect: /at most 80 characters/,
+        },
+        {
+          what: 'a timezone that is not a real IANA zone',
+          extra: { timezone: 'Mars/Olympus_Mons' },
+          expect: /Invalid timezone/,
+        },
+      ];
+
+      for (const testCase of cases) {
+        const response = await anonymous.inject({
+          method: 'POST',
+          url: '/api/v1/invites/accept',
+          payload: { token: issued.token, handle: next(), password: 'a-perfectly-fine-password', ...testCase.extra },
+        });
+        expect(response.statusCode, testCase.what).toBe(400);
+        expect((JSON.parse(response.payload) as { message: string }).message, testCase.what).toMatch(testCase.expect);
+      }
+
+      const ok = await anonymous.inject({
+        method: 'POST',
+        url: '/api/v1/invites/accept',
+        payload: { token: issued.token, handle: next(), password: 'a-perfectly-fine-password' },
+      });
+      await anonymous.close();
+      expect(ok.statusCode).toBe(201);
+    });
+
+    it('goes through can() like every other route — a denied policy refuses the acceptance', async () => {
+      // `invite:accept` is one of PUBLIC_ACTIONS, so under the real matrix
+      // an anonymous caller passes it; that is the whole design of an invite
+      // link. The refusal path therefore needs an injected can() to exist at
+      // all, and this is what says the route would honour a matrix that
+      // closed it rather than routing around the seam.
+      const issued = await issueCourseInvite();
+      const fastify = await buildServer({ actor: ANONYMOUS_ACTOR, can: () => false });
+      const response = await fastify.inject({
+        method: 'POST',
+        url: '/api/v1/invites/accept',
+        payload: { token: issued.token, handle: next(), password: 'a-perfectly-fine-password' },
+      });
+      await fastify.close();
+
+      expect(response.statusCode).toBe(403);
+      const { rows } = await pool.query<{ accepted_at: Date | null }>(
+        'select accepted_at from invites where id = $1',
+        [issued.invite.id],
+      );
+      expect(rows[0]!.accepted_at).toBeNull();
     });
 
     it('enrols an EXISTING account only when signed in as it', async () => {
