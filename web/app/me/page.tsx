@@ -122,7 +122,7 @@ export default async function HomePage() {
   ];
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <h1 className={styles.title}>Home</h1>
 
       <ResumeBanner current={current} percent={percent} stats={stats} />
@@ -169,7 +169,7 @@ export default async function HomePage() {
           </Link>
         </p>
       ) : null}
-    </main>
+    </div>
   );
 }
 

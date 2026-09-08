@@ -26,7 +26,7 @@ export default async function ProfileSettingsPage() {
   const settings = await withAuthRedirect('/settings/profile', fetchProfileSettings);
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <h1 className={styles.title}>Profile &amp; visibility</h1>
 
       <section className={styles.identity} aria-labelledby="identity-heading">
@@ -77,6 +77,6 @@ export default async function ProfileSettingsPage() {
           Export my data or delete my account
         </Link>
       </p>
-    </main>
+    </div>
   );
 }

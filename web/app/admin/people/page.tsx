@@ -24,7 +24,7 @@ export default async function AdminPeoplePage() {
   const people = await withAuthRedirect('/admin/people', () => fetchAdminUsers(200));
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <AdminNav current="/admin/people" />
       <div className={styles.heading}>
         <h1 className={styles.title}>People</h1>
@@ -44,6 +44,6 @@ export default async function AdminPeoplePage() {
           ))}
         </ul>
       )}
-    </main>
+    </div>
   );
 }

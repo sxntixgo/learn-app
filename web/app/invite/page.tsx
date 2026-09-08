@@ -54,7 +54,7 @@ export default async function AcceptInvitePage() {
 
   if (invite === null) {
     return (
-      <main className={styles.page}>
+      <div className={styles.page}>
         <h1 className={styles.title}>This invitation is not valid</h1>
         <p className={styles.intro}>
           It may have expired, been revoked, or already been used. Ask whoever invited you for a new link — they can
@@ -66,7 +66,7 @@ export default async function AcceptInvitePage() {
           </Link>{' '}
           if you already have an account.
         </p>
-      </main>
+      </div>
     );
   }
 
@@ -76,7 +76,7 @@ export default async function AcceptInvitePage() {
   const acceptPath = '/invite';
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <h1 className={styles.title}>{invite.courseTitle ? `You are invited to ${invite.courseTitle}` : 'You are invited'}</h1>
       <p className={styles.intro}>
         This invitation is for <strong>{invite.email}</strong>
@@ -96,6 +96,6 @@ export default async function AcceptInvitePage() {
           and open this link again to accept it.
         </p>
       )}
-    </main>
+    </div>
   );
 }

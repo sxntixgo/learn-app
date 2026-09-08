@@ -46,7 +46,7 @@ export default async function CatalogPage({
   const filtered = filterCoursesByTag(courses, tag);
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <h1 className={styles.title}>Catalog</h1>
       <p className={styles.intro}>Browse a course to start reading.</p>
 
@@ -107,6 +107,6 @@ export default async function CatalogPage({
           ))}
         </ul>
       )}
-    </main>
+    </div>
   );
 }

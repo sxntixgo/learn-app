@@ -394,12 +394,14 @@ for (const { name, width, height } of WIDTHS) {
         // what would catch that boundary being wired to the old 768px
         // literal — artboard-spec §3's own warning.
         //
-        // `main main`, not `main`: the shell wraps every route in its own
-        // <main> (app/_shell/Shell.tsx) and this page renders a second one
-        // inside it — a pre-existing, shell-wide landmark duplication
-        // (Phase 6's known finding, not this task's to fix, same reasoning
-        // catalog.spec.ts and course.spec.ts already document).
-        const main = page.locator('main main');
+        // `main > div`, not `main`: the shell wraps every route in the one
+        // <main> (app/_shell/Shell.tsx) and this page's own top-level
+        // element is a <div> (Phase 6's landmark-duplication fix removed
+        // the second, nested <main> this used to be) — its only child, so
+        // this selects Search's own content column rather than the shell's
+        // full-bleed one, the same reasoning catalog.spec.ts and
+        // course.spec.ts already document.
+        const main = page.locator('main > div');
         const box = await expectRendered(main, 'the search main column');
 
         if (tier === 'narrow') {

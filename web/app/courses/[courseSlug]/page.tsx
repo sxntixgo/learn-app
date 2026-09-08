@@ -44,7 +44,7 @@ export default async function CoursePage({
   const visibilityLabel: Record<string, string> = { restricted: 'Restricted', hidden: 'Hidden — draft' };
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <div className={styles.titleRow}>
         <h1 className={styles.title}>{course.title}</h1>
         {course.visibility !== 'open' ? (
@@ -133,6 +133,6 @@ export default async function CoursePage({
           ))}
         </ol>
       )}
-    </main>
+    </div>
   );
 }

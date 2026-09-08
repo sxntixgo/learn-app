@@ -169,6 +169,44 @@ test.describe('the app shell switches shape at the shell breakpoint', () => {
           // Rendered but `display: none`, so it is also out of the tab order.
           await expect(hamburger).not.toBeVisible();
         }
+
+        // THEME AXIS (Phase 6, "Add the theme axis"). Layout is what the
+        // rest of this test checks, at this one width; colour is the
+        // orthogonal axis a theme switch touches, so it is checked here
+        // too — reusing the page this test already opened and signed into,
+        // rather than a fresh context/login per theme. Every one of the
+        // four CASES widths gets both themes this way, so the "375/834
+        // narrow, 1194/1440 wide, both themes" surface the plan calls for
+        // is genuinely covered, not just the two of the four that happen
+        // to have a wide-tier counterpart tested elsewhere.
+        //
+        // The oracle is `var(--color-rail-bg)` read live off this exact
+        // page via getComputedStyle on a throwaway probe element — never a
+        // hex typed into this file, which would silently drift the moment
+        // the palette does (tokens.css's whole point). If a rule painted
+        // the rail with a colour that bypassed the token — the exact "a
+        // colour hardcoded into a media query" the plan's acceptance
+        // describes — the probe (which always resolves the token) and the
+        // rail (painted by whatever rule actually wins) diverge, and this
+        // fails.
+        const railByTheme: Record<'light' | 'dark', string> = { light: '', dark: '' };
+        for (const theme of ['light', 'dark'] as const) {
+          const colors = await page.evaluate((t) => {
+            document.documentElement.setAttribute('data-theme', t);
+            const probe = document.createElement('div');
+            probe.style.background = 'var(--color-rail-bg)';
+            document.body.appendChild(probe);
+            const probeColor = getComputedStyle(probe).backgroundColor;
+            probe.remove();
+            const navEl = document.querySelector('nav')!;
+            return { probeColor, navColor: getComputedStyle(navEl).backgroundColor };
+          }, theme);
+          expect(colors.navColor, `${theme} rail background at ${width}px`).toBe(colors.probeColor);
+          railByTheme[theme] = colors.navColor;
+        }
+        // A genuine switch has to have happened — two themes resolving to
+        // the same colour would pass the per-theme check above vacuously.
+        expect(railByTheme.light, `rail colour did not change with theme at ${width}px`).not.toBe(railByTheme.dark);
       });
     });
   }
@@ -482,5 +520,88 @@ test.describe('the lesson prose column holds its measure (design §14.1/§14.2: 
 
       expect(widthAtDesktop).toBeGreaterThan(widthAtPhone);
     });
+  });
+});
+
+/*
+ * THEME AXIS, part two: explicit choice vs. OS preference (design §14, plan
+ * Phase 6 "Add the theme axis"). The per-width check above (inside "the app
+ * shell switches shape") proves the rail tracks `data-theme` at all four
+ * artboard widths; it does not prove that choice actually BEATS the OS
+ * preference rather than losing to it, or that leaving no explicit choice
+ * still tracks the OS correctly. Both are real bugs `shiki-dual-theme.spec.ts`
+ * already found once for code blocks (an improper media-query guard letting
+ * the OS win over an explicit choice) — this is the same proof, aimed at the
+ * app shell's own colour rather than Shiki's.
+ *
+ * One width only (DESKTOP, wide tier, nav always in-flow — no hamburger step
+ * needed): the per-width loop above already proves the rail answers
+ * `data-theme` at every width, so this file's job is the OS-vs-explicit
+ * axis, not re-proving width coverage a second time.
+ */
+test.describe('the nav rail colour: explicit theme vs. OS preference', () => {
+  /**
+   * Navigate to the profile page under a given OS colour scheme, apply an
+   * explicit `data-theme` (or leave it unset, for "system"), and read the
+   * rail's computed background colour alongside a `var(--color-rail-bg)`
+   * probe on the same page — the same live-browser oracle the per-width
+   * check above uses, for the same reason: a typed-in hex would drift the
+   * moment the palette does, and would not catch a rule that hardcodes a
+   * colour instead of resolving the token.
+   */
+  async function getRailColors(
+    browser: Browser,
+    baseURL: string | undefined,
+    osPreference: 'light' | 'dark',
+    explicitTheme: 'light' | 'dark' | 'system',
+  ): Promise<{ navColor: string; probeColor: string }> {
+    const context = await browser.newContext({
+      baseURL,
+      storageState: authState,
+      colorScheme: osPreference,
+      viewport: DESKTOP,
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(HEATMAP_PAGE);
+      return await page.evaluate((theme) => {
+        if (theme !== 'system') {
+          document.documentElement.setAttribute('data-theme', theme);
+        }
+        const probe = document.createElement('div');
+        probe.style.background = 'var(--color-rail-bg)';
+        document.body.appendChild(probe);
+        const probeColor = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        const navEl = document.querySelector('nav')!;
+        return { probeColor, navColor: getComputedStyle(navEl).backgroundColor };
+      }, explicitTheme);
+    } finally {
+      await context.close();
+    }
+  }
+
+  test('explicit dark theme overrides a light OS preference', async ({ browser, baseURL }) => {
+    const { navColor, probeColor } = await getRailColors(browser, baseURL, 'light', 'dark');
+    expect(navColor).toBe(probeColor);
+  });
+
+  test('explicit light theme overrides a dark OS preference', async ({ browser, baseURL }) => {
+    const { navColor, probeColor } = await getRailColors(browser, baseURL, 'dark', 'light');
+    expect(navColor).toBe(probeColor);
+  });
+
+  test('with no explicit choice, the rail follows the OS preference directly', async ({ browser, baseURL }) => {
+    // This is the one case that reaches the guarded `@media (prefers-color-
+    // scheme: dark) { :root:not([data-theme='light']) { ... } }` block in
+    // tokens.css WITHOUT an explicit `data-theme` attribute in play at all —
+    // the two override tests above always have `data-theme` set, so a
+    // literal hardcoded only inside that guarded block (rather than the
+    // unconditional `[data-theme='dark']` duplicate) could hide from them.
+    const dark = await getRailColors(browser, baseURL, 'dark', 'system');
+    const light = await getRailColors(browser, baseURL, 'light', 'system');
+    expect(dark.navColor).toBe(dark.probeColor);
+    expect(light.navColor).toBe(light.probeColor);
+    expect(dark.navColor).not.toBe(light.navColor);
   });
 });

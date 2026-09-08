@@ -31,9 +31,9 @@ export default function RubricDisplay({ criteria, scores }: RubricDisplayProps) 
 
   return (
     <section className={styles.rubric} aria-labelledby="rubric-heading">
-      <h3 className={styles.rubricTitle} id="rubric-heading">
+      <h2 className={styles.rubricTitle} id="rubric-heading">
         Rubric{totals ? ` — ${totals.earned} / ${totals.possible}` : ''}
-      </h3>
+      </h2>
       {!graded ? (
         <p className={styles.rubricHint}>Scored by the teacher once you submit and it is returned.</p>
       ) : null}

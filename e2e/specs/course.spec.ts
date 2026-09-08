@@ -144,12 +144,13 @@ for (const { name, width, height } of WIDTHS) {
       // is what would catch that boundary being wired to the old 768px
       // literal, the exact class of bug artboard-spec §3 warns about.
       //
-      // `main main`, not `main`: the shell wraps every route in its own
-      // <main> (app/_shell/Shell.tsx) and this page renders a second one
-      // inside it — a pre-existing, shell-wide landmark duplication
-      // (Phase 6's known finding, not this task's to fix, and the same
-      // reasoning catalog.spec.ts already documents).
-      const main = page.locator('main main');
+      // `main > div`, not `main`: the shell wraps every route in the one
+      // <main> (app/_shell/Shell.tsx) and this page's own top-level element
+      // is a <div> (Phase 6's landmark-duplication fix removed the second,
+      // nested <main> this used to be) — its only child, so this selects
+      // Course's own content column rather than the shell's full-bleed one,
+      // the same reasoning catalog.spec.ts already documents.
+      const main = page.locator('main > div');
       const box = await expectRendered(main, 'the course main column');
 
       if (tier === 'narrow') {

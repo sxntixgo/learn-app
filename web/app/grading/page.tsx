@@ -30,7 +30,7 @@ export default async function GradingQueuePage() {
   const [me, queue] = await withAuthRedirect('/grading', () => Promise.all([fetchMe(), fetchGradingQueue()]));
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <h1 className={styles.title}>Grading queue</h1>
       <p className={styles.intro}>
         Submissions awaiting review across the courses you own, oldest first. A submission drops off this list the
@@ -86,6 +86,6 @@ export default async function GradingQueuePage() {
           Export my data or delete my account
         </Link>
       </p>
-    </main>
+    </div>
   );
 }

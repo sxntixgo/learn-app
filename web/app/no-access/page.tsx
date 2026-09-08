@@ -47,7 +47,7 @@ export default async function NoAccessPage({ searchParams }: { searchParams: Pro
   const isOperator = isAdmin || isTeacher;
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <h1 className={styles.title}>Not available to this account</h1>
 
       <p className={styles.lede}>
@@ -87,6 +87,6 @@ export default async function NoAccessPage({ searchParams }: { searchParams: Pro
           <Link href="/settings/account">Account settings</Link>
         </li>
       </ul>
-    </main>
+    </div>
   );
 }

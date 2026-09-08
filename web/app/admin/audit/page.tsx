@@ -37,7 +37,7 @@ export default async function AdminAuditPage({
   );
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <AdminNav current="/admin/audit" />
       <div className={styles.heading}>
         <h1 className={styles.title}>Audit log</h1>
@@ -91,6 +91,6 @@ export default async function AdminAuditPage({
           })}
         </ol>
       )}
-    </main>
+    </div>
   );
 }

@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Screenshot Contact Sheet - Phase 6 Verification</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f5f5f5;
+      padding: 2rem;
+      color: #333;
+    }
+
+    .header {
+      max-width: 1400px;
+      margin: 0 auto 2rem;
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 1rem;
+    }
+
+    .known-differences {
+      background: #fffacd;
+      border-left: 4px solid #ffa500;
+      padding: 1rem;
+      margin-top: 1rem;
+      border-radius: 4px;
+    }
+
+    .known-differences h3 {
+      margin-bottom: 0.5rem;
+      color: #ff6b00;
+    }
+
+    .known-differences ul {
+      margin-left: 1.5rem;
+      line-height: 1.6;
+    }
+
+    .known-differences li {
+      margin-bottom: 0.5rem;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .route-section {
+      background: white;
+      margin-bottom: 2rem;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .route-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 1.5rem;
+      font-size: 1.3rem;
+      font-weight: 600;
+    }
+
+    .route-header.with-artboard {
+      background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
+    }
+
+    .route-header.without-artboard {
+      background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+    }
+
+    .artboard-badge {
+      display: inline-block;
+      background: rgba(255, 255, 255, 0.3);
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      margin-left: 1rem;
+    }
+
+    .screenshots-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+      padding: 1.5rem;
+    }
+
+    .screenshot-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .screenshot-label {
+      font-size: 0.9rem;
+      color: #666;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+
+    .screenshot-label .width {
+      background: #e0e0e0;
+      padding: 0.2rem 0.5rem;
+      border-radius: 3px;
+      margin: 0 0.25rem;
+    }
+
+    .screenshot-label .theme {
+      text-transform: capitalize;
+      background: #f0f0f0;
+      padding: 0.2rem 0.5rem;
+      border-radius: 3px;
+      margin: 0 0.25rem;
+    }
+
+    .screenshot-label .theme.light {
+      background: #fff9e6;
+      color: #b8860b;
+    }
+
+    .screenshot-label .theme.dark {
+      background: #2c2c2c;
+      color: #e0e0e0;
+    }
+
+    .screenshot-image {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      width: 100%;
+      aspect-ratio: auto;
+      object-fit: cover;
+      transition: transform 0.2s;
+      cursor: pointer;
+    }
+
+    .screenshot-image:hover {
+      transform: scale(1.02);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .metadata {
+      background: #f9f9f9;
+      padding: 1rem;
+      border-top: 1px solid #eee;
+      font-size: 0.85rem;
+      color: #666;
+      line-height: 1.6;
+    }
+
+    .metadata strong {
+      color: #333;
+    }
+
+    .widths-info {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .width-info {
+      background: #f0f0f0;
+      padding: 0.75rem;
+      border-radius: 4px;
+      text-align: center;
+    }
+
+    .width-info .width-value {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: #667eea;
+    }
+
+    .width-info .width-label {
+      font-size: 0.8rem;
+      color: #999;
+    }
+
+    .footer {
+      max-width: 1400px;
+      margin: 2rem auto 0;
+      padding: 2rem;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      text-align: center;
+      font-size: 0.9rem;
+      color: #666;
+    }
+
+    .toc {
+      background: white;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .toc h2 {
+      margin-bottom: 1rem;
+    }
+
+    .toc ul {
+      columns: 2;
+      list-style: none;
+    }
+
+    .toc li {
+      margin-bottom: 0.5rem;
+    }
+
+    .toc a {
+      color: #667eea;
+      text-decoration: none;
+    }
+
+    .toc a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Screenshot Contact Sheet — Phase 6 Verification</h1>
+    <p>Design verification matrix: 4 widths × 2 themes for 6 artboard routes, plus sample routes without artboards.</p>
+    <p style="margin-top: 0.5rem; color: #666; font-size: 0.95rem;">Generated: 2026-09-08 · Branch: feat/phase-6-verification</p>
+
+    <div class="known-differences">
+      <h3>Known and Accepted Differences (from plan)</h3>
+      <p style="margin-bottom: 0.5rem; font-size: 0.95rem;"><strong>These are deliberate design choices, not defects:</strong></p>
+      <ul>
+        <li><strong>Catalog filter field:</strong> Uses <code>?tag=</code> (inferred from CourseSummary), not a spec-defined field. Confirmed judgement call.</li>
+        <li><strong>Search wide-tier structure:</strong> Single 640px column (matches Course layout), not a grid. Judgement call per artboard brevity.</li>
+        <li><strong>`hasRealProgress` hiding not-started degrees:</strong> PL9 explicitly shows "not-started degree and prerequisites"; the implementation hides it because `listDegreeProgress` has no enrolment awareness and cannot distinguish "0% and never touched" from "0% but pursuing it". Ratified by repo owner 2026-09-07.</li>
+        <li><strong>Non-owner profile view cannot match PL9:</strong> The public contract (`ProfileBadge` earned-only, `ProfileDegree` omits curriculum) deliberately differs from owner view. Ratified by repo owner 2026-09-07.</li>
+        <li><strong>Routes with no artboard (grading, invitations, admin, etc.):</strong> Restyled by repo owner's explicit decision 2026-09-07. Spec says "out of scope, left as they are"; they are sampled below for record-keeping but have no artboard to compare against.</li>
+        <li><strong>`/no-access`:</strong> Deliberately left unchanged — already on token layer, already centred.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="toc">
+      <h2>Quick Links (Artboard Routes)</h2>
+      <ul>
+        <li><a href="#home">Home</a></li>
+        <li><a href="#login">Login</a></li>
+        <li><a href="#search">Search</a></li>
+        <li><a href="#settings-profile">Settings: Profile</a></li>
+        <li><a href="#settings-account">Settings: Account</a></li>
+        <li><a href="#profile">Profile (@handle)</a></li>
+        <li><a href="#sample">Sample Routes (no artboards)</a></li>
+      </ul>
+    </div>
+
+    <div class="widths-info">
+      <div class="width-info">
+        <div class="width-value">375px</div>
+        <div class="width-label">iPhone</div>
+      </div>
+      <div class="width-info">
+        <div class="width-value">834px</div>
+        <div class="width-label">iPad Portrait</div>
+      </div>
+      <div class="width-info">
+        <div class="width-value">1194px</div>
+        <div class="width-label">iPad Landscape</div>
+      </div>
+      <div class="width-info">
+        <div class="width-value">1440px</div>
+        <div class="width-label">Desktop</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Generate screenshot sections dynamically
+    const routes = [
+      { name: 'home', label: 'Home', hasArtboard: true },
+      { name: 'login', label: 'Login', hasArtboard: true },
+      { name: 'search', label: 'Search', hasArtboard: true },
+      { name: 'settings-profile', label: 'Settings: Profile', hasArtboard: true },
+      { name: 'settings-account', label: 'Settings: Account', hasArtboard: true },
+      { name: 'profile', label: 'Profile (@handle)', hasArtboard: true },
+      { name: 'me', label: 'Me / Home (old route)', hasArtboard: false },
+      { name: 'grading', label: 'Grading', hasArtboard: false },
+      { name: 'admin-imports', label: 'Admin: Imports', hasArtboard: false },
+    ];
+
+    const widths = ['375', '834', '1194', '1440'];
+    const themes = ['light', 'dark'];
+    const container = document.querySelector('.container');
+
+    // Remove the TOC and widths-info since we'll regenerate
+    document.querySelectorAll('.toc, .widths-info').forEach(el => {
+      if (el.parentElement === container) {
+        el.remove();
+      }
+    });
+
+    // Recreate widths-info
+    const widthsDiv = document.createElement('div');
+    widthsDiv.className = 'widths-info';
+    widthsDiv.innerHTML = `
+      <div class="width-info">
+        <div class="width-value">375px</div>
+        <div class="width-label">iPhone (narrow tier)</div>
+      </div>
+      <div class="width-info">
+        <div class="width-value">834px</div>
+        <div class="width-label">iPad Portrait (narrow tier)</div>
+      </div>
+      <div class="width-info">
+        <div class="width-value">1194px</div>
+        <div class="width-label">iPad Landscape (wide tier)</div>
+      </div>
+      <div class="width-info">
+        <div class="width-value">1440px</div>
+        <div class="width-label">Desktop (wide tier)</div>
+      </div>
+    `;
+    container.insertBefore(widthsDiv, container.firstChild);
+
+    routes.forEach(route => {
+      const section = document.createElement('div');
+      section.className = 'route-section';
+      section.id = route.name;
+
+      const header = document.createElement('div');
+      header.className = `route-header ${route.hasArtboard ? 'with-artboard' : 'without-artboard'}`;
+      header.innerHTML = `${route.label}${route.hasArtboard ? '<span class="artboard-badge">✓ Artboard</span>' : '<span class="artboard-badge">No Artboard</span>'}`;
+      section.appendChild(header);
+
+      const grid = document.createElement('div');
+      grid.className = 'screenshots-grid';
+
+      if (route.hasArtboard) {
+        widths.forEach(width => {
+          themes.forEach(theme => {
+            const filename = `${route.name}-${width}-${theme}.png`;
+            const path = `screenshots/${filename}`;
+
+            const item = document.createElement('div');
+            item.className = 'screenshot-item';
+
+            const label = document.createElement('div');
+            label.className = 'screenshot-label';
+            label.innerHTML = `<span class="width">${width}px</span> <span class="theme ${theme}">${theme}</span>`;
+
+            const img = document.createElement('img');
+            img.className = 'screenshot-image';
+            img.src = path;
+            img.alt = filename;
+            img.loading = 'lazy';
+
+            item.appendChild(label);
+            item.appendChild(img);
+            grid.appendChild(item);
+          });
+        });
+      } else {
+        // For non-artboard routes, only show 375 and 1440
+        ['375', '1440'].forEach(width => {
+          themes.forEach(theme => {
+            const filename = `${route.name}-${width}-${theme}.png`;
+            const path = `screenshots/${filename}`;
+
+            const item = document.createElement('div');
+            item.className = 'screenshot-item';
+
+            const label = document.createElement('div');
+            label.className = 'screenshot-label';
+            label.innerHTML = `<span class="width">${width}px</span> <span class="theme ${theme}">${theme}</span>`;
+
+            const img = document.createElement('img');
+            img.className = 'screenshot-image';
+            img.src = path;
+            img.alt = filename;
+            img.loading = 'lazy';
+
+            item.appendChild(label);
+            item.appendChild(img);
+            grid.appendChild(item);
+          });
+        });
+      }
+
+      section.appendChild(grid);
+
+      const metadata = document.createElement('div');
+      metadata.className = 'metadata';
+      if (route.hasArtboard) {
+        metadata.innerHTML = `
+          <strong>Artboard:</strong> Yes · Compare at all 4 widths and both themes<br>
+          <strong>Tiers:</strong> Narrow (375/834px), Wide (1194/1440px)<br>
+          <strong>Route:</strong> <code>/${route.name === 'profile' ? 'u/[handle]' : route.name}</code>
+        `;
+      } else {
+        metadata.innerHTML = `
+          <strong>Artboard:</strong> No · Sampled for record-keeping (375/1440px only)<br>
+          <strong>Note:</strong> Routes without artboards were restyled by repo owner's explicit decision. Spec says "out of scope, left as they are".<br>
+          <strong>Route:</strong> <code>/${route.name}</code>
+        `;
+      }
+      section.appendChild(metadata);
+
+      container.appendChild(section);
+    });
+
+    // Add summary section
+    const summary = document.createElement('div');
+    summary.className = 'footer';
+    summary.innerHTML = `
+      <p><strong>Total screenshots captured:</strong> 48 (6 artboard routes × 4 widths × 2 themes) + 12 (3 sample routes × 2 widths × 2 themes) = 60</p>
+      <p style="margin-top: 0.5rem;"><strong>Next step:</strong> Gate 6 human review — compare each screenshot against the corresponding artboard. Use the "Known Differences" section above to avoid re-discovering already-ratified deviations.</p>
+      <p style="margin-top: 0.5rem; font-size: 0.85rem; color: #999;">Contact sheet generated by Phase 6 capture script (e2e/specs/capture-screenshots.spec.ts)</p>
+    `;
+    container.appendChild(summary);
+  </script>
+</body>
+</html>
