@@ -1,8 +1,5 @@
-import { readFileSync } from 'node:fs';
-import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
-import { contrastRatio, oklchToLinearRgb, toHex, worstCaseDistance, type LinearRgb } from './oklch.ts';
+import { assertFloors, mixesIn, type Case, type Ground } from './mix-contrast.ts';
 
 /**
  * THE FLOOR UNDER HOME'S DERIVED COLOURS.
@@ -40,108 +37,6 @@ import { contrastRatio, oklchToLinearRgb, toHex, worstCaseDistance, type LinearR
  * role table uses, for the same reason: a sheet that can be extended without
  * being measured stops being a floor.
  */
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-const tokensCss = readFileSync(path.resolve(here, '../../app/tokens.css'), 'utf8');
-
-const HOME_STYLESHEETS = ['../../app/me/me.module.css', '../../app/me/activity-feed.module.css'] as const;
-
-type Scheme = 'light' | 'dark';
-
-/**
- * The two blocks that carry a complete palette: `:root` and the
- * unconditional `[data-theme='dark']` duplicate. The `prefers-color-scheme`
- * block is the same values as the latter — `tokens-dark-blocks.test.ts`
- * already asserts the two cannot drift — so reading one of them is enough.
- */
-function paletteIn(source: string, blockPattern: RegExp): Map<string, LinearRgb> {
-  const block = source.match(blockPattern);
-  if (!block) throw new Error(`tokens.css: no block matching ${blockPattern}`);
-  const out = new Map<string, LinearRgb>();
-  for (const declaration of block[1]!.matchAll(/(--color-[\w-]+):\s*oklch\(([\d.]+)\s+([\d.]+)\s+([\d.]+)\)/g)) {
-    out.set(declaration[1]!, oklchToLinearRgb(Number(declaration[2]), Number(declaration[3]), Number(declaration[4])));
-  }
-  return out;
-}
-
-const PALETTE: Record<Scheme, Map<string, LinearRgb>> = {
-  light: paletteIn(tokensCss, /:root\s*\{([\s\S]*?)\n\}/),
-  dark: paletteIn(tokensCss, /\[data-theme='dark'\]\s*\{([\s\S]*?)\n\}/),
-};
-
-function token(scheme: Scheme, name: string): LinearRgb {
-  const value = PALETTE[scheme].get(name);
-  if (!value) throw new Error(`${name} is not declared in the ${scheme} palette`);
-  return value;
-}
-
-/*
- * COMPOSITING HAPPENS IN GAMMA-ENCODED sRGB, not in the linear light the
- * contrast maths uses and not in OKLCH. `color-mix(in oklch, C 80%,
- * transparent)` produces C carrying alpha 0.8; the browser then paints it
- * over whatever is behind, and that blend is a plain per-channel average of
- * the ENCODED values. Mixing in linear light instead would report a
- * different, brighter colour than the screen shows — which would make this
- * file wrong in the same silent direction as the defects it exists to catch.
- */
-const encode = (channel: number): number =>
-  channel <= 0.0031308 ? 12.92 * channel : 1.055 * Math.pow(channel, 1 / 2.4) - 0.055;
-const decode = (channel: number): number =>
-  channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
-
-/** `over` = the mix of `fg` at `alpha` painted on `bg`, back in linear light. */
-function over(fg: LinearRgb, alpha: number, bg: LinearRgb): LinearRgb {
-  const f = fg.map(encode);
-  const b = bg.map(encode);
-  return [0, 1, 2].map((i) => decode(alpha * f[i]! + (1 - alpha) * b[i]!)) as unknown as LinearRgb;
-}
-
-/** A mix as it is written in CSS: a token at a percentage of itself, the rest transparent. */
-interface Mix {
-  token: string;
-  percent: number;
-}
-
-/**
- * A ground, bottom layer first. Each layer is a token, optionally painted at
- * a percentage — the statistic tile is `--color-rail-bg` with a 10% wash of
- * `--color-rail-text` over it, and the label on it has to be measured
- * against that, not against the bare banner.
- */
-type Ground = readonly (readonly [string, number])[];
-
-function resolve(scheme: Scheme, ground: Ground): LinearRgb {
-  return ground.reduce<LinearRgb | null>(
-    (below, [name, alpha]) => (below === null ? token(scheme, name) : over(token(scheme, name), alpha, below)),
-    null,
-  )!;
-}
-
-/**
- *   text     Glyphs. WCAG AA, 4.5:1. None of Home's mixed tones land on
- *            large text — the percent, the lesson title and the statistic
- *            values are all SOLID `--color-rail-text`, measured by
- *            palette.test.ts against the rail already.
- *   ui       A non-text element that carries information — WCAG 1.4.11, 3:1.
- *            The filled degree pip is the only one, and even it is
- *            redundant: the sentence under the pips says the same thing.
- *   quiet    Decoration and tracks: the unfilled pip, the empty progress
- *            track, the statistic tile's own border and wash, the feed's
- *            bookkeeping dot. WCAG puts no ratio on these, but one nobody
- *            can see is still a bug, so they take the same 0.02 ΔEok
- *            visibility floor palette.test.ts gives hairlines.
- */
-type Kind = 'text' | 'ui' | 'quiet';
-
-interface Case {
-  name: string;
-  mix: Mix;
-  ground: Ground;
-  kind: Kind;
-  /** Omitted means both. The quiz card and the degree card re-point their roles per theme. */
-  scheme?: Scheme;
-  why: string;
-}
 
 const RAIL: Ground = [['--color-rail-bg', 1]];
 /** The narrow tier's statistic tile: a 10% wash of the rail's ink on the banner. */
@@ -226,31 +121,9 @@ const CASES: readonly Case[] = [
   },
 ];
 
-const SCHEMES: readonly Scheme[] = ['light', 'dark'];
+assertFloors(describe, it, "Home's color-mix tones clear the floor for the job they do", CASES);
 
-describe('Home\'s color-mix tones clear the floor for the job they do', () => {
-  for (const scheme of SCHEMES) {
-    for (const testCase of CASES) {
-      if (testCase.scheme && testCase.scheme !== scheme) continue;
-      it(`${scheme}: ${testCase.name}`, () => {
-        const ground = resolve(scheme, testCase.ground);
-        const mixed = over(token(scheme, testCase.mix.token), testCase.mix.percent / 100, ground);
-        const where = `${toHex(mixed)} on ${toHex(ground)} — ${testCase.why}`;
-
-        if (testCase.kind === 'quiet') {
-          // Same treatment palette.test.ts gives hairlines: WCAG 1.4.11
-          // exempts these, but "present at all" is still a requirement.
-          const worst = worstCaseDistance(mixed, ground);
-          expect(worst.distance, `${where}, under ${worst.vision}`).toBeGreaterThan(0.02);
-          return;
-        }
-
-        const floor = testCase.kind === 'text' ? 4.5 : 3;
-        expect(contrastRatio(mixed, ground), where).toBeGreaterThanOrEqual(floor);
-      });
-    }
-  }
-});
+const HOME_STYLESHEETS = ['../../app/me/me.module.css', '../../app/me/activity-feed.module.css'] as const;
 
 describe('the table cannot fall behind the stylesheets', () => {
   /**
@@ -262,13 +135,7 @@ describe('the table cannot fall behind the stylesheets', () => {
    */
   it('every color-mix on Home has a case above, and every case is still in the CSS', () => {
     const declared = new Set(CASES.map((c) => `${c.mix.token} ${c.mix.percent}%`));
-    const found = new Set<string>();
-    for (const stylesheet of HOME_STYLESHEETS) {
-      const source = readFileSync(path.resolve(here, stylesheet), 'utf8');
-      for (const mix of source.matchAll(/color-mix\(in oklch,\s*var\((--[\w-]+)\)\s*(\d+)%,\s*transparent\)/g)) {
-        found.add(`${mix[1]!} ${mix[2]!}%`);
-      }
-    }
+    const found = mixesIn(HOME_STYLESHEETS);
 
     // `--degree-pip` and `--up-next-meta` are LOCAL properties re-pointed per
     // theme in the stylesheet, so what the regex sees is the local name and

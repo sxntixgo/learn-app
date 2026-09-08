@@ -677,7 +677,7 @@ _The pages the product exists for. Sequential after Phase 2; parallel with each 
 
 ### Newly discovered in Phase 3 — carried forward
 
-- [ ] **A `color-mix()` inside a CSS module is measured by nothing.** `check-css-tokens.mjs`
+- [x] **A `color-mix()` inside a CSS module is measured by nothing.** `check-css-tokens.mjs`
       passes it the moment every part of the value is a `var()`, `palette.test.ts` only reads
       `tokens.css`, and axe does not check these pairings. This found **two live defects on
       the first screen to use the technique** — Home's `.statLabel` at 3.93:1 and
@@ -688,9 +688,23 @@ _The pages the product exists for. Sequential after Phase 2; parallel with each 
       the pattern to generalise: composite in **gamma-encoded sRGB**, not linear light —
       linear reports a brighter colour than the screen shows, i.e. wrong in the same silent
       direction as the defect.
-      **Acceptance:** every `color-mix` in `web/app/**/*.module.css` has a measured floor by
-      Gate 6, or `check-css-tokens.mjs` flags an unmeasured one.
-      **Model:** `sonnet`
+      **✅ GENERALISED 2026-09-08.** All 27 mixes in `web/app` now have a declared ground and
+      floor. The machinery moved to `web/src/lib/mix-contrast.ts` so a new stylesheet costs a
+      table rather than a copy of 100 lines of compositing arithmetic that has to stay
+      identical to be comparable; `home-contrast.test.ts` was refactored onto it and
+      `shell-contrast.test.ts` covers the shell and lesson reader. The coverage assertion is
+      mutation-checked: adding an unmeasured mix fails with the token named.
+      **The regex had a hole worth recording**: the original matched only
+      `color-mix(…, transparent)`, so the lesson reader's `color-mix(…, var(--token))` washes
+      were invisible to it — a coverage check that silently reported full coverage of a file
+      it could not see into. `mixesIn` handles both forms.
+      **No new defects found, and two near-misses avoided.** Both were my classification, not
+      the CSS: the collapse toggle's border reads as decoration because the control carries a
+      visible «/» glyph, and the selected-quiz-choice border reinforces a native radio that
+      already carries the state. A third "failure" was a pairing that does not exist —
+      `.identityHandle`'s 85% ink and `.close`'s 12% hover wash are different elements, and
+      measuring one on the other invented a defect.
+      **Model:** n/a — done.
 
 - [ ] **The artboard spec names no filter FIELD for M2/P3** — §2/§4 say only "filters, all
       five courses, no progress banner, no stats". Catalog ships `?tag=`, chosen because tags
