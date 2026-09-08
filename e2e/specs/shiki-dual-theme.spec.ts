@@ -153,8 +153,8 @@ async function getShikiTokens(browser: Browser, baseURL: string | undefined): Pr
         );
       }
 
-      const lightBgHex = lightBgMatch[1].trim();
-      const darkBgHex = darkBgMatch[1].trim();
+      const lightBgHex = (lightBgMatch[1] ?? '').trim();
+      const darkBgHex = (darkBgMatch[1] ?? '').trim();
 
       // Convert hex to RGB for comparison (Playwright returns computed colors as rgb(...))
       const hexToRgb = (hex: string): string => {
@@ -164,8 +164,11 @@ async function getShikiTokens(browser: Browser, baseURL: string | undefined): Pr
           normalized = normalized.split('').map((c) => c + c).join('');
         }
         const result = /^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(normalized);
-        if (!result) throw new Error(`Invalid hex color: ${hex}`);
-        return `rgb(${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)})`;
+        const [, r, g, b] = result ?? [];
+        if (r === undefined || g === undefined || b === undefined) {
+          throw new Error(`Invalid hex color: ${hex}`);
+        }
+        return `rgb(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)})`;
       };
 
       return {

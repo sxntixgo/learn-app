@@ -13,7 +13,8 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --build --force",
+    "typecheck": "tsc --build --force && tsc -p e2e/tsconfig.json --noEmit",
+    "typecheck:e2e": "tsc -p e2e/tsconfig.json --noEmit",
     "lint": "eslint . && node tools/check-css-tokens.mjs",
     "format": "prettier --write .",
     "migrate": "node tools/src/migrate.ts",

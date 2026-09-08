@@ -1,0 +1,44 @@
+{
+  // Static typecheck for the Playwright specs.
+  //
+  // Nothing type-checked this directory before: it is not in the root
+  // tsconfig's `references`, it had no config of its own, and `next build`
+  // covers only `web/`. A type error in a spec surfaced only when a test
+  // failed at runtime — which is how a locator targeting an element that does
+  // not exist reached a spec during Phase 5.
+  //
+  // NOT `composite`, and not a root reference. The specs import across
+  // project boundaries (`../../tools/src/e2e-seed.ts`,
+  // `../../web/src/lib/heatmap.ts`), and a composite project may only
+  // reference declarations its referenced projects emit — which would mean
+  // building `web/` into the graph purely to lint test files. This is a
+  // standalone `--noEmit` pass instead: it reads those sources directly, and
+  // `npm run typecheck` runs it after the build graph.
+  //
+  // `**/*.test.ts` is excluded by tsconfig.base.json, so that exclusion is
+  // cleared here — checking the specs is the entire point.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    // Playwright's own loader does interop, and the base config turns it off
+    // for the src projects. Without this, `import AxeBuilder from
+    // '@axe-core/playwright'` reads as "not constructable" — a config
+    // mismatch, not a defect: those specs run green.
+    // Playwright's loader is bundler-like: it resolves the package's `import`
+    // condition and does interop. The base config uses nodenext, under which
+    // @axe-core/playwright's single CJS-flavoured index.d.ts makes
+    // `import AxeBuilder from ...` read as a namespace with no construct
+    // signature — a resolution mismatch, not a defect; those specs run green.
+    // Matching the real loader is what makes this check reflect reality.
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "types": ["node"]
+  },
+  "include": ["specs/**/*.ts"],
+  "exclude": []
+}

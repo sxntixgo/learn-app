@@ -1079,14 +1079,24 @@ _The phase that decides whether any of the above is actually true._
       via `GradingForm`, and the promoted headings are its siblings, so both pages are now
       ordered. Both report 0/0/0.
       **Model:** n/a — done.
-- [ ] **`e2e/` has no static typecheck coverage at all.** It is not in the root
+- [x] **`e2e/` has no static typecheck coverage at all.** It is not in the root
       `tsconfig.json` references, has no `tsconfig.json` of its own, and `next build` only
       covers `web/`. A type error in a spec is caught only by eslint's non-type-aware pass or
       by a test actually failing at runtime. Found while trying to verify the a11y matrix's
       own edits — there was no configuration to check them against.
-      **Acceptance:** a `tsc --noEmit` that resolves `@playwright/test` and
-      `@axe-core/playwright` types, runnable in CI.
-      **Model:** `haiku`
+      **✅ FIXED 2026-09-08.** `e2e/tsconfig.json` is a standalone `--noEmit` project (not
+      `composite`, not a root reference — the specs import across project boundaries, and a
+      composite project may only read what its references emit, which would drag `web/` into
+      the build graph to lint test files). It uses `module: esnext` +
+      `moduleResolution: bundler` to match what Playwright's loader actually does; under the
+      base config's `nodenext`, `@axe-core/playwright`'s single CJS-flavoured `index.d.ts`
+      made `new AxeBuilder(...)` read as a namespace with no construct signature — a
+      resolution mismatch that had already wasted one agent's time. `npm run typecheck` now
+      runs it after the build graph, and `npm run typecheck:e2e` runs it alone.
+      **It found 7 real errors on first run**, all fixed here: a value-import of a type under
+      `verbatimModuleSyntax`, and six `noUncheckedIndexedAccess` gaps — regex capture groups
+      and a response header used without narrowing.
+      **Model:** n/a — done.
 - [x] **Screenshot comparison** — capture each screen at 4 widths × 2 themes into
       `docs/design/screenshots/` and diff by eye against the artboards.
       **✅ CAPTURED 2026-09-08 — the comparison itself is still Gate 6's, and still a
