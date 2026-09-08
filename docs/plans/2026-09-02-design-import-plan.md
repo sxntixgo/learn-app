@@ -810,7 +810,7 @@ _Parallel with Phase 3 once Gate 2 passes._
       heat ramp reads as five distinct steps in both themes; locked badges are visibly
       distinct from earned ones.
       **Model:** `sonnet`
-- [ ] **Owner-enrichment on the profile shares the degree fixture's blast radius.**
+- [x] **Owner-enrichment on the profile shares the degree fixture's blast radius.**
       `/me/badges` and `/me/degrees` enumerate every instance-wide definition against the
       caller, so seeding **any** badge or degree makes it render as locked / in-progress on
       **every** owner's own profile view — not only the seeded account's. `badges` and
@@ -832,8 +832,18 @@ _Parallel with Phase 3 once Gate 2 passes._
       `hasRealProgress` already carries — so the tripwire is recorded rather than traded for
       a second one. The clean fix is scoping `/me/badges` and `/me/degrees` to the viewer in
       the API, after which neither section needs a UI guard.
-      **Acceptance:** whoever seeds a badge either adds the guard, or scopes the endpoints.
-      **Model:** `sonnet`
+      **✅ GUARDED 2026-09-08.** `badgesSectionHasContent` now tests `.some(b => b.earned)`
+      rather than `.length`. Unlike the degrees guard this hides nothing the artboard draws:
+      it decides only whether the SECTION appears, and once it does `BadgeShelf` still
+      renders locked badges beside earned ones with PL9's "3 of 9" tally intact. The public
+      branch needs no equivalent — `ProfileBadge` is earned-only by design.
+      **A browser test cannot hold this down**: `clearAwardableState` truncates `badges` at
+      the top of every seed, so a badge inserted before a Playwright run is gone before the
+      first page loads — verified the hard way, two runs "passed" against a badge the
+      harness had already deleted. Pinned in `web/src/lib/badges-section-guard.test.ts`
+      instead, where the precondition is a literal, and checked by mutation: reverting to
+      `.length` fails it with `expected true to be false`.
+      **Model:** n/a — done.
 - [x] **A non-owner viewer cannot match PL9, permanently and by design.** A stranger never
       sees a badge total ("3 OF 9") or a degree's prerequisites, because the public contract
       does not carry them for anyone but the owner — `ProfileBadge` is earned-only
