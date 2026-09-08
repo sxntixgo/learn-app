@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { fetchCourses, fetchInvites, fetchIsTeacher, fetchMe } from '../../src/lib/api';
+import { AuthRequiredError, fetchCourses, fetchInvites, fetchIsTeacher, fetchMe } from '../../src/lib/api';
 import { withAuthRedirect } from '../../src/lib/require-auth';
 import InviteForm from './InviteForm';
 import InviteList from './InviteList';
@@ -34,7 +34,24 @@ export default async function InvitesPage() {
   // Suggestions for the course field only; a teacher's own hidden course may
   // not be in the catalog, so the field stays free text and the API's
   // ownership check is what actually decides (never this list).
-  const courses = isTeacher ? await fetchCourses() : [];
+  //
+  // `GET /api/v1/courses` is `course:list`, which has no teacher cell of its
+  // own (§5.1: reading the catalog is a STUDENT power, even for a teacher's
+  // own course) — a teacher-only account, one with no `student` role, gets a
+  // 403 here. That is ordinary, not exceptional: whether the account can
+  // browse the catalog says nothing about whether it may issue an invite, so
+  // this degrades to "no suggestions" (`fetchCanInvite`/`fetchCanSearch`
+  // treat their own floor's refusal the same way) instead of throwing outside
+  // `withAuthRedirect` above — which crashed the render entirely, past the
+  // root layout, for exactly this account shape.
+  let courses: Awaited<ReturnType<typeof fetchCourses>> = [];
+  if (isTeacher) {
+    try {
+      courses = await fetchCourses();
+    } catch (err) {
+      if (!(err instanceof AuthRequiredError)) throw err;
+    }
+  }
 
   return (
     <div className={styles.page}>

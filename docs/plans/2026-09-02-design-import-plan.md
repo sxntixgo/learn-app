@@ -1039,17 +1039,24 @@ _The phase that decides whether any of the above is actually true._
       output. Below the suite's critical bar, so nothing fails today.
       **Acceptance:** zero moderate landmark violations across the matrix.
       **Model:** `sonnet`
-- [ ] **`/invites` viewed as a TEACHER is not rendering a full document.** With the landmark
+- [x] **`/invites` viewed as a TEACHER is not rendering a full document.** With the landmark
       trio gone, this is the one route whose axe output still looks structurally wrong:
       `document-title` and `html-has-lang` (both **serious**), plus `landmark-one-main` and
       `region`. A missing `<title>` and `lang` mean the response is not going through the
       root layout at all — an error boundary or a permission path rendering bare, not a
       styling problem. Every other route reports 0/0/0. **This blocks the a11y-matrix task's
       "zero violations" acceptance and is a real defect, not a design-import artifact.**
-      **Acceptance:** `/invites` as a teacher renders through the root layout, with a title
-      and a lang attribute, and reports the same 0 serious / 0 moderate every other route
-      does.
-      **Model:** `sonnet`
+      **✅ FIXED 2026-09-08.** Root cause was not the layout: a teacher-only account has no
+      `student` role, and `GET /api/v1/courses` is `course:list`, a **student** power (§5.1 —
+      reading the catalog is a student power even for a teacher's own course). So
+      `fetchCourses()` 403'd, and that throw escaped `withAuthRedirect`, crashing the render
+      past the root layout — which is why the document had no title and no lang. The course
+      list is only used for free-text suggestions and the API's ownership check is what
+      actually authorises an invite, so it now degrades to "no suggestions" on
+      `AuthRequiredError` (rethrowing anything else), the same way `fetchCanInvite` and
+      `fetchCanSearch` already treat their own floor's refusal. Both scans now report
+      0 serious / 0 moderate.
+      **Model:** n/a — done.
 - [ ] **`/kitchen-sink` reports 53 nodes of serious `color-contrast`.** Plausibly inherent —
       it is the token proof sheet and deliberately paints every token, including pairings
       never used together in the product. But it is a **serious** finding at 53 nodes, and
