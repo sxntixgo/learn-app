@@ -182,7 +182,6 @@
    * retires as each one migrates off it in Phases 2-5 of
    * docs/plans/2026-09-02-design-import-plan.md.
    */
-  --color-accent-yellow: oklch(0.596 0.124 79);
 
   --color-error: oklch(0.456 0.117 36);
 
@@ -509,8 +508,6 @@
      */
     --color-accent-gold: oklch(0.613 0.113 81);
     --color-accent-gold-text: oklch(0.736 0.126 84);
-    /* DEPRECATED — see the light block's --color-accent-yellow comment. */
-    --color-accent-yellow: oklch(0.613 0.113 81);
 
     --color-error: oklch(0.722 0.113 37);
 
@@ -591,7 +588,6 @@
 
   --color-accent-gold: oklch(0.613 0.113 81);
   --color-accent-gold-text: oklch(0.736 0.126 84);
-  --color-accent-yellow: oklch(0.613 0.113 81);
 
   --color-error: oklch(0.722 0.113 37);
 

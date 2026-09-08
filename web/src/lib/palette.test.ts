@@ -131,7 +131,6 @@ const NOT_MEASURABLE = ['--color-logo-tile'];
  * start shipping a colour nobody chose for it.
  */
 const ALIASES: Record<string, string> = {
-  '--color-accent-yellow': '--color-accent-gold',
   '--color-banner-bg': '--color-rail-bg',
   '--color-banner-text': '--color-rail-text',
   '--color-banner-divider': '--color-rail-text',
@@ -216,7 +215,6 @@ function rolesFor(scheme: Scheme): Record<string, Role> {
 
     // Non-text UI.
     '--color-accent-gold': { kind: 'ui', grounds: goldGrounds },
-    '--color-accent-yellow': { kind: 'ui', grounds: goldGrounds },
     ...Object.fromEntries(
       TRACKS.map((track) => [
         `--color-track-${track}`,
