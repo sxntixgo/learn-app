@@ -167,6 +167,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/courses/manage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every course this actor may manage
+         * @description Gated by `course:manage:list` — a role floor, like `GET /api/v1/grading/queue`: a teacher gets every course they own, an admin gets every course on the instance, and the scoping is this route's own SQL (keyed off the actor's id), not a per-call `course:manage:read` decision. Exists because an admin has no other way to REACH a course to manage it — `GET /api/v1/courses` is `course:list`, student-only, and a freshly-imported course lands `hidden` (migration 0008) with no owner (migration 0007), so it is in neither a teacher's own-courses set nor the public catalog. Follows `.../manage`'s own precedent: a caller with no manage power at all gets 404, never 403 — this listing has nothing to disclose to an account it is not a management surface for.
+         */
+        get: operations["listManageableCourses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courses/{courseSlug}": {
         parameters: {
             query?: never;
@@ -1314,6 +1334,18 @@ export interface components {
             /** @description The count of the course's non-archived lessons */
             lessonCount: number;
             visibility: components["schemas"]["CourseVisibility"];
+        };
+        /** @description One row of GET /api/v1/courses/manage — deliberately thinner than CourseDetail/CourseManage (no subtitle, description, tracks, or modules): this list exists to make ownership and visibility legible at a glance and to say which course to open next, not to replace its own settings screen. */
+        CourseManageSummary: {
+            /** @description The course's globally-unique slug */
+            slug: string;
+            /** @description The course's title */
+            title: string;
+            visibility: components["schemas"]["CourseVisibility"];
+            /** @description courses.owner_id (migration 0007). Null means no teacher owns it. */
+            ownerId: ((string | null) | null) | null;
+            /** @description The owner's handle, resolved server-side so the UI never has to guess a display name from a bare id. Always null when ownerId is null; also null when ownerId is set but that account has never chosen a handle (migration 0005: users.handle is nullable) — the UI falls back to the id in that case. */
+            ownerHandle: ((string | null) | null) | null;
         };
         /** @description A course's full table of contents. */
         CourseDetail: {
@@ -2539,6 +2571,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CourseSummary"][];
+                };
+            };
+        };
+    };
+    listManageableCourses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Courses this actor may manage, alphabetically by title */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseManageSummary"][];
+                };
+            };
+            /** @description This actor holds no manage power over any course */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

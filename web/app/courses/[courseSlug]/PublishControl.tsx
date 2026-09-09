@@ -47,14 +47,22 @@ export default function PublishControl({ courseSlug, visibility: initial }: Publ
     });
   }
 
+  // Qualified by courseSlug, not a bare "course-visibility": the course
+  // detail page only ever renders one of these, but the admin/teacher
+  // course-management screen (web/app/admin/courses) renders one PER ROW on
+  // the same page — a shared literal id would leave every row after the
+  // first pointing its <label> at the FIRST select in the document instead
+  // of its own.
+  const selectId = `course-visibility-${courseSlug}`;
+
   return (
     <div className={styles.publishControl}>
-      <label className={styles.publishLabel} htmlFor="course-visibility">
+      <label className={styles.publishLabel} htmlFor={selectId}>
         Visibility
       </label>
       <div className={styles.publishRow}>
         <select
-          id="course-visibility"
+          id={selectId}
           className={styles.publishSelect}
           value={pendingValue}
           onChange={(e) => setPendingValue(e.target.value as CourseVisibility)}

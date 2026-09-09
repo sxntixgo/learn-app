@@ -19,6 +19,18 @@ export interface CourseRouteDeps {
 
 const KNOWN_VISIBILITIES: ReadonlySet<string> = new Set(['open', 'restricted', 'hidden']);
 
+/**
+ * True when this actor is an operator account (§5.1: admin is exclusive) —
+ * same helper, same reasoning, as routes/invites.ts's `isAdmin`. Used only
+ * to pick which SQL scope `GET /api/v1/courses/manage` runs, never as a
+ * substitute for `can()`: the route asks `course:manage:list` first, and
+ * this only decides "own rows" vs. "every row" for an actor `can()` has
+ * already let through.
+ */
+function isAdmin(actor: Actor): boolean {
+  return actor.roles.includes('admin');
+}
+
 interface CourseSummaryRow {
   slug: string;
   title: string;
@@ -44,6 +56,14 @@ interface CourseRow {
   owner_id: string | null;
   // Migration 0008. Selected alongside owner_id for the same reason — see
   // policyContext/isDiscoverable below.
+  visibility: CourseVisibility;
+}
+
+interface CourseManageSummaryRow {
+  slug: string;
+  title: string;
+  owner_id: string | null;
+  owner_handle: string | null;
   visibility: CourseVisibility;
 }
 
@@ -166,6 +186,61 @@ export function registerCourseRoutes(fastify: FastifyInstance, deps: CourseRoute
       moduleCount: row.module_count,
       lessonCount: row.lesson_count,
       visibility: row.visibility,
+    }));
+
+    return reply.code(200).send(summaries);
+  });
+
+  // ---------------------------------------------------------------------------
+  // GET /api/v1/courses/manage — every course this actor may manage.
+  //
+  // The door an admin otherwise does not have: a freshly-imported course
+  // lands `hidden` (migration 0008) with no owner (migration 0007), so it
+  // is invisible through `course:list` (student-only, and hidden courses
+  // are excluded from the catalog anyway) and it is not in any teacher's
+  // "own courses" either. Without this endpoint, `course:manage:read` and
+  // `course:visibility:set` are both real grants an admin can never reach,
+  // because there is no course slug to type. A static path registered
+  // ahead of `/api/v1/courses/:courseSlug` below — find-my-way (fastify's
+  // router) always prefers a static route over a parametric one at the
+  // same segment, so this can never be shadowed by a course literally
+  // slugged "manage".
+  // ---------------------------------------------------------------------------
+  fastify.get('/api/v1/courses/manage', async (request, reply) => {
+    // Resolved per request from the access-token cookie (auth/actor.ts):
+    // the anonymous actor when there is no valid session, never a bypass.
+    const actor = actorFor(request, deps);
+
+    // `course:manage:list` is a role floor (policy/can.ts): it cannot see
+    // which courses the query below will return, so it only answers "is
+    // this actor a teacher or an admin at all". A denial is reported as
+    // 404, never 403 — the same "nothing to disclose" precedent
+    // `course:manage:read` and `.../manage` already follow: this listing
+    // is not a screen for anyone it refuses.
+    if (!can(actor, 'course:manage:list')) {
+      return reply.code(404).send({ message: 'Not found' });
+    }
+
+    // The actual scoping `can()` could not do: a teacher's own rows, or
+    // every row for an admin — same shape as invites.ts's `/api/v1/invites`
+    // (`scope = isAdmin(actor) ? null : actor.id`).
+    const scope = isAdmin(actor) ? null : actor.id;
+
+    const result = await getPool().query<CourseManageSummaryRow>(
+      `select c.slug, c.title, c.owner_id, u.handle as owner_handle, c.visibility
+       from courses c
+       left join users u on u.id = c.owner_id
+       where ($1::uuid is null or c.owner_id = $1::uuid)
+       order by c.title`,
+      [scope],
+    );
+
+    const summaries = result.rows.map((row) => ({
+      slug: row.slug,
+      title: row.title,
+      visibility: row.visibility,
+      ownerId: row.owner_id,
+      ownerHandle: row.owner_handle,
     }));
 
     return reply.code(200).send(summaries);

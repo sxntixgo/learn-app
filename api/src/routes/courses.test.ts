@@ -832,6 +832,105 @@ describe('courses routes', () => {
     });
 
     // -------------------------------------------------------------------
+    // GET /api/v1/courses/manage — the listing an admin needs to ever reach
+    // course:manage:read/course:visibility:set at all, since course:list
+    // (student-only) and "own courses" both miss a hidden, unowned,
+    // freshly-imported course.
+    // -------------------------------------------------------------------
+    describe('GET /api/v1/courses/manage', () => {
+      const OTHER_OWNED_SLUG = 'vis-other-owned-course';
+      let otherOwnerId: string;
+      let otherOwnerTeacher: Actor;
+
+      beforeAll(async () => {
+        const other = await pool.query<{ id: string }>(
+          `insert into users (display_name) values ($1) returning id`,
+          [`Other Vis Owner ${Date.now()}`],
+        );
+        otherOwnerId = other.rows[0]!.id;
+        otherOwnerTeacher = { id: otherOwnerId, roles: ['teacher'] };
+        await insertVisCourse(OTHER_OWNED_SLUG, 'hidden', otherOwnerId);
+      });
+
+      afterAll(async () => {
+        await pool.query('delete from courses where slug = $1', [OTHER_OWNED_SLUG]);
+        await pool.query('delete from users where id = $1', [otherOwnerId]);
+      });
+
+      it('a student (no teacher/admin role) gets 404, never 403 — nothing to disclose to them', async () => {
+        const fastify = await buildServer({ actor: OUTSIDER });
+        const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses/manage' });
+        expect(response.statusCode).toBe(404);
+        await fastify.close();
+      });
+
+      it('anonymous gets 404 too, same reason', async () => {
+        const fastify = await buildServer({ actor: ANONYMOUS_ACTOR });
+        const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses/manage' });
+        expect(response.statusCode).toBe(404);
+        await fastify.close();
+      });
+
+      it('a teacher sees only the courses they own — not another teacher’s, not an unowned one', async () => {
+        const teacherOnly: Actor = { id: ownerId, roles: ['teacher'] };
+        const fastify = await buildServer({ actor: teacherOnly });
+        const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses/manage' });
+        expect(response.statusCode).toBe(200);
+        const slugs = (JSON.parse(response.payload) as Array<{ slug: string }>).map((c) => c.slug);
+        expect(slugs).toEqual([OWNED_HIDDEN_SLUG]);
+        await fastify.close();
+      });
+
+      it('a second teacher sees only their own course in turn', async () => {
+        const fastify = await buildServer({ actor: otherOwnerTeacher });
+        const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses/manage' });
+        expect(response.statusCode).toBe(200);
+        const slugs = (JSON.parse(response.payload) as Array<{ slug: string }>).map((c) => c.slug);
+        expect(slugs).toEqual([OTHER_OWNED_SLUG]);
+        await fastify.close();
+      });
+
+      it('an admin sees every course, owned or not — the whole point of this endpoint', async () => {
+        const fastify = await buildServer({ actor: ADMIN });
+        const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses/manage' });
+        expect(response.statusCode).toBe(200);
+        const slugs = (JSON.parse(response.payload) as Array<{ slug: string }>).map((c) => c.slug);
+        expect(slugs).toContain(OPEN_SLUG);
+        expect(slugs).toContain(RESTRICTED_SLUG);
+        expect(slugs).toContain(HIDDEN_SLUG);
+        expect(slugs).toContain(OWNED_HIDDEN_SLUG);
+        expect(slugs).toContain(OTHER_OWNED_SLUG);
+        await fastify.close();
+      });
+
+      it('each row carries title, visibility, ownerId, and ownerHandle — null owner fields for an unowned course', async () => {
+        const fastify = await buildServer({ actor: ADMIN });
+        const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses/manage' });
+        const body = JSON.parse(response.payload) as Array<{
+          slug: string;
+          title: string;
+          visibility: string;
+          ownerId: string | null;
+          ownerHandle: string | null;
+        }>;
+        const hidden = body.find((c) => c.slug === HIDDEN_SLUG);
+        expect(hidden).toMatchObject({ title: HIDDEN_SLUG, visibility: 'hidden', ownerId: null, ownerHandle: null });
+        const owned = body.find((c) => c.slug === OWNED_HIDDEN_SLUG);
+        expect(owned).toMatchObject({ visibility: 'hidden', ownerId });
+        await fastify.close();
+      });
+
+      it('calls can() with "course:manage:list" and no course resource — it is a role floor', async () => {
+        const canSpy = vi.fn().mockReturnValue(true);
+        const fastify = await buildServer({ can: canSpy, actor: ADMIN });
+        const response = await fastify.inject({ method: 'GET', url: '/api/v1/courses/manage' });
+        expect(response.statusCode).toBe(200);
+        expect(canSpy).toHaveBeenCalledWith(expect.anything(), 'course:manage:list');
+        await fastify.close();
+      });
+    });
+
+    // -------------------------------------------------------------------
     // PATCH /api/v1/courses/:slug — publish / ownership transfer (Task C)
     // -------------------------------------------------------------------
     describe('PATCH /api/v1/courses/:slug', () => {

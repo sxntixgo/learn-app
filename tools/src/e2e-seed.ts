@@ -32,6 +32,18 @@ export const E2E_COURSE_SLUG = 'e2e-course';
 export const E2E_COURSE_TAG = 'sample';
 const E2E_MODULE_KEY = 'e2e-module';
 const E2E_LESSON_KEY = 'e2e-lesson';
+
+/**
+ * The admin course-management spec's fixture: a course exactly as a fresh
+ * import leaves it — `visibility` at its column default 'hidden' (migration
+ * 0008) and `owner_id` at its default null (migration 0007) — because
+ * nothing else in this seed produces that combination. `ensureCourseModuleLesson`
+ * below deliberately forces `E2E_COURSE_SLUG` to 'open' so the catalog spec
+ * can see it, and `ensureTeacherUser` gives it an owner; this is the one
+ * course meant to stay hidden and unowned between runs, which is the whole
+ * state admin-courses.spec.ts exists to publish out of.
+ */
+export const E2E_UNOWNED_COURSE_SLUG = 'e2e-unowned-course';
 /**
  * Phase 15 task 4: a second module/lesson, kind 'exercise', under the SAME
  * course rather than a new one — E2E_COURSE_SLUG already has a teacher
@@ -353,6 +365,8 @@ const EXERCISE_SOURCE_PATH = 'e2e/fixtures/add-two-numbers.md';
 export interface E2eFixtures {
   courseSlug: string;
   lessonSlug: string;
+  /** admin-courses.spec.ts: a hidden, unowned course — see E2E_UNOWNED_COURSE_SLUG. */
+  unownedCourseSlug: string;
   invite: {
     email: string;
     /** Plaintext, valid exactly once per seed run — see issueFreshPlatformInvite. */
@@ -431,6 +445,31 @@ export interface E2eFixtures {
     password: string;
     handle: string;
   };
+}
+
+/**
+ * Creates/resets the fixture course admin-courses.spec.ts publishes: hidden,
+ * unowned, every run — reset explicitly (not just inserted once) so a
+ * previous local run's admin publishing it does not leave the next run
+ * unable to exercise the same "freshly imported" starting state.
+ */
+async function ensureUnownedHiddenCourse(client: pg.PoolClient): Promise<void> {
+  await client.query(
+    `insert into courses (slug, title, subtitle, tags, visibility, owner_id)
+     values ($1, $2, $3, $4, 'hidden', null)
+     on conflict (slug) do update set
+       title = excluded.title,
+       subtitle = excluded.subtitle,
+       tags = excluded.tags,
+       visibility = 'hidden',
+       owner_id = null`,
+    [
+      E2E_UNOWNED_COURSE_SLUG,
+      'E2E Unowned Course',
+      'Seeded hidden and ownerless, as a freshly-imported course lands',
+      [],
+    ],
+  );
 }
 
 async function ensureCourseModuleLesson(
@@ -995,6 +1034,7 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
     await clearAccumulatedAccounts(client);
     await clearAccumulatedInvites(client);
     const { courseId, courseSlug, lessonSlug } = await ensureCourseModuleLesson(client);
+    await ensureUnownedHiddenCourse(client);
     await ensureDegree(client, courseSlug);
     const issuerId = await ensureIssuer(client);
     const invite = await issueFreshPlatformInvite(client, issuerId, E2E_INVITE_EMAIL);
@@ -1012,6 +1052,7 @@ export async function seedE2eFixtures(pool: pg.Pool): Promise<E2eFixtures> {
     return {
       courseSlug,
       lessonSlug,
+      unownedCourseSlug: E2E_UNOWNED_COURSE_SLUG,
       invite,
       viewportUser: { email: E2E_VIEWPORT_EMAIL, password: E2E_VIEWPORT_PASSWORD },
       adminUser: { email: E2E_ISSUER_EMAIL, password: E2E_ADMIN_PASSWORD },

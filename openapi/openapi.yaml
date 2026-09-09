@@ -300,6 +300,41 @@ paths:
                 items:
                   $ref: '#/components/schemas/CourseSummary'
 
+  /api/v1/courses/manage:
+    get:
+      summary: List every course this actor may manage
+      description: >-
+        Gated by `course:manage:list` — a role floor, like
+        `GET /api/v1/grading/queue`: a teacher gets every course they own,
+        an admin gets every course on the instance, and the scoping is this
+        route's own SQL (keyed off the actor's id), not a per-call
+        `course:manage:read` decision. Exists because an admin has no other
+        way to REACH a course to manage it — `GET /api/v1/courses` is
+        `course:list`, student-only, and a freshly-imported course lands
+        `hidden` (migration 0008) with no owner (migration 0007), so it is
+        in neither a teacher's own-courses set nor the public catalog.
+        Follows `.../manage`'s own precedent: a caller with no manage
+        power at all gets 404, never 403 — this listing has nothing to
+        disclose to an account it is not a management surface for.
+      operationId: listManageableCourses
+      tags:
+        - courses
+      responses:
+        '200':
+          description: Courses this actor may manage, alphabetically by title
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CourseManageSummary'
+        '404':
+          description: This actor holds no manage power over any course
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/v1/courses/{courseSlug}:
     get:
       summary: Get a course's full table of contents
@@ -3140,6 +3175,47 @@ components:
         - moduleCount
         - lessonCount
         - visibility
+
+    CourseManageSummary:
+      type: object
+      description: >-
+        One row of GET /api/v1/courses/manage — deliberately thinner than
+        CourseDetail/CourseManage (no subtitle, description, tracks, or
+        modules): this list exists to make ownership and visibility legible
+        at a glance and to say which course to open next, not to replace
+        its own settings screen.
+      properties:
+        slug:
+          type: string
+          description: The course's globally-unique slug
+        title:
+          type: string
+          description: The course's title
+        visibility:
+          $ref: '#/components/schemas/CourseVisibility'
+        ownerId:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: courses.owner_id (migration 0007). Null means no teacher owns it.
+        ownerHandle:
+          type:
+            - string
+            - "null"
+          nullable: true
+          description: >-
+            The owner's handle, resolved server-side so the UI never has to
+            guess a display name from a bare id. Always null when ownerId
+            is null; also null when ownerId is set but that account has
+            never chosen a handle (migration 0005: users.handle is
+            nullable) — the UI falls back to the id in that case.
+      required:
+        - slug
+        - title
+        - visibility
+        - ownerId
+        - ownerHandle
 
     CourseDetail:
       type: object

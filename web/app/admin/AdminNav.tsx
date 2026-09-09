@@ -15,6 +15,7 @@ import styles from './admin-nav.module.css';
 
 const ADMIN_SCREENS: ReadonlyArray<{ href: string; label: string }> = [
   { href: '/admin/imports', label: 'Imports' },
+  { href: '/admin/courses', label: 'Courses' },
   { href: '/admin/people', label: 'People' },
   { href: '/admin/audit', label: 'Audit log' },
   { href: '/invites', label: 'Invitations' },

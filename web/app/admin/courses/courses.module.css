@@ -1,0 +1,208 @@
+/*
+ * The admin/teacher course-management screen. Same column-of-cards shape as
+ * /admin/people (people.module.css) and the import screen — one idiom for
+ * the admin section, not a new one per page. Every control clears 44px.
+ */
+
+.page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+}
+
+.heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: clamp(1.5rem, 4vw + 0.5rem, 2.25rem);
+  margin: 0;
+}
+
+.adminBadge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--color-accent-gold);
+  border-radius: var(--radius-pill, 999px);
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-secondary);
+}
+
+.intro {
+  max-width: var(--measure-prose, 46ch);
+  margin: 0.75rem 0 2rem;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+}
+
+.empty {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.item {
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  padding: 1rem 1.1rem;
+}
+
+.itemHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.courseTitle {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.slug {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* Two facts every row leads with, per the brief: "a hidden, unowned,
+   freshly-imported course should read as such at a glance." Kept as two
+   separate badges rather than one combined label — see CourseManageCard's
+   header comment for why the two facts must not collapse into each other. */
+.badgeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.9rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid var(--color-border-hairline);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+/* Hidden/unowned use the same gold accent /admin's own badge uses for
+   "notable, not an error" (people.module.css item 2) — a course in this
+   state is exactly the thing this screen exists to surface, not a fault. */
+.badgeHidden,
+.badgeNoOwner {
+  border-color: var(--color-accent-gold);
+  color: var(--color-text);
+}
+
+.badgeListed,
+.badgeOwned {
+  color: var(--color-text-secondary);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.controls > * {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.transferControl {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-lg);
+  background: var(--color-page);
+}
+
+.transferLabel {
+  font-family: var(--font-mono), 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-text-secondary);
+}
+
+.transferRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.transferInput {
+  flex: 1 1 auto;
+  min-height: 44px;
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.transferButton {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-family: var(--font-sans), 'Plus Jakarta Sans', sans-serif;
+  font-weight: 500;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.transferButton:hover:not(:disabled) {
+  background: var(--color-page);
+}
+
+.transferButton:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.transferInput:focus-visible,
+.transferButton:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
+}
+
+.transferError {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text);
+  border-left: 2px solid var(--color-error);
+  padding-left: 0.6rem;
+}

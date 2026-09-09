@@ -400,6 +400,18 @@ const MATRIX = {
   'course:visibility:set': { row: 'Publish / set course visibility', teacher: OWN_COURSE, admin: ANY_COURSE },
   'course:ownership:transfer': { row: 'Publish / set course visibility', admin: ANY_COURSE },
   'course:manage:read': { row: 'Publish / set course visibility', teacher: OWN_COURSE, admin: ANY_COURSE },
+  // The LISTING an admin needs to ever reach `course:manage:read` in the
+  // first place: an admin has no other door into a hidden, unowned,
+  // freshly-imported course (course:list is student-only, and the course
+  // is in nobody's "own courses"). A role floor, same shape as
+  // `submission:queue:read` / `invite:list` above, not OWN_COURSE/
+  // ANY_COURSE: there is no single course to check per call because the
+  // whole point is spanning every course an actor may manage at once —
+  // the actual scoping (a teacher's own rows, an admin's everything) is
+  // the route's own SQL, keyed off the actor's id. See
+  // api/src/routes/courses.ts and its own test for the ownership split
+  // this cell alone cannot express.
+  'course:manage:list': { row: 'Publish / set course visibility', teacher: ALLOW, admin: ALLOW },
 
   // ---- Create course-scoped badges -----------------------------------------
   // The design table writes a bare ✅ for the teacher. Scoped to a course they
