@@ -10,6 +10,7 @@ import { relaySetCookies } from './auth-cookies';
 export type CourseSummary = components['schemas']['CourseSummary'];
 export type CourseDetail = components['schemas']['CourseDetail'];
 export type CourseManage = components['schemas']['CourseManage'];
+export type CourseManageSummary = components['schemas']['CourseManageSummary'];
 export type CourseVisibility = components['schemas']['CourseVisibility'];
 export type Enrolment = components['schemas']['Enrolment'];
 export type Lesson = components['schemas']['Lesson'];
@@ -266,6 +267,56 @@ export async function setCourseVisibility(courseSlug: string, visibility: Course
   });
   if (!res.ok) {
     throw new Error(await errorMessage(res, `Failed to update visibility for course "${courseSlug}": ${res.status}`));
+  }
+  return (await res.json()) as CourseManage;
+}
+
+/**
+ * Every course this actor may manage (design §5/§12's admin/teacher
+ * course-management screen): a teacher's own courses, or every course for
+ * an admin. The door an admin otherwise has no way to reach — a
+ * freshly-imported course lands `hidden` (migration 0008) with no owner
+ * (migration 0007), so it is in neither the catalog (`course:list` is
+ * student-only) nor any teacher's "own courses".
+ *
+ * `GET /api/v1/courses/manage` reports a denial as 404, not 403 — the same
+ * "nothing to disclose" precedent `course:manage:read` follows (design
+ * §12) — so this is NOT routed through `apiFetch`, which only knows how to
+ * turn 401/403 into AuthRequiredError/ForbiddenError. A 404 here can only
+ * ever mean "this actor has no manage power at all" (there is no single
+ * course whose absence it could otherwise mean), so it is translated into
+ * the same ForbiddenError `withAuthRedirect` already knows how to route:
+ * to /no-access for a signed-in account, or to /login for a signed-out one
+ * (the extra `fetchMeOrNull` call `withAuthRedirect` makes on a
+ * ForbiddenError is what tells those two apart).
+ */
+export async function fetchManageableCourses(): Promise<CourseManageSummary[]> {
+  const res = await apiFetch('/api/v1/courses/manage');
+  if (res.status === 404) {
+    throw new ForbiddenError();
+  }
+  if (!res.ok) {
+    throw new Error(`Failed to fetch manageable courses: ${res.status}`);
+  }
+  return (await res.json()) as CourseManageSummary[];
+}
+
+/**
+ * Transfers a course's ownership (design §12: admin-only override, gated by
+ * `course:ownership:transfer`). Same PATCH `setCourseVisibility` already
+ * uses, just the other field — the route refuses a request naming both
+ * where the actor may only change one, so this and `setCourseVisibility`
+ * stay two separate calls rather than one that sends both.
+ */
+export async function setCourseOwner(courseSlug: string, ownerId: string | null): Promise<CourseManage> {
+  const res = await fetch(`${apiBase()}/api/v1/courses/${encodeURIComponent(courseSlug)}`, {
+    method: 'PATCH',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ ownerId }),
+  });
+  if (!res.ok) {
+    throw new Error(await errorMessage(res, `Failed to transfer ownership of course "${courseSlug}": ${res.status}`));
   }
   return (await res.json()) as CourseManage;
 }

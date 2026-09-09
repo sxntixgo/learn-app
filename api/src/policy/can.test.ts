@@ -295,6 +295,18 @@ const MATRIX: readonly MatrixCase[] = [
     resource: ownedCourse,
     expected: [DENY, DENY, ALLOW, DENY, ALLOW],
   },
+  // The listing is a role floor, not an ownership check — same reasoning
+  // as `submission:queue:read` above: BOTH teacher subjects pass here
+  // because `can()` cannot see which courses a call's results will be
+  // scoped to. That scoping (a teacher's own rows, an admin's everything)
+  // is the route's own SQL, exercised for real in courses.test.ts, not by
+  // this table.
+  {
+    row: 'Publish / set course visibility (manage listing)',
+    action: 'course:manage:list',
+    resource: noResource,
+    expected: [DENY, DENY, ALLOW, ALLOW, ALLOW],
+  },
 
   // ---------------------------------------------------------------------------
   // Row: "Create course-scoped badges" — teacher ✅
