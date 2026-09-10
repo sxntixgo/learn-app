@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect } from 'vitest';
 import { contrastRatio, oklchToLinearRgb, toHex, worstCaseDistance, type LinearRgb } from './oklch.ts';
 
 /**
@@ -128,7 +127,29 @@ const SCHEMES: readonly Scheme[] = ['light', 'dark'];
  * gives hairlines — WCAG puts no ratio on decoration, but one nobody can see
  * is still a bug.
  */
-export function assertFloors(describeFn: (name: string, fn: () => void) => void, itFn: (name: string, fn: () => void) => void, title: string, cases: readonly Case[]): void {
+/**
+ * The three vitest globals this needs, passed in rather than imported.
+ *
+ * NOT `import { expect } from 'vitest'`. This file has no `.test.` in its
+ * name, so `next build` type-checks it as application source — and the web
+ * image installs with `npm ci --workspace=web`, where vitest (a ROOT
+ * devDependency) does not exist. Importing it built fine locally and passed
+ * CI, both of which have the full dev tree, and then failed the Docker build
+ * with "Cannot find module 'vitest'". CLAUDE.md's warning exactly: a green
+ * test suite is not a green `docker compose up`.
+ */
+type ExpectFn = (actual: unknown, message?: string) => {
+  toBeGreaterThan(n: number): void;
+  toBeGreaterThanOrEqual(n: number): void;
+};
+
+export function assertFloors(
+  describeFn: (name: string, fn: () => void) => void,
+  itFn: (name: string, fn: () => void) => void,
+  expectFn: ExpectFn,
+  title: string,
+  cases: readonly Case[],
+): void {
   describeFn(title, () => {
     for (const scheme of SCHEMES) {
       for (const testCase of cases) {
@@ -140,12 +161,12 @@ export function assertFloors(describeFn: (name: string, fn: () => void) => void,
 
           if (testCase.kind === 'quiet') {
             const worst = worstCaseDistance(mixed, ground);
-            expect(worst.distance, `${where}, under ${worst.vision}`).toBeGreaterThan(0.02);
+            expectFn(worst.distance, `${where}, under ${worst.vision}`).toBeGreaterThan(0.02);
             return;
           }
 
           const floor = testCase.kind === 'text' ? 4.5 : 3;
-          expect(contrastRatio(mixed, ground), where).toBeGreaterThanOrEqual(floor);
+          expectFn(contrastRatio(mixed, ground), where).toBeGreaterThanOrEqual(floor);
         });
       }
     }

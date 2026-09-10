@@ -125,7 +125,7 @@ const CASES: readonly Case[] = [
   },
 ];
 
-assertFloors(describe, it, 'the shell and lesson color-mix tones clear the floor for the job they do', CASES);
+assertFloors(describe, it, expect, 'the shell and lesson color-mix tones clear the floor for the job they do', CASES);
 
 describe('the table cannot fall behind the stylesheets', () => {
   /**
