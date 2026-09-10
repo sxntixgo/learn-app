@@ -121,7 +121,7 @@ const CASES: readonly Case[] = [
   },
 ];
 
-assertFloors(describe, it, "Home's color-mix tones clear the floor for the job they do", CASES);
+assertFloors(describe, it, expect, "Home's color-mix tones clear the floor for the job they do", CASES);
 
 const HOME_STYLESHEETS = ['../../app/me/me.module.css', '../../app/me/activity-feed.module.css'] as const;
 
