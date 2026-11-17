@@ -34,7 +34,7 @@
     "@eslint/js": "^9.0.0",
     "@playwright/test": "^1.62.1",
     "eslint": "^9.0.0",
-    "glob": "^13.0.6",
+    "glob": "^14.0.6",
     "openapi-typescript": "^7.0.0",
     "postcss-syntax": "^0.36.2",
     "prettier": "^3.0.0",

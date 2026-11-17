@@ -32,6 +32,28 @@ npm run lint
 npm run format
 ```
 
+### Running the tests locally
+
+Most `tools/` tests need a Postgres 17 database, and the backup/restore tests
+also run `pg_dump`/`pg_restore` (client version 17 or newer). CI provides both
+(`.github/workflows/ci.yml`); locally, for example:
+
+```bash
+# Throwaway database (removed when stopped); CI-only test password
+docker run -d --rm --name learn-test-pg -p 127.0.0.1:55432:5432 \
+  -e POSTGRES_DB=learn_test -e POSTGRES_USER=learn \
+  -e POSTGRES_PASSWORD=ci_password_for_testing_only postgres:17
+
+export DATABASE_URL=postgres://learn:ci_password_for_testing_only@127.0.0.1:55432/learn_test
+export TEST_DATABASE_URL=$DATABASE_URL
+
+# macOS: client tools (keg-only, so put them on PATH)
+brew install libpq && export PATH="$(brew --prefix libpq)/bin:$PATH"
+
+npm run migrate && npm test
+docker stop learn-test-pg
+```
+
 ## Development
 
 Each workspace has its own `package.json`. The root coordinates builds and testing via npm workspaces.

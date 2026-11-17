@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +25,9 @@ describe('resolveLessonPath — path traversal', () => {
     // `base/course` and `base/course-evil`: a sibling whose name has the
     // course directory's name as a prefix. A containment check written as
     // `resolved.startsWith(courseDir)` accepts everything in `course-evil`.
-    base = await mkdtemp(path.join(tmpdir(), 'traversal-test-'));
+    // realpath: on macOS tmpdir() is under /var, a symlink to /private/var,
+    // and resolveLessonPath returns real paths.
+    base = await realpath(await mkdtemp(path.join(tmpdir(), 'traversal-test-')));
     course = path.join(base, 'course');
 
     await mkdir(path.join(course, 'modules', 'intro'), { recursive: true });
